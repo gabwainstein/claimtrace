@@ -7,5 +7,12 @@
   "render_types": ["figure"],
   "input_types": ["data", "artifact", "code"],
   "run_output_types": ["artifact"],
-  "require_assessments": true
+  "require_assessments": true,
+  "logic": {
+    "derivations": "claimtrace/derivations",
+    "vocabularies": ["claimtrace/logic/vocabulary.json"],
+    "rule_packs": ["claimtrace/logic/rules.json"],
+    "allow_external_packs": false,
+    "require_derivations": false
+  }
 }

@@ -1,0 +1,44 @@
+{
+  "schema_version": "claimtrace.symbolic-rules/1",
+  "id": "widget:slope-rules",
+  "version": "1.0.0",
+  "vocabulary_id": "widget:vocabulary",
+  "rules": [
+    {
+      "id": "widget:positive-slope",
+      "when": [{
+        "predicate": "widget:reported_slope",
+        "polarity": "positive",
+        "arguments": {"study": {"var": "study"}, "slope": {"var": "slope"}}
+      }],
+      "where": [{
+        "op": "gt",
+        "left": {"var": "slope"},
+        "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "widget:shininess-per-minute"}}
+      }],
+      "then": {
+        "predicate": "widget:positive_fitted_slope",
+        "polarity": "positive",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "widget:nonpositive-slope",
+      "when": [{
+        "predicate": "widget:reported_slope",
+        "polarity": "positive",
+        "arguments": {"study": {"var": "study"}, "slope": {"var": "slope"}}
+      }],
+      "where": [{
+        "op": "lte",
+        "left": {"var": "slope"},
+        "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "widget:shininess-per-minute"}}
+      }],
+      "then": {
+        "predicate": "widget:positive_fitted_slope",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    }
+  ]
+}

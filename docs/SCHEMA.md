@@ -47,6 +47,8 @@ A `current` node whose binding differs from that concept's `canonical` is **sile
 | `value` | optional; human-readable one-line description / the claim text |
 | `note`, `date`, `script` | optional; `script` is informational (not existence-checked) — use it for dead code |
 | `run_ids` | optional list of exact `run:<uuid>` receipt IDs explicitly associated with this semantic result; never inferred |
+| `logic_bindings` | optional project-owned complete fact profiles for result nodes; each pins one vocabulary, input predicate, polarity, and extractor for every argument |
+| `logic` | optional formal target for a claim-like node; contains exactly `vocabulary_id`, `rule_pack_id`, and a typed derived `target` atom |
 
 ### node types
 `question` · `hypothesis` · `prediction` · `data` · `artifact` · `code` · `figure` · `claim` ·
@@ -77,8 +79,11 @@ on them (`claimtrace check` raises `READS_RETIRED`).
 { "from": "art:fit", "to": "claim:slope", "rel": "supports" }
 ```
 
-Information flows `from → to`, i.e. **`to` depends on `from`** (except `reads`, where the code
-depends on the artifact it reads).
+Information flows `from → to`, i.e. **`to` depends on `from`**, for every dependency relation except
+the historical `reads` representation. For `reads`, use
+`{"from":"code:fit","to":"data:raw","rel":"reads"}`: Claimtrace interprets this as
+`code:fit` depending on `data:raw`. This reversal is relation-specific; copying that orientation to
+`produces`, `supports`, or another relation would reverse the dependency.
 
 ### dependency relations (define the DAG)
 `produces` · `renders` · `supports` · `cites` · `derives_from` · `reads` · `motivates` · `predicts` ·
@@ -216,6 +221,252 @@ Assessment staleness covers the exact claim node, result node, and result artifa
 not snapshot the entire upstream provenance closure, graph concepts, or surrounding edges; graph
 and receipt checks cover those declarations separately.
 
+## Symbolic derivation documents
+
+Symbolic derivations are an optional, domain-neutral layer for claims that can be expressed with
+explicit typed rules. The project supplies data-only JSON assets; no Python, imports, remote calls,
+regular expressions, or executable expressions are accepted as rule features. The supported core
+types are `ct:string`, `ct:symbol`, `ct:node_id`, `ct:integer`, `ct:decimal`, and `ct:boolean`.
+Projects may declare named types over those bases and their own unit identifiers. Integer and
+decimal ground values are canonical JSON strings; booleans remain JSON booleans.
+
+A vocabulary uses schema `claimtrace.symbolic-vocabulary/1` and contains exactly
+`schema_version`, `id`, `version`, `types`, `units`, `predicates`, and `renderers`. Predicates are
+either `input` or `derived`; each argument fixes its name, type, and nullable unit. Renderers map an
+exact predicate and polarity to a plain-language template. A rule pack uses schema
+`claimtrace.symbolic-rules/1`, pins one `vocabulary_id`, and contains finite function-free rules:
+each rule has exactly `id`, `when`, `where`, and `then`. `when` is a list of typed pattern atoms,
+`where` supports only `eq`, `ne`, `gt`, `gte`, `lt`, and `lte`, and `then` is one derived atom.
+There is no negation-as-failure; negative polarity is explicit data.
+
+### Graph-owned formal targets and fact profiles
+
+A claim, hypothesis, prediction, or conclusion can pin its formal interpretation:
+
+```json
+{
+  "id": "claim:gate",
+  "type": "claim",
+  "status": "current",
+  "value": "release-1 satisfies the configured test gate",
+  "logic": {
+    "vocabulary_id": "gate:vocabulary",
+    "rule_pack_id": "gate:rules",
+    "target": {
+      "predicate": "gate:configured_gate_passed",
+      "polarity": "positive",
+      "arguments": {
+        "release": {"type": "gate:release", "value": "release-1", "unit": null}
+      }
+    }
+  }
+}
+```
+
+The prose `value` and formal `logic.target` remain distinct declarations. A matching formal proof
+does not establish that the target faithfully expresses the prose meaning.
+
+Each evidence-producing result declares project-reviewed, complete fact-binding profiles. One
+profile fixes the vocabulary, one input predicate, its polarity, and an extractor for every
+predicate argument:
+
+```json
+{
+  "id": "art:test",
+  "type": "artifact",
+  "status": "current",
+  "path": "results/test.json",
+  "logic_bindings": [{
+    "id": "gate:test-completed",
+    "vocabulary_id": "gate:vocabulary",
+    "predicate": "gate:test_completed",
+    "polarity": "positive",
+    "arguments": {
+      "release": {"kind": "json_pointer", "pointer": "/release"},
+      "failed": {"kind": "json_pointer", "pointer": "/failed"}
+    }
+  }]
+}
+```
+
+`json_pointer` uses an RFC 6901 pointer into a JSON artifact. `text_lines` instead uses exact
+1-based inclusive `start_line` and `end_line` plus literal `prefix` and `suffix`; the remaining text
+is parsed as the typed argument. All arguments in one profile are read from the same result
+artifact snapshot. Because the project pins predicate, polarity, and the complete tuple, an agent
+cannot create a new locator, assemble one atom from unrelated rows or files, or reinterpret a
+positive profile as negative. A result may expose profiles for multiple configured vocabularies;
+binding IDs remain unique within that result, and a derivation can select only profiles belonging
+to the vocabulary pinned by its claim. The report validates every declared target and profile,
+including live extraction against the current artifact, even before a profile is selected.
+
+### Preferred binding-selection proposal
+
+The normal input to `claimtrace derive ENTRY --actor ID` is a
+`claimtrace.symbolic-selection/1` object with exactly these fields:
+
+```json
+{
+  "schema_version": "claimtrace.symbolic-selection/1",
+  "claim_id": "claim:gate",
+  "bindings": [
+    {"result_id": "art:test", "binding_id": "gate:test-completed"}
+  ],
+  "note": "Use the project-reviewed gate profile.",
+  "provenance": {"agent": "analysis-agent"}
+}
+```
+
+`bindings` is a non-empty list of unique objects containing exactly `result_id` and `binding_id`.
+Order is canonicalized. The referenced claim must carry a complete `logic` declaration and each
+selected result must carry the named complete `logic_bindings` profile. Claimtrace derives the
+sorted result set; loads the vocabulary, rule pack, and target from the claim; extracts every typed
+argument from the selected result bytes; and creates the low-level grounded facts. A selection
+proposal cannot add a target, policy ID, pointer, atom, polarity, assumption, closure fact, proof
+step, proof state, proof ID, snapshot, or activation flag.
+
+`note` is nullable bounded public text. `provenance` contains a required bounded `agent` string,
+optional bounded `model` and `skill_version` strings, and an optional SHA-256 `prompt_sha256`.
+These fields and CLI `--actor` are attributed strings, not authenticated identities.
+
+### Low-level/import and assumption proposal
+
+The exact alternative top-level shape is `claim_id`, sorted unique `result_ids`, `vocabulary_id`,
+`rule_pack_id`, and `agent_input`. This is an intentional low-level interface for imports,
+debugging, and explicit assumptions; agents should prefer the binding-selection schema for grounded
+facts. `agent_input` contains exactly a typed derived `target`, a non-empty `facts` list, nullable
+public `note`, and `provenance`. Each fact contains one typed input `atom`, `evidence`, and
+`assumption`:
+
+- A grounded fact has `assumption: null` and exactly one evidence object containing only
+  `result_id` and an existing complete `binding_id`.
+- An assumed fact has an empty evidence list and a bounded explicit assumption string.
+- Every subject result must ground at least one fact. Every atom must exactly match the configured
+  predicate signature, types, units, polarity, and extracted artifact value.
+
+Even this low-level form cannot submit artifact pointers, rule changes, closure facts, proof steps,
+proof state, proof ID, mechanical snapshots, or an `active` flag. Claimtrace validates complete
+profiles, computes the finite closure and backward proof slice, and stores an immutable
+content-addressed `claimtrace.symbolic-derivation/1` record. Assumption-dependent proofs remain
+inspectable but inactive.
+
+The computed target state is:
+
+| state | meaning under the pinned rule pack |
+|---|---|
+| `derivable` | the requested target polarity follows |
+| `refutable` | only the explicit opposite polarity follows |
+| `conflict` | both polarities follow |
+| `unknown` | neither polarity follows; missing information is not treated as false |
+
+This is open-world, paraconsistent evaluation: a conflict is surfaced and does not entail unrelated
+facts. A derivable or refutable proof can be active only when its claim target matches, grounding is
+valid, all used nodes remain eligible, no error finding exists, and no used premise is an
+assumption. An assumption-dependent proof remains recorded and inspectable but inactive. When a
+derivation lists multiple results, they remain the premises of one composite proof. The backward
+slice records the result IDs actually used and rejects a non-unknown proof that merely lists an
+irrelevant result; no per-result `supports` edges are inferred.
+
+Eligible formal-target nodes have type `claim`, `hypothesis`, `prediction`, or `conclusion` and
+status absent, `current`, or `confirmed`. Eligible grounded result nodes have type `artifact`,
+`figure`, `experiment`, or `data` and status absent, `current`, `confirmed`, or `null`. The scoped
+provenance closure includes the claim, selected results, and their dependency ancestors. A pending
+stale node, retired ancestor, invalid status, structural/check problem, unreadable declared file, or
+invalid anchor makes that snapshot ineligible. Graph structural errors are checked globally before
+the scoped provenance evaluation and block the snapshot even when their node is outside the scope.
+
+The proof certificate is canonical for the proof actually used, not for the submission history.
+Reports group equivalent active submissions by `proof_id` and retain their sorted
+`derivation_ids`. Separately active `derivable` and `refutable` proofs for the same claim, exact
+target, vocabulary, and rule pack produce `SYMBOLIC_CROSS_DERIVATION_CONFLICT`; each conditional
+proof remains inspectable, but both receive `claim_level_active: false`. A single derivation whose
+closure contains both polarities has proof state `conflict`. Neither form satisfies
+`require_derivations`.
+
+Listing and reporting reevaluate stored records against the live graph, result bytes, vocabulary,
+and rule pack. Content drift or store-integrity failure suppresses activation. Use
+`claimtrace derivations` to list effective states and
+`claimtrace explain DERIVATION_OR_PROOF_ID` to inspect one certificate and its equivalent
+submissions. Drift is a bounded list of identity-level records, with `kind` values for the
+claim, result, vocabulary, rule pack, provenance node, provenance edge, scoped provenance health,
+and binding anchor; unavailable live inputs are explicit. Each record exposes stored/current
+digests and version IDs rather than only an opaque aggregate mismatch. At most 1,000 drift items are
+returned, with a deterministic `truncated` record for any remainder.
+
+A symbolic certificate means conditional derivability under declared project policy. It does not
+certify scientific truth, premise validity, semantic support, equivalence between the formal target
+and claim prose, or equivalence between a binding and the intended scientific construct. Automatic
+extraction validates the configured mapping mechanically; it does not validate that the mapping
+chose the scientifically correct construct. Semantic assessments cover result-to-prose meaning
+only. Prose-to-target and binding-to-predicate mappings remain repository policy that needs
+independent review; Claimtrace does not yet store a dedicated review record for either mapping.
+
+### Symbolic trust and authorization boundary
+
+“Project-owned” and “project-reviewed” describe a repository workflow, not access control enforced
+by Claimtrace. Anyone who can edit `graph.json`, a binding, vocabulary, or rule pack can change the
+formal interpretation and request a fresh proof. Policy asset IDs are stable logical names, not
+content-hash authorization pins. Existing derivations snapshot asset content and become stale after
+a change, but a new derivation is valid under the new live content unless repository policy rejects
+that edit. Protect meaning-bearing files with review rules, `CODEOWNERS`, signed commits, CI hash
+pins, or another external authorization mechanism. `--actor` and `provenance.agent` values are
+self-asserted strings.
+
+The graph-to-predicate binding, polarity, extractors, rules, and prose-to-target mapping are the
+semantic policy. Deterministic materialization prevents a selection proposal from changing them; it
+does not make the mapping scientifically correct. A user or reviewer must inspect those declarations
+and use semantic assessments for result-to-prose meaning.
+
+Selection is constrained but not exhaustive: a caller cannot invent a binding, yet can omit a valid
+binding. Schema v1 has no claim-owned evidence plan that declares the exact required profiles or a
+deterministic graph query with inclusion/exclusion policy. Until that layer exists, repository
+review or CI must police cherry-picking; `require_derivations` requires an active certificate but
+does not prove that every relevant approved result was included.
+
+Derivation and assessment documents, reviews, and mechanical events are append-only only through
+the Claimtrace API. Content addressing catches edits to surviving files and broken surviving
+references, but each local store lacks an independently anchored head. Complete ledgers or chains
+can be deleted or omitted without guaranteed detection. `require_derivations` and
+`require_assessments` detect some missing policy coverage, not general ledger completeness. Commit
+stores to Git or an external append-only commitment when deletion evidence is required.
+
+### Deterministic symbolic resource limits
+
+The evaluator fails closed at these schema-v1 limits:
+
+| resource | limit |
+|---|---:|
+| vocabulary types / units | 1,000 each |
+| predicates / arguments per predicate / renderers | 2,000 / 64 / 4,000 |
+| rules / body atoms per rule / constraints per rule | 2,000 / 32 / 128 |
+| complete binding profiles per result | 2,000 |
+| identifiers / variable and argument names | 200 / 64 characters |
+| vocabulary or rule version / renderer language | 100 characters each |
+| typed string value / explicit assumption | 2,000 characters each |
+| renderer template / public note | 4,000 characters each |
+| actor or provenance string | 500 characters |
+| low-level input facts or high-level binding selections | 5,000 |
+| distinct subject result IDs | 5,000 |
+| closure facts / inference rounds | 10,000 / 100 |
+| rule firings / proof candidates | 50,000 each |
+| indexed-join work / proof-search work | 200,000 each |
+| canonical integer or decimal lexical length | 1,000 characters |
+| artifact decimal/scientific lexical length / absolute adjusted exponent | 200 / 10,000 |
+| one grounded result artifact / all grounded artifacts | 64 MiB / 256 MiB |
+| one vocabulary or rule asset | 16 MiB |
+| one stored derivation document | 64 MiB |
+| derivation-ledger files / aggregate bytes | 10,000 / 256 MiB |
+| structured drift records | 1,000 including truncation marker |
+| all scoped provenance files hashed per snapshot | 64 GiB by default |
+
+The provenance budget is `logic.max_provenance_bytes`, a positive 64-bit integer count of bytes.
+It stream-hashes scoped upstream files instead of retaining all of them in memory; changing the
+budget does not change the 64 MiB per-result or 256 MiB aggregate grounding limits.
+
+The current ledger readers, report builder, and standalone trajectory view load project-local JSON
+and aggregate it in memory. They target a research project, not an Arkham/MetaSleuth-scale data
+platform. Larger deployments need indexed persistence and incremental/adapted reporting around the
+same schemas and deterministic evaluator.
+
 ## What `claimtrace check` enforces
 
 | signal | meaning |
@@ -225,6 +476,7 @@ and receipt checks cover those declarations separately.
 | `SELF_EDGE` | an edge points at its own node |
 | `CYCLE` | the dependency edges form a cycle (they must be a DAG) |
 | `MALFORMED_EDGE` | an edge is missing `from` / `to` / `rel` |
+| `LOGIC_DECLARATION_INVALID` | a graph-owned formal target or result binding is malformed, incompatible with configured assets, or cannot ground the current artifact |
 | `MISSING_FILE` | a node's `path` doesn't exist |
 | `AMBIGUOUS_BACKBONE` | a scalar `backbone` is used when the graph has multiple concepts |
 | `UNKNOWN_BACKBONE_CONCEPT` | a mapped backbone binds a concept not declared in `concepts` |
@@ -337,7 +589,7 @@ event directory has no independently anchored head, so deleting complete start/f
 detectable from that directory alone. Commit it to Git or use an external ledger commitment when
 deletion evidence is required.
 
-## Config: render, input, receipt, event, and assessment policy
+## Config: render, input, receipt, event, assessment, and logic policy
 
 In `claimtrace.config.json`, `render_types` (default `["figure"]`) are the node types whose
 staleness is checked, and `input_types` (default `["data", "artifact", "code"]`) are the types that
@@ -353,3 +605,35 @@ store. `require_assessments` defaults to `false`; when `true`, a direct active `
 This policy does not
 turn an accepted assessment into scientific truth; it only requires that the attributed semantic
 review exists and remains grounded to the current nodes and artifact bytes.
+
+The optional `logic` object configures the portable symbolic layer:
+
+```json
+{
+  "logic": {
+    "derivations": "claimtrace/derivations",
+    "vocabularies": ["claimtrace/logic/vocabulary.json"],
+    "rule_packs": ["claimtrace/logic/rules.json"],
+    "allow_external_packs": false,
+    "require_derivations": false,
+    "max_provenance_bytes": 68719476736
+  }
+}
+```
+
+`derivations` is the project-local immutable record store. `vocabularies` and `rule_packs` are lists
+of configured JSON policy assets; duplicate paths are rejected. Paths are project-relative and may
+not escape the project by default. `allow_external_packs: true` permits explicitly configured
+vocabulary and rule-pack paths outside the project, but never permits an external derivation store
+or executable rules. It should be enabled only when those external assets are separately trusted
+and version-controlled.
+
+`require_derivations` defaults to `false`. When true, strict policy requires each active configured
+claim target to have a current active `derivable` certificate. A `refutable`, `conflict`, `unknown`,
+stale, assumption-dependent, or otherwise inactive record does not satisfy that requirement. This
+setting requires a conditional proof under project policy; it does not turn that proof into truth or
+semantic support.
+
+`max_provenance_bytes` defaults to 68,719,476,736 bytes (64 GiB) and must be a positive 64-bit
+integer. It bounds the total declared-file bytes stream-hashed across the claim/result upstream
+provenance scope for one snapshot. It is independent of the smaller grounding limits listed above.

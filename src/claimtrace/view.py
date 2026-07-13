@@ -7,6 +7,7 @@ No receipt is presented as proof of observed reads or write causation.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import tempfile
@@ -176,6 +177,87 @@ def _assessment_view_record(item, raw_nodes, *, allow_active_relations=True):
     }
 
 
+def _derivation_view_record(item, raw_nodes, *, allow_active_proofs=True):
+    """Return a presentation-only projection of one composite symbolic proof."""
+    subject = item.get("subject") or {}
+    stored = item.get("stored_derived") or item.get("derived") or {}
+    effective = item.get("effective") or stored
+    mechanical = item.get("mechanical_snapshot") or {}
+    claim_id = subject.get("claim_id")
+    result_ids = list(subject.get("result_ids") or [])
+    claim_snapshot = mechanical.get("claim") or {}
+    result_snapshots = {
+        snapshot.get("node_id"): snapshot
+        for snapshot in mechanical.get("results") or []
+        if isinstance(snapshot, dict)
+    }
+    vocabulary = mechanical.get("vocabulary") or {}
+    rule_pack = mechanical.get("rule_pack") or {}
+    effective_active = bool(effective.get("active")) and allow_active_proofs
+    return {
+        "id": item.get("id"),
+        "proof_id": stored.get("proof_id") or effective.get("proof_id"),
+        "stored_proof_id": stored.get("proof_id"),
+        "current_evaluation_proof_id": effective.get("proof_id"),
+        "recorded_at": item.get("recorded_at"),
+        "actor": item.get("actor"),
+        "subject": {"claim_id": claim_id, "result_ids": result_ids},
+        "claim": {
+            "id": claim_id,
+            "text": (raw_nodes.get(claim_id) or {}).get("value") or claim_id,
+            "node_version_id": claim_snapshot.get("node_version_id"),
+        },
+        "results": [
+            {
+                "id": result_id,
+                "text": ((raw_nodes.get(result_id) or {}).get("value")
+                         or (raw_nodes.get(result_id) or {}).get("path") or result_id),
+                "node_version_id": (result_snapshots.get(result_id) or {}).get(
+                    "node_version_id"
+                ),
+                "artifact": (result_snapshots.get(result_id) or {}).get("artifact") or {},
+            }
+            for result_id in result_ids
+        ],
+        "used_result_ids": list(effective.get("used_result_ids") or []),
+        "target": effective.get("target") or stored.get("target"),
+        "rendered_target": (
+            effective.get("rendered_target") or stored.get("rendered_target") or claim_id
+        ),
+        "outcome_relation": (
+            effective.get("outcome_relation") or stored.get("outcome_relation")
+            or "undetermined"
+        ),
+        "outcome_atoms": list(
+            effective.get("outcome_atoms") or stored.get("outcome_atoms") or []
+        ),
+        "rendered_outcomes": list(
+            effective.get("rendered_outcomes") or stored.get("rendered_outcomes") or []
+        ),
+        "proof_state": effective.get("proof_state") or stored.get("proof_state") or "unknown",
+        "stored_proof_state": stored.get("proof_state") or "unknown",
+        "claim_bound": bool(effective.get("claim_bound")),
+        "active": effective_active,
+        "stale": bool(effective.get("stale")),
+        "drift": list(effective.get("drift") or []),
+        "integrity_blocked": not allow_active_proofs,
+        "assumptions": list(effective.get("assumptions") or stored.get("assumptions") or []),
+        "proof_steps": list(effective.get("proof_steps") or stored.get("proof_steps") or []),
+        "findings": list(effective.get("findings") or []),
+        "vocabulary": {
+            "id": subject.get("vocabulary_id") or vocabulary.get("id"),
+            "version": vocabulary.get("version"),
+            "sha256": vocabulary.get("sha256"),
+        },
+        "rule_pack": {
+            "id": subject.get("rule_pack_id") or rule_pack.get("id"),
+            "version": rule_pack.get("version"),
+            "sha256": rule_pack.get("sha256"),
+        },
+        "provenance": (item.get("agent_input") or {}).get("provenance") or {},
+    }
+
+
 def _build_payload(report):
     graph = report.get("graph") or {}
     raw_nodes = {item["id"]: item for item in graph.get("nodes", [])}
@@ -259,6 +341,143 @@ def _build_payload(report):
         assessments_by_node[node_id].sort()
         current_assessments_by_node[node_id].sort()
 
+    derivation_projection = report.get("derivations") or {}
+    derivation_integrity = derivation_projection.get("integrity")
+    allow_active_proofs = derivation_integrity == "ok"
+    derivation_history_records = [
+        _derivation_view_record(
+            item,
+            raw_nodes,
+            allow_active_proofs=allow_active_proofs,
+        )
+        for item in sorted(
+            derivation_projection.get("items") or [],
+            key=lambda item: str(item.get("id")),
+        )
+    ]
+    active_by_proof = {
+        item["proof_id"]: item
+        for item in derivation_projection.get("active_proofs") or []
+    }
+    grouped_records = {}
+    for item in derivation_history_records:
+        active_summary = active_by_proof.get(item.get("proof_id"))
+        key = (
+            ("proof", item["proof_id"])
+            if active_summary is not None else ("derivation", item["id"])
+        )
+        if key in grouped_records:
+            continue
+        projected = copy.deepcopy(item)
+        projected["derivation_ids"] = (
+            list(active_summary["derivation_ids"])
+            if active_summary is not None else [item["id"]]
+        )
+        projected["conditional_active"] = bool(item.get("active"))
+        projected["claim_level_active"] = (
+            bool(active_summary["claim_level_active"])
+            if active_summary is not None else False
+        )
+        projected["active"] = (
+            projected["conditional_active"] and projected["claim_level_active"]
+        )
+        grouped_records[key] = projected
+    derivation_records = list(grouped_records.values())
+
+    conflict_members = defaultdict(list)
+    for item in derivation_records:
+        if item.get("conditional_active") and not item.get("claim_level_active"):
+            key = (
+                (item.get("subject") or {}).get("claim_id"),
+                (item.get("vocabulary") or {}).get("id"),
+                (item.get("rule_pack") or {}).get("id"),
+                json.dumps(item.get("target"), sort_keys=True, separators=(",", ":")),
+            )
+            conflict_members[key].append(item)
+    conflict_member_ids = {
+        item["id"] for members in conflict_members.values() for item in members
+        if {value.get("proof_state") for value in members} >= {"derivable", "refutable"}
+    }
+    conflict_records = []
+    for key, members in sorted(conflict_members.items(), key=lambda item: item[0]):
+        if {item.get("proof_state") for item in members} < {"derivable", "refutable"}:
+            continue
+        proof_ids = sorted(item["proof_id"] for item in members)
+        digest = hashlib.sha256("\n".join(proof_ids).encode("utf-8")).hexdigest()
+        first = members[0]
+        results_by_id = {
+            result["id"]: result for item in members for result in item.get("results") or []
+        }
+        conflict_records.append({
+            **copy.deepcopy(first),
+            "id": "cross-conflict:sha256:" + digest,
+            "proof_id": "cross-conflict:sha256:" + digest,
+            "stored_proof_id": None,
+            "current_evaluation_proof_id": None,
+            "proof_ids": proof_ids,
+            "derivation_ids": sorted({
+                derivation_id for item in members
+                for derivation_id in item.get("derivation_ids") or []
+            }),
+            "subject": {
+                "claim_id": key[0],
+                "result_ids": sorted(results_by_id),
+            },
+            "results": [results_by_id[result_id] for result_id in sorted(results_by_id)],
+            "used_result_ids": sorted({
+                result_id for item in members
+                for result_id in item.get("used_result_ids") or []
+            }),
+            "proof_state": "cross_conflict",
+            "stored_proof_state": "cross_conflict",
+            "outcome_relation": "target_and_opposite_active_across_derivations",
+            "outcome_atoms": [
+                atom for item in members for atom in item.get("outcome_atoms") or []
+            ],
+            "rendered_outcomes": sorted({
+                value for item in members for value in item.get("rendered_outcomes") or []
+                if value
+            }),
+            "active": False,
+            "conditional_active": False,
+            "claim_level_active": False,
+            "assumptions": [],
+            "proof_steps": [],
+            "conditional_proofs": [
+                {
+                    "proof_id": item["proof_id"],
+                    "proof_state": item["proof_state"],
+                    "derivation_ids": item["derivation_ids"],
+                    "used_result_ids": item["used_result_ids"],
+                    "rendered_outcomes": item["rendered_outcomes"],
+                }
+                for item in sorted(members, key=lambda value: value["proof_id"])
+            ],
+            "findings": [{
+                "severity": "error", "code": "SYMBOLIC_CROSS_DERIVATION_CONFLICT",
+                "detail": (
+                    "separate active conditional proofs derive the target and its opposite"
+                ),
+            }],
+        })
+    derivation_records = [
+        item for item in derivation_records if item["id"] not in conflict_member_ids
+    ] + conflict_records
+    derivation_records.sort(key=lambda item: item["id"])
+    derivations_by_id = {
+        item["id"]: item for item in derivation_history_records
+        if isinstance(item.get("id"), str)
+    }
+    derivations_by_node = defaultdict(list)
+    for item in derivation_history_records:
+        derivation_id = item.get("id")
+        subject = item.get("subject") or {}
+        for node_id in [subject.get("claim_id"), *(subject.get("result_ids") or [])]:
+            if node_id in raw_nodes and derivation_id:
+                derivations_by_node[node_id].append(derivation_id)
+    for node_id in derivations_by_node:
+        derivations_by_node[node_id].sort()
+
     declared_link_records = {
         (item.get("from"), item.get("to"), item.get("declared_relation")): item
         for item in assessment_projection.get("declared_links") or []
@@ -307,6 +526,7 @@ def _build_payload(report):
                 if current_assessments_by_node[node_id]
                 else (assessments_by_node[node_id][0] if assessments_by_node[node_id] else None)
             ),
+            "derivation_ids": derivations_by_node[node_id],
             "claim_links": sorted(
                 claim_links_by_node[node_id],
                 key=lambda item: (
@@ -357,10 +577,72 @@ def _build_payload(report):
             "run_ids": [],
             "assessment_ids": [assessment_id],
             "default_assessment_id": assessment_id,
+            "derivation_ids": [],
             "claim_links": [],
             "coverage": None,
             "layer": layer,
             "_rank": assessment_rank,
+        })
+
+    proof_node_keys = {}
+    fallback_proof_layer = max(semantic_layers.values(), default=-1) + 1
+    for proof_rank, item in enumerate(derivation_records):
+        derivation_id = item["id"]
+        subject = item.get("subject") or {}
+        result_layers = [
+            semantic_layers[result_id]
+            for result_id in subject.get("result_ids") or []
+            if result_id in semantic_layers
+        ]
+        claim_layer = semantic_layers.get(subject.get("claim_id"))
+        endpoints = result_layers + ([claim_layer] if claim_layer is not None else [])
+        if endpoints and min(endpoints) < max(endpoints):
+            layer = min(endpoints) + (max(endpoints) - min(endpoints)) // 2
+        else:
+            layer = fallback_proof_layer
+        key = "proof:" + derivation_id
+        proof_node_keys[derivation_id] = key
+        state = str(item.get("proof_state") or "unknown")
+        if state == "cross_conflict":
+            display_status = "claim_conflict"
+        elif item.get("integrity_blocked"):
+            display_status = "integrity_error"
+        elif item.get("stale"):
+            display_status = "stale"
+        elif item.get("active"):
+            display_status = state
+        else:
+            display_status = "inactive_" + state
+        visual_nodes.append({
+            "key": key,
+            "node_id": derivation_id,
+            "kind": "proof",
+            "type": "symbolic conflict" if state == "cross_conflict" else "symbolic proof",
+            "status": display_status,
+            "label": "Formal: " + display_status.replace("_", " "),
+            "path": None,
+            "value": (
+                "; ".join(value for value in item.get("rendered_outcomes") or [] if value)
+                or item.get("rendered_target")
+            ),
+            "note": (
+                "Conflicting active conditional outcomes" if state == "cross_conflict"
+                else "Active formal outcome under the configured rule pack" if item.get("active")
+                else "Inspect proof state and findings"
+            ),
+            "date": item.get("recorded_at"),
+            "script": None,
+            "backbone": None,
+            "findings": list(item.get("findings") or []),
+            "run_ids": [],
+            "assessment_ids": [],
+            "default_assessment_id": None,
+            "derivation_ids": list(item.get("derivation_ids") or [derivation_id]),
+            "claim_links": [],
+            "coverage": None,
+            "proof": item,
+            "layer": layer,
+            "_rank": proof_rank,
         })
 
     max_semantic_layer = max(semantic_layers.values(), default=-1)
@@ -393,6 +675,7 @@ def _build_payload(report):
             "run_ids": [],
             "assessment_ids": [],
             "default_assessment_id": None,
+            "derivation_ids": [],
             "claim_links": [],
             "coverage": _coverage_label(run),
             "declared_inputs": list(run.get("declared_inputs", [])),
@@ -412,7 +695,9 @@ def _build_payload(report):
         by_layer[node["layer"]].append(node)
     for layer, items in by_layer.items():
         items.sort(key=lambda item: (
-            {"semantic": 0, "assessment": 1, "run": 2}.get(item["kind"], 3),
+            {"semantic": 0, "proof": 1, "assessment": 2, "run": 3}.get(
+                item["kind"], 4
+            ),
             item["_rank"],
             item["key"],
         ))
@@ -501,6 +786,74 @@ def _build_payload(report):
         })
         assessment_edge_index += 1
 
+    proof_edge_index = 0
+    for item in derivation_records:
+        derivation_id = item.get("id")
+        proof_key = proof_node_keys.get(derivation_id)
+        subject = item.get("subject") or {}
+        claim_id = subject.get("claim_id")
+        if not proof_key or claim_id not in raw_nodes:
+            continue
+        proof_state = str(item.get("proof_state") or "unknown")
+        selected_result_ids = (
+            subject.get("result_ids") or []
+            if proof_state == "unknown" else item.get("used_result_ids") or []
+        )
+        result_ids = [
+            result_id for result_id in selected_result_ids
+            if result_id in raw_nodes
+        ]
+        premise_count = len(result_ids)
+        for premise_rank, result_id in enumerate(result_ids, start=1):
+            edges.append({
+                "key": "proof:%06d" % proof_edge_index,
+                "source": "graph:" + result_id,
+                "target": proof_key,
+                "relation": (
+                    "evaluated input %d/%d" if proof_state == "unknown"
+                    else "conflicting conditional premise %d/%d"
+                    if proof_state == "cross_conflict"
+                    else "composite premise %d/%d"
+                ) % (premise_rank, premise_count),
+                "kind": "proof",
+                "traversable": False,
+                "derivation_state": item.get("proof_state"),
+            })
+            proof_edge_index += 1
+        state = proof_state
+        rule_pack_id = str(
+            (item.get("rule_pack") or {}).get("id") or "configured rules"
+        )
+        if item.get("integrity_blocked"):
+            relation = "inactive formal outcome · derivation integrity error"
+            relation_label = "integrity-blocked formal outcome"
+        elif state == "cross_conflict":
+            relation = (
+                "formal conflict · target and opposite conditionally derivable under "
+                + rule_pack_id
+            )
+            relation_label = "claim-level formal conflict"
+        elif item.get("active") and state == "derivable":
+            relation = "formal conclusion · target derivable under " + rule_pack_id
+            relation_label = "formal derivation"
+        elif item.get("active") and state == "refutable":
+            relation = "formal refutation · target refutable under " + rule_pack_id
+            relation_label = "formal refutation"
+        else:
+            relation = "inactive formal outcome · " + state
+            relation_label = "inactive formal outcome"
+        edges.append({
+            "key": "proof:%06d" % proof_edge_index,
+            "source": proof_key,
+            "target": "graph:" + claim_id,
+            "relation": relation,
+            "label": relation_label,
+            "kind": "proof",
+            "traversable": False,
+            "derivation_state": item.get("proof_state"),
+        })
+        proof_edge_index += 1
+
     receipt_index = 0
     for run in runs:
         run_id = str(run.get("run_id"))
@@ -560,9 +913,10 @@ def _build_payload(report):
     height = MARGIN_TOP + max_rows * (NODE_HEIGHT + ROW_GAP) + 28
     summary = report.get("summary") or {}
     return {
-        "schema": "claimtrace.view/2",
+        "schema": "claimtrace.view/3",
         "scope": report.get("scope") or {},
         "assessment_integrity": assessment_integrity or "unknown",
+        "derivation_integrity": derivation_integrity or "unknown",
         "summary": {
             "semantic_nodes": len(raw_nodes),
             "semantic_edges": sum(
@@ -575,6 +929,13 @@ def _build_payload(report):
                 1 for item in current_assessments if item.get("current_state") == "contested"
             ),
             "assessment_edges": sum(1 for edge in edges if edge["kind"] == "assessment"),
+            "derivations": len(derivation_history_records),
+            "proof_nodes": len(derivation_records),
+            "active_proofs": sum(1 for item in derivation_records if item.get("active")),
+            "claim_conflicts": sum(
+                1 for item in derivation_records if item.get("proof_state") == "cross_conflict"
+            ),
+            "proof_edges": sum(1 for edge in edges if edge["kind"] == "proof"),
             "findings": len(report.get("findings", [])),
             "errors": summary.get("errors", 0),
             "warnings": summary.get("warnings", 0),
@@ -583,6 +944,7 @@ def _build_payload(report):
         "nodes": visual_nodes,
         "edges": edges,
         "assessments": [assessments_by_id[key] for key in sorted(assessments_by_id)],
+        "derivations": [derivations_by_id[key] for key in sorted(derivations_by_id)],
         "global_findings": sorted(
             global_findings,
             key=lambda item: (
@@ -594,7 +956,9 @@ def _build_payload(report):
         "width": width,
         "height": height,
         "coverage_notice": (
-            "Semantic edges are declared lineage. Run receipts are mechanical records. "
+            "Semantic edges are declared lineage. Symbolic proofs show conditional "
+            "derivability under named project rules, not truth or scientific support. "
+            "Run receipts are mechanical records. "
             "Declared inputs are not observed reads, and pre/post changes do not prove "
             "write causation."
         ),
@@ -634,6 +998,7 @@ _HTML_HEAD = """<!doctype html>
   --concept: #e3eff2;
   --run: #d8f0ea;
   --assessment: #efe3fb;
+  --proof: #e4edf9;
   --other: #eceff3;
 }
 @media (prefers-color-scheme: dark) {
@@ -662,6 +1027,7 @@ _HTML_HEAD = """<!doctype html>
     --concept: #263f48;
     --run: #1f443e;
     --assessment: #402c50;
+    --proof: #263b57;
     --other: #303846;
   }
 }
@@ -736,7 +1102,7 @@ select {
   padding: 14px;
   min-width: 0;
 }
-.details dl { margin: 0; display: grid; grid-template-columns: 88px 1fr; gap: 7px 9px; }
+.details dl { margin: 0; display: grid; grid-template-columns: 118px 1fr; gap: 7px 9px; }
 .details dt { color: var(--muted); }
 .details dd { margin: 0; overflow-wrap: anywhere; }
 .detail-note { color: var(--muted); line-height: 1.4; }
@@ -790,6 +1156,7 @@ select {
 .swatch.annotation { border: 0; border-top: 2px dotted var(--annotation); border-radius: 0; }
 .swatch.receipt { background: var(--run); border: 2px dashed var(--receipt); }
 .swatch.assessment { background: var(--assessment); border: 2px dashed var(--annotation); transform: rotate(45deg); }
+.swatch.proof { background: var(--proof); border: 2px double var(--dependency); }
 .swatch.retired { background: var(--other); border: 2px dashed var(--danger); }
 .swatch.data { background: var(--data); }
 .swatch.code { background: var(--code); }
@@ -801,6 +1168,7 @@ select {
 .ct-edge-annotation { stroke: var(--annotation); stroke-dasharray: 3 5; }
 .ct-edge-receipt { stroke: var(--receipt); stroke-dasharray: 8 5; stroke-width: 2; }
 .ct-edge-assessment { stroke: var(--annotation); stroke-dasharray: 5 4; stroke-width: 2; }
+.ct-edge-proof { stroke: var(--dependency); stroke-dasharray: 2 4; stroke-width: 2; }
 .ct-edge-state-unassessed,
 .ct-edge-state-assessed-not-as-written { stroke: var(--warning); stroke-dasharray: 4 5; }
 .ct-edge-state-covered { stroke: var(--downstream); stroke-width: 2.4; }
@@ -826,11 +1194,23 @@ select {
 .ct-type-output rect { fill: var(--artifact); }
 .ct-type-run-receipt rect { fill: var(--run); stroke: var(--receipt); stroke-dasharray: 7 4; }
 .ct-type-semantic-assessment polygon { fill: var(--assessment); stroke: var(--annotation); stroke-dasharray: 5 3; }
+.ct-type-symbolic-proof polygon { fill: var(--proof); stroke: var(--dependency); stroke-width: 2; }
+.ct-type-symbolic-conflict polygon { fill: var(--proof); stroke: var(--danger); stroke-width: 3; }
 .ct-type-other rect { fill: var(--other); }
 .ct-status-confirmed :is(rect, polygon), .ct-status-accepted :is(rect, polygon) { stroke: var(--downstream); stroke-width: 2.5; }
 .ct-status-stale :is(rect, polygon), .ct-status-proposed :is(rect, polygon) { stroke: var(--warning); stroke-width: 2.5; stroke-dasharray: 7 4; }
 .ct-status-contested :is(rect, polygon) { stroke: var(--danger); stroke-width: 3; stroke-dasharray: 2 4; }
 .ct-status-rejected :is(rect, polygon) { stroke: var(--danger); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.ct-status-derivable :is(rect, polygon) { stroke: var(--downstream); stroke-width: 2.5; }
+.ct-status-refutable :is(rect, polygon) { stroke: var(--danger); stroke-width: 2.5; }
+.ct-status-conflict :is(rect, polygon) { stroke: var(--danger); stroke-width: 3; stroke-dasharray: 2 4; }
+.ct-status-claim-conflict :is(rect, polygon),
+.ct-status-integrity-error :is(rect, polygon) { stroke: var(--danger); stroke-width: 3; stroke-dasharray: 2 4; }
+.ct-status-unknown :is(rect, polygon) { stroke: var(--warning); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.ct-status-inactive-derivable :is(rect, polygon),
+.ct-status-inactive-refutable :is(rect, polygon),
+.ct-status-inactive-conflict :is(rect, polygon),
+.ct-status-inactive-unknown :is(rect, polygon) { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 7 4; opacity: .78; }
 .ct-status-null :is(rect, polygon) { stroke: var(--annotation); stroke-width: 2.5; stroke-dasharray: 2 4; }
 .ct-status-dead-end rect, .ct-status-retracted rect,
 .ct-status-deprecated rect, .ct-status-superseded rect {
@@ -874,7 +1254,7 @@ select {
     <div class="graph-scroll">
       <svg id="trajectory" role="img" aria-labelledby="trajectory-title trajectory-description">
         <title id="trajectory-title">Claimtrace research trajectory</title>
-        <desc id="trajectory-description">A deterministic layered graph of declared semantic lineage and partial mechanical run receipts.</desc>
+        <desc id="trajectory-description">A deterministic layered graph of declared semantic lineage, conditional symbolic proofs, semantic reviews, and partial mechanical run receipts.</desc>
         <defs>
           <marker id="arrow-dependency" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L8,4 L0,8 z" fill="var(--dependency)"></path>
@@ -887,6 +1267,9 @@ select {
           </marker>
           <marker id="arrow-assessment" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L8,4 L0,8 z" fill="var(--annotation)"></path>
+          </marker>
+          <marker id="arrow-proof" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L8,4 L0,8 z" fill="var(--dependency)"></path>
           </marker>
         </defs>
         <g id="layer-labels"></g>
@@ -911,6 +1294,7 @@ select {
     <span class="legend-item"><span class="swatch annotation"></span>semantic annotation</span>
     <span class="legend-item"><span class="swatch receipt"></span>partial run receipt</span>
     <span class="legend-item"><span class="swatch assessment"></span>agent-assessed semantic review</span>
+    <span class="legend-item"><span class="swatch proof"></span>conditional symbolic proof</span>
     <span class="legend-item"><span class="swatch retired"></span>stale or retired status</span>
   </div>
 </main>
@@ -930,6 +1314,7 @@ _HTML_SCRIPT = """
   const labelLayer = document.getElementById("layer-labels");
   const layerSelect = document.getElementById("layer-select");
   const focusSelect = document.getElementById("focus-select");
+  const graphScroll = document.querySelector(".graph-scroll");
   const detailTitle = document.getElementById("detail-title");
   const detailContent = document.getElementById("detail-content");
   const assessmentControl = document.getElementById("assessment-control");
@@ -965,7 +1350,7 @@ _HTML_SCRIPT = """
       "data", "code", "artifact", "figure", "claim", "doc", "doc-span",
       "experiment", "method", "decision", "concept", "reference",
       "hypothesis", "prediction", "conclusion", "preprocessing", "output",
-      "run-receipt", "semantic-assessment"
+      "run-receipt", "semantic-assessment", "symbolic-proof", "symbolic-conflict"
     ]);
     return known.has(token) ? token : "other";
   }
@@ -995,6 +1380,10 @@ _HTML_SCRIPT = """
     data.summary.semantic_edges + " semantic edges · " +
     data.summary.runs + " run receipts · " +
     data.summary.current_assessments + " current semantic assessments · " +
+    data.summary.active_proofs + "/" + data.summary.proof_nodes +
+      " claim-level active formal outcomes · " +
+    data.summary.claim_conflicts + " claim conflicts · " +
+    data.summary.derivations + " derivation submissions · " +
     data.summary.errors + " errors · " + data.summary.warnings + " warnings";
   document.getElementById("coverage").textContent = data.coverage_notice;
 
@@ -1044,7 +1433,7 @@ _HTML_SCRIPT = """
     edgeLayer.appendChild(svgElement("text", {
       x: labelX, y: labelY, "text-anchor": "middle",
       "class": "ct-edge-label"
-    }, edge.kind === "receipt" ? "receipt" : edge.relation));
+    }, edge.kind === "receipt" ? "receipt" : (edge.label || edge.relation)));
     edgeElements.set(edge.key, path);
   });
 
@@ -1053,6 +1442,14 @@ _HTML_SCRIPT = """
     focusSelect.value = selected || "";
     const selectedNode = selected ? nodes.get(selected) : null;
     selectedAssessment = selectedNode ? selectedNode.default_assessment_id : null;
+    if (selectedNode && graphScroll) {
+      graphScroll.scrollLeft = Math.max(
+        0, selectedNode.x + selectedNode.width / 2 - graphScroll.clientWidth / 2
+      );
+      graphScroll.scrollTop = Math.max(
+        0, selectedNode.y + selectedNode.height / 2 - graphScroll.clientHeight / 2
+      );
+    }
     updateHighlights();
     updateDetails();
   }
@@ -1070,10 +1467,17 @@ _HTML_SCRIPT = """
       "aria-hidden": "true"
     });
     const isAssessment = node.kind === "assessment";
+    const isProof = node.kind === "proof";
     if (isAssessment) {
       group.appendChild(svgElement("polygon", {
         points: (node.width / 2) + ",0 " + node.width + "," + (node.height / 2) +
           " " + (node.width / 2) + "," + node.height + " 0," + (node.height / 2)
+      }));
+    } else if (isProof) {
+      group.appendChild(svgElement("polygon", {
+        points: "10,0 " + (node.width - 10) + ",0 " + node.width + "," +
+          (node.height / 2) + " " + (node.width - 10) + "," + node.height +
+          " 10," + node.height + " 0," + (node.height / 2)
       }));
     } else {
       group.appendChild(svgElement("rect", {
@@ -1089,10 +1493,13 @@ _HTML_SCRIPT = """
     group.appendChild(svgElement("text", {
       x: isAssessment ? node.width / 2 : 13, y: 44, "class": "ct-meta",
       "text-anchor": isAssessment ? "middle" : "start"
-    }, short((isAssessment ? "agent-assessed" : node.type) + " · " + node.status + issueText,
+    }, short((isAssessment ? "agent-assessed" : isProof ? "rule-derived" : node.type) +
+      " · " + node.status + issueText,
       isAssessment ? 27 : 36)));
     const finalLine = isAssessment
       ? node.status + " review"
+      : isProof
+      ? node.value || "conditional conclusion"
       : node.kind === "run"
       ? "partial lineage · " + (node.output_transitions || []).filter(function (item) { return item.produced; }).length + " produced"
       : (node.path || node.value || "");
@@ -1439,6 +1846,40 @@ _HTML_SCRIPT = """
       appendDetail(list, "Findings", (node.findings || []).map(function (item) {
         return item.severity + ": " + item.code + " — " + item.detail;
       }));
+    } else if (node.kind === "proof") {
+      const proof = node.proof || {};
+      appendDetail(list, "Target", proof.rendered_target);
+      appendDetail(list, "Formal outcome", proof.rendered_outcomes || []);
+      appendDetail(list, "Outcome relation", humanLabel(proof.outcome_relation));
+      appendDetail(list, "Proof state", humanLabel(proof.proof_state));
+      appendDetail(list, "Active", proof.active ? "yes" : "no");
+      appendDetail(list, "Claim bound", proof.claim_bound ? "yes" : "no");
+      appendDetail(list, "Stale", proof.stale ? "yes" : "no");
+      appendDetail(list, "Changed inputs", (proof.drift || []).map(function (item) {
+        return item.kind + ": " + item.id + " (" +
+          (item.stored_version || item.stored_sha256 || "absent") + " -> " +
+          (item.current_version || item.current_sha256 || "absent") + ")";
+      }));
+      appendDetail(list, "Used premise results", proof.used_result_ids || []);
+      appendDetail(list, "Submitted result scope", (proof.results || []).map(function (item) {
+        return item.id;
+      }));
+      appendDetail(list, "Rule pack", (proof.rule_pack || {}).id);
+      appendDetail(list, "Vocabulary", (proof.vocabulary || {}).id);
+      appendDetail(list, "Assumptions", proof.assumptions || []);
+      appendDetail(list, "Derivation", proof.id);
+      appendDetail(list, "Submission history", proof.derivation_ids || []);
+      appendDetail(list, "Proof or group", proof.proof_id);
+      appendDetail(list, "Stored proof", proof.stored_proof_id || "not a single certificate");
+      appendDetail(list, "Current evaluation proof", proof.current_evaluation_proof_id);
+      appendDetail(list, "Conditional proofs", (proof.conditional_proofs || []).map(function (item) {
+        return item.proof_state + ": " + item.proof_id;
+      }));
+      appendDetail(list, "Representative actor", proof.actor);
+      appendDetail(list, "Representative agent", (proof.provenance || {}).agent);
+      appendDetail(list, "Findings", (proof.findings || []).map(function (item) {
+        return item.severity + ": " + item.code + " — " + item.detail;
+      }));
     } else if (node.kind === "run") {
       appendDetail(list, "Exit code", node.returncode);
       appendDetail(list, "Inputs", node.declared_inputs);
@@ -1453,9 +1894,24 @@ _HTML_SCRIPT = """
       }));
       appendDetail(list, "Coverage", node.coverage);
     }
-    const review = configureAssessmentSelector(node);
-    if (review) appendAssessmentPanel(review);
-    else appendDeclaredLinkNotice(node);
+    if (node.kind === "proof") {
+      assessmentControl.hidden = true;
+      const boundary = document.createElement("p");
+      boundary.className = "scope";
+      const stateBoundary = {
+        derivable: "The formal target is derivable under the named project rule pack.",
+        refutable: "The target is refutable because its explicit opposite is derivable under the named project rule pack.",
+        conflict: "Both the formal target and its explicit opposite are derivable under the named project rule pack.",
+        cross_conflict: "Separate active conditional proofs derive the formal target and its explicit opposite under the same named project rule pack.",
+        unknown: "Neither the formal target nor its explicit opposite is derivable under the named project rule pack."
+      }[proof.proof_state] || "A formal outcome was computed under the named project rule pack.";
+      boundary.textContent = stateBoundary + " This is not a certificate of truth, scientific meaning, or evidentiary support.";
+      detailContent.appendChild(boundary);
+    } else {
+      const review = configureAssessmentSelector(node);
+      if (review) appendAssessmentPanel(review);
+      else appendDeclaredLinkNotice(node);
+    }
   }
 
   layerSelect.addEventListener("change", updateHighlights);
@@ -1485,11 +1941,20 @@ def render_view(cfg, output_path):
     html = _render_html(payload)
     destination = Path(output_path).expanduser().resolve()
     protected = {cfg.config_path.resolve(), cfg.graph_path.resolve()}
+    if getattr(cfg, "verifiers", None) is not None:
+        protected.add(Path(cfg.verifiers).resolve(strict=False))
+    for asset in [
+        *getattr(cfg, "logic_vocabulary_paths", []),
+        *getattr(cfg, "logic_rule_pack_paths", []),
+    ]:
+        protected.add(Path(asset).resolve(strict=False))
     for node in (report.get("graph") or {}).get("nodes", []):
         if node.get("path"):
-            protected.add(cfg.resolve(node["path"]).resolve(strict=False))
+            declared = cfg.resolve(node["path"]).resolve(strict=False)
+            protected.add(declared)
+            protected.add(Path(str(declared) + ".manifest.json").resolve(strict=False))
     inside_provenance = False
-    for store in (cfg.events_path, cfg.assessments_path):
+    for store in (cfg.events_path, cfg.assessments_path, cfg.derivations_path):
         try:
             inside_store = destination.is_relative_to(store.resolve())
         except AttributeError:  # Python 3.9

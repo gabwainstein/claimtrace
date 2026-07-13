@@ -16,6 +16,10 @@ from .config import CONFIG_NAME, load_config, strict_json_loads
 from .engine import (ANNOT_RELS, GraphError, compute_check, downstream, impact,
                      lint_issues, load_graph, log_entry, upstream)
 from .events import EventError, run_command
+from .logic import (SELECTION_SCHEMA, LogicError, append_derivation,
+                    configured_logic_assets, create_derivation,
+                    create_derivation_from_bindings, evaluate_derivation,
+                    load_derivations, load_logic_asset)
 from .report import build_fatal_report, build_report, dumps_report
 from .snapshot import snapshot
 from .verify import run_verifiers
@@ -308,6 +312,313 @@ def cmd_review(args):
     return 0
 
 
+def _read_logic_object(path_value, label):
+    """Strictly read one bounded JSON object through the shared safe reader."""
+    try:
+        value = load_logic_asset(path_value)
+    except LogicError as exc:
+        raise LogicError(f"cannot read {label} {path_value}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise LogicError(f"{label} must contain one JSON object")
+    return value
+
+
+def _configured_logic_assets(cfg):
+    """Resolve every configured data-only logic asset, failing on any ambiguity."""
+    return configured_logic_assets(cfg)
+
+
+def _derivation_assets(document, vocabularies, rule_packs):
+    subject = document["subject"]
+    vocabulary_id = subject["vocabulary_id"]
+    rule_pack_id = subject["rule_pack_id"]
+    vocabulary = vocabularies.get(vocabulary_id)
+    if vocabulary is None:
+        raise LogicError(
+            f"derivation {document['id']} references unconfigured vocabulary {vocabulary_id}"
+        )
+    rule_pack = rule_packs.get(rule_pack_id)
+    if rule_pack is None:
+        raise LogicError(
+            f"derivation {document['id']} references unconfigured rule pack {rule_pack_id}"
+        )
+    if rule_pack["vocabulary_id"] != vocabulary_id:
+        raise LogicError(
+            f"derivation {document['id']} selects an incompatible vocabulary and rule pack"
+        )
+    return vocabulary, rule_pack
+
+
+def _derivation_output(document, evaluation, path=None, claim_level=None):
+    return {
+        "id": document["id"],
+        "path": str(path) if path is not None else None,
+        "recorded_at": document["recorded_at"],
+        "actor": document["actor"],
+        "subject": document["subject"],
+        "agent_input": document["agent_input"],
+        "mechanical_snapshot": document["mechanical_snapshot"],
+        "stored_derived": document["derived"],
+        "current_derived": evaluation,
+        "claim_level": claim_level or {
+            "conditional_active": bool(evaluation.get("active")),
+            "active": bool(evaluation.get("active")),
+            "state": "active" if evaluation.get("active") else "inactive",
+            "findings": [],
+        },
+    }
+
+
+def _formal_outcome_text(evaluation):
+    rendered = [item for item in evaluation.get("rendered_outcomes", []) if item]
+    detail = "; ".join(rendered) if rendered else "no derived outcome atom"
+    return f"{evaluation.get('outcome_relation', 'undetermined')}: {detail}"
+
+
+def _claim_level_projection(report, document, evaluation):
+    claim_id = document["subject"]["claim_id"]
+    proof_id = evaluation.get("proof_id")
+    active_proof = next(
+        (
+            item for item in (report.get("derivations") or {}).get("active_proofs", [])
+            if item.get("proof_id") == proof_id
+        ),
+        None,
+    )
+    findings = [
+        item for item in report.get("findings", [])
+        if (item.get("node_id") == claim_id
+            and item.get("code") == "SYMBOLIC_CROSS_DERIVATION_CONFLICT")
+    ]
+    active = bool(active_proof and active_proof.get("claim_level_active"))
+    return {
+        "conditional_active": bool(evaluation.get("active")),
+        "active": active,
+        "state": (
+            "conflict" if findings else evaluation.get("outcome_relation", "active")
+            if active else "inactive"
+        ),
+        "findings": findings,
+    }
+
+
+def _fail_closed_derivation_evaluation(evaluation, integrity_issues):
+    if not integrity_issues:
+        return evaluation
+    projected = dict(evaluation)
+    projected["active"] = False
+    return projected
+
+
+def _raise_derivation_integrity(label, issues):
+    if not issues:
+        return
+    detail = "; ".join(f"{item['path']}: {item['detail']}" for item in issues)
+    raise LogicError(f"derivation store integrity failed {label}: {detail}")
+
+
+def cmd_derive(args):
+    """Create a deterministic proof from agent-proposed facts and project-owned rules."""
+    cfg = _cfg(args)
+    _documents, existing_issues = load_derivations(cfg)
+    _raise_derivation_integrity("before append", existing_issues)
+    entry = _read_logic_object(args.entry, "derivation proposal")
+    verbose_expected = {
+        "claim_id", "result_ids", "vocabulary_id", "rule_pack_id", "agent_input",
+    }
+    selection_expected = {
+        "schema_version", "claim_id", "bindings", "note", "provenance",
+    }
+    if set(entry) == selection_expected and entry.get("schema_version") == SELECTION_SCHEMA:
+        document = create_derivation_from_bindings(
+            cfg, entry["claim_id"], entry["bindings"], actor=args.actor,
+            note=entry["note"], provenance=entry["provenance"],
+        )
+    elif set(entry) == verbose_expected:
+        vocabularies, rule_packs = _configured_logic_assets(cfg)
+        vocabulary_id = entry["vocabulary_id"]
+        if not isinstance(vocabulary_id, str) or not vocabulary_id:
+            raise LogicError("derivation proposal vocabulary_id must be a non-empty string")
+        rule_pack_id = entry["rule_pack_id"]
+        if not isinstance(rule_pack_id, str) or not rule_pack_id:
+            raise LogicError("derivation proposal rule_pack_id must be a non-empty string")
+        vocabulary = vocabularies.get(vocabulary_id)
+        if vocabulary is None:
+            raise LogicError(f"unconfigured vocabulary id: {vocabulary_id!r}")
+        rule_pack = rule_packs.get(rule_pack_id)
+        if rule_pack is None:
+            raise LogicError(f"unconfigured rule-pack id: {rule_pack_id!r}")
+        if rule_pack["vocabulary_id"] != vocabulary["id"]:
+            raise LogicError("selected rule pack does not use the selected vocabulary")
+        document = create_derivation(
+            cfg, entry["claim_id"], entry["result_ids"], entry["agent_input"],
+            vocabulary=vocabulary, rule_pack=rule_pack, actor=args.actor,
+        )
+    else:
+        raise LogicError(
+            "derivation proposal must be either a claimtrace.symbolic-selection/1 "
+            "binding selection or the exact low-level claim_id/result_ids/vocabulary_id/"
+            "rule_pack_id/agent_input form; mechanical_snapshot and derived are computed "
+            "by claimtrace, and target or policy fields cannot be added to selection proposals"
+        )
+    path = append_derivation(cfg, document)
+    _stored, issues = load_derivations(cfg)
+    _raise_derivation_integrity("after append", issues)
+    vocabularies, rule_packs = _configured_logic_assets(cfg)
+    vocabulary, rule_pack = _derivation_assets(document, vocabularies, rule_packs)
+    evaluation = evaluate_derivation(
+        cfg, document, vocabulary=vocabulary, rule_pack=rule_pack,
+    )
+    project_report = build_report(cfg, strict=False)
+    claim_level = _claim_level_projection(project_report, document, evaluation)
+    output = _derivation_output(document, evaluation, path, claim_level)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"claimtrace derive: recorded {document['id']}")
+        print(f"  proof state: {evaluation['proof_state']}")
+        print(f"  active: {'yes' if evaluation['active'] else 'no'}")
+        print(f"  claim-level active: {'yes' if claim_level['active'] else 'no'}")
+        print(f"  target: {evaluation['rendered_target']}")
+        print(f"  outcome: {_formal_outcome_text(evaluation)}")
+        for finding in evaluation["findings"]:
+            print(f"  {finding['severity']}: {finding['code']} - {finding['detail']}")
+        for finding in claim_level["findings"]:
+            print(f"  {finding['severity']}: {finding['code']} - {finding['detail']}")
+        if evaluation.get("drift"):
+            print("  changed proof inputs:")
+            for item in evaluation["drift"]:
+                before = item.get("stored_version") or item.get("stored_sha256") or "absent"
+                after = item.get("current_version") or item.get("current_sha256") or "absent"
+                print(f"    {item['kind']} {item['id']}: {before} -> {after}")
+    has_error = any(
+        item["severity"] == "error"
+        for item in [*evaluation["findings"], *claim_level["findings"]]
+    )
+    return 1 if has_error else 0
+
+
+def cmd_derivations(args):
+    cfg = _cfg(args)
+    documents, issues = load_derivations(cfg)
+    vocabularies, rule_packs = _configured_logic_assets(cfg)
+    project_report = build_report(cfg, strict=False)
+    items = []
+    for document in documents:
+        vocabulary, rule_pack = _derivation_assets(document, vocabularies, rule_packs)
+        evaluation = evaluate_derivation(
+            cfg, document, vocabulary=vocabulary, rule_pack=rule_pack,
+        )
+        evaluation = _fail_closed_derivation_evaluation(evaluation, issues)
+        if args.state and evaluation["proof_state"] != args.state:
+            continue
+        claim_level = _claim_level_projection(project_report, document, evaluation)
+        items.append(_derivation_output(document, evaluation, claim_level=claim_level))
+    output = {
+        "schema": "claimtrace.derivation-list/1",
+        "integrity": "error" if issues else "ok",
+        "issues": issues,
+        "items": items,
+    }
+    if args.json:
+        _write_json(output)
+    else:
+        print(
+            f"claimtrace derivations: {len(items)} derivation(s), "
+            f"integrity {output['integrity']}"
+        )
+        for item in items:
+            derived = item["current_derived"]
+            print(
+                f"  {item['id']}  {derived['proof_state']}  "
+                f"active={'yes' if derived['active'] else 'no'}  "
+                f"claim-level={item['claim_level']['state']}  "
+                f"{_formal_outcome_text(derived)}"
+            )
+        for issue in issues:
+            print(f"  error: {issue['code']} - {issue['path']}: {issue['detail']}")
+    claim_error = any(
+        finding.get("severity") == "error"
+        for item in items for finding in item["claim_level"]["findings"]
+    )
+    return 2 if issues else 1 if claim_error else 0
+
+
+def cmd_explain(args):
+    cfg = _cfg(args)
+    documents, issues = load_derivations(cfg)
+    _raise_derivation_integrity("while explaining a proof", issues)
+    matches = [item for item in documents if item["id"] == args.derivation_id]
+    if not matches:
+        matches = [
+            item for item in documents
+            if item.get("derived", {}).get("proof_id") == args.derivation_id
+        ]
+    if not matches:
+        raise LogicError(f"unknown derivation or proof id: {args.derivation_id}")
+    document = sorted(matches, key=lambda item: item["id"])[0]
+    stored_proof_id = document["derived"]["proof_id"]
+    equivalent_ids = sorted(
+        item["id"] for item in documents
+        if item["derived"]["proof_id"] == stored_proof_id
+    )
+    vocabularies, rule_packs = _configured_logic_assets(cfg)
+    vocabulary, rule_pack = _derivation_assets(document, vocabularies, rule_packs)
+    evaluation = evaluate_derivation(
+        cfg, document, vocabulary=vocabulary, rule_pack=rule_pack,
+    )
+    project_report = build_report(cfg, strict=False)
+    claim_level = _claim_level_projection(project_report, document, evaluation)
+    output = _derivation_output(document, evaluation, claim_level=claim_level)
+    output["equivalent_derivation_ids"] = equivalent_ids
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"DERIVATION {document['id']}")
+        if len(equivalent_ids) > 1 or args.derivation_id == stored_proof_id:
+            print(f"  canonical proof: {stored_proof_id}")
+            print(f"  equivalent submissions: {', '.join(equivalent_ids)}")
+        print(f"  recorded: {document['recorded_at']} by {document['actor']}")
+        print(f"  proof state: {evaluation['proof_state']}")
+        print(f"  active: {'yes' if evaluation['active'] else 'no'}")
+        print(f"  claim-level active: {'yes' if claim_level['active'] else 'no'}")
+        print(f"  target: {evaluation['rendered_target']}")
+        print(f"  outcome: {_formal_outcome_text(evaluation)}")
+        premise_label = (
+            "evaluated inputs" if evaluation["proof_state"] == "unknown"
+            else "proof premises"
+        )
+        premise_ids = (
+            evaluation["input_fact_ids"] if evaluation["proof_state"] == "unknown"
+            else evaluation["used_input_fact_ids"]
+        )
+        print(f"  {premise_label}:")
+        for fact_id in premise_ids:
+            print(f"    {fact_id}")
+        if evaluation.get("unused_input_fact_ids"):
+            print("  submitted but unused inputs:")
+            for fact_id in evaluation["unused_input_fact_ids"]:
+                print(f"    {fact_id}")
+        print("  rule firings:")
+        for step in evaluation["proof_steps"]:
+            print(f"    {step['rule_id']} -> {step['conclusion_fact_id']}")
+        for finding in evaluation["findings"]:
+            print(f"  {finding['severity']}: {finding['code']} - {finding['detail']}")
+        for finding in claim_level["findings"]:
+            print(f"  {finding['severity']}: {finding['code']} - {finding['detail']}")
+        if evaluation.get("drift"):
+            print("  changed proof inputs:")
+            for item in evaluation["drift"]:
+                before = item.get("stored_version") or item.get("stored_sha256") or "absent"
+                after = item.get("current_version") or item.get("current_sha256") or "absent"
+                print(f"    {item['kind']} {item['id']}: {before} -> {after}")
+    has_error = any(
+        item["severity"] == "error"
+        for item in [*evaluation["findings"], *claim_level["findings"]]
+    )
+    return 1 if has_error else 0
+
+
 def cmd_journal(args):
     cfg = _cfg(args)
     nodes, edges, _ = load_graph(cfg)
@@ -445,7 +756,15 @@ def cmd_init(args):
         {"root": ".", "graph": "claimtrace/graph.json", "verifiers": "claimtrace/verifiers.py",
          "events": "claimtrace/events", "assessments": "claimtrace/assessments",
          "render_types": ["figure"], "input_types": ["data", "artifact", "code"],
-         "run_output_types": ["artifact"], "require_assessments": False},
+         "run_output_types": ["artifact"], "require_assessments": False,
+         "logic": {
+             "derivations": "claimtrace/derivations",
+             "vocabularies": [],
+             "rule_packs": [],
+             "allow_external_packs": False,
+             "require_derivations": False,
+             "max_provenance_bytes": 64 * 1024 * 1024 * 1024,
+         }},
         indent=2) + "\n",
         encoding="utf-8")
     gp = base / "claimtrace" / "graph.json"
@@ -551,6 +870,20 @@ def main(argv=None):
                    choices=("accepted", "rejected", "contested", "superseded"))
     p.add_argument("--actor", required=True, help="identity making the review decision")
     p.add_argument("--json", action="store_true", help="emit the review transition as JSON")
+    p = sub.add_parser("derive", help="append a grounded project-rule symbolic derivation")
+    p.add_argument(
+        "entry",
+        help=("recommended claimtrace.symbolic-selection/1 binding proposal; "
+              "the exact low-level typed-fact form is also accepted"),
+    )
+    p.add_argument("--actor", required=True, help="identity submitting the grounded premises")
+    p.add_argument("--json", action="store_true", help="emit the recorded derivation as JSON")
+    p = sub.add_parser("derivations", help="list symbolic derivations under current rule assets")
+    p.add_argument("--state", choices=("derivable", "refutable", "conflict", "unknown"))
+    p.add_argument("--json", action="store_true", help="emit one deterministic JSON document")
+    p = sub.add_parser("explain", help="show one symbolic derivation or canonical proof")
+    p.add_argument("derivation_id", help="content-addressed derivation or proof id")
+    p.add_argument("--json", action="store_true", help="emit one deterministic JSON document")
     p = sub.add_parser("journal", help="lab-notebook view grouped by verdict"); p.add_argument("--status", default="")
     sub.add_parser("snapshot", help="lock each render's input hashes into a manifest")
     sub.add_parser("verify", help="run project-specific numeric checks")
@@ -581,6 +914,7 @@ def main(argv=None):
         "check": cmd_check, "lint": cmd_lint, "downstream": cmd_downstream, "upstream": cmd_upstream,
         "impact": cmd_impact, "node": cmd_node, "log": cmd_log, "journal": cmd_journal,
         "assess": cmd_assess, "assessments": cmd_assessments, "review": cmd_review,
+        "derive": cmd_derive, "derivations": cmd_derivations, "explain": cmd_explain,
         "snapshot": cmd_snapshot, "verify": cmd_verify, "summary": cmd_summary, "run": cmd_run,
         "view": cmd_view, "init": cmd_init, "install-skill": cmd_install_skill,
     }
@@ -593,6 +927,9 @@ def main(argv=None):
         print(f"claimtrace: {e}", file=sys.stderr)
         return 2
     except AssessmentError as e:
+        print(f"claimtrace: {e}", file=sys.stderr)
+        return 2
+    except LogicError as e:
         print(f"claimtrace: {e}", file=sys.stderr)
         return 2
 
