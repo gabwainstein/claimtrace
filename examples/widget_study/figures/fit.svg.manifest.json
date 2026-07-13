@@ -1,0 +1,22 @@
+{
+  "node": "fig:fit",
+  "output": "figures/fit.svg",
+  "output_sha1": "9aa9756169790e772f08c35ab92598b0a424f5d0",
+  "backbone": "v2",
+  "value": "scatter + fit line",
+  "locked_at": "2026-06-28T11:40:20+00:00",
+  "inputs": [
+    {
+      "path": "data/clean.csv",
+      "sha1": "6888f58f2d34169a803f3500013355187735ea51"
+    },
+    {
+      "path": "data/raw_measurements.csv",
+      "sha1": "4bdcf4b828d031cbea1eb0e8888a52b4f19ae741"
+    },
+    {
+      "path": "results/fit.json",
+      "sha1": "d867b173b1a25573e742265715e61ad11a75f34b"
+    }
+  ]
+}

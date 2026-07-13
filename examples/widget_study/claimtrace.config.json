@@ -1,0 +1,7 @@
+{
+  "root": ".",
+  "graph": "claimtrace/graph.json",
+  "verifiers": "claimtrace/verifiers.py",
+  "render_types": ["figure"],
+  "input_types": ["data", "artifact", "code"]
+}

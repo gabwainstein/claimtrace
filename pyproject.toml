@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claimtrace"
+version = "0.2.0"
+description = "Dependency-aware provenance + verification engine for scientific data analysis"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Gabriel Wainstein" }]
+keywords = ["provenance", "reproducibility", "knowledge-graph", "data-analysis", "lab-notebook", "dependency-tracking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = []   # core engine is stdlib-only
+
+[project.optional-dependencies]
+# `verify` only needs whatever YOUR checks import; these are common scientific deps.
+verify = ["numpy", "pandas"]
+dev = ["pytest"]
+
+[project.scripts]
+claimtrace = "claimtrace.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gabwainstein/claimtrace"
+Issues = "https://github.com/gabwainstein/claimtrace/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
