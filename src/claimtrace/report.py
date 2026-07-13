@@ -19,8 +19,11 @@ from .engine import (_ordered_subset, build_adj, compute_check, direct_inputs,
                      lint_issues, load_graph, load_raw)
 from .events import (EVENT_SCHEMA, RUN_ID_RE, load_active_markers, load_events,
                      materialize_runs, snapshot_file)
+from .logic import (DERIVATION_SCHEMA, LogicError, derivations_path,
+                    evaluate_derivation, load_derivations, load_logic_asset, load_rule_pack,
+                    load_vocabulary, validate_graph_logic_declarations)
 
-REPORT_SCHEMA_VERSION = "1.1"
+REPORT_SCHEMA_VERSION = "1.2"
 _SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2, "info": 3}
 
 
@@ -48,6 +51,7 @@ def _base_report(strict):
             "numeric_verification": "not-run",
             "scientific_validity": "not-assessed",
             "semantic_assessment": "external-agent-judgement-policy-checked-not-truth",
+            "symbolic_logic": "conditional_derivability_under_project_rules_not_truth",
         },
         "policy": {"strict": bool(strict), "blocking_severities": blocking},
     }
@@ -634,6 +638,329 @@ def _assessment_projection(cfg, raw):
     }, extra
 
 
+def _logic_asset_path(cfg, path):
+    """Return a stable project-relative asset label when possible."""
+    try:
+        return Path(path).resolve(strict=False).relative_to(cfg.base).as_posix()
+    except ValueError:
+        return str(Path(path).resolve(strict=False))
+
+
+def _read_logic_asset(cfg, path):
+    """Read one configured JSON asset through the shared bounded safe reader."""
+    path = Path(path)
+    label = _logic_asset_path(cfg, path)
+    try:
+        return load_logic_asset(path)
+    except LogicError as exc:
+        raise LogicError(f"cannot read logic asset {label}: {exc}") from exc
+
+
+def _logic_assets(cfg):
+    """Load configured vocabularies and rule packs as one fail-closed policy set."""
+    vocabularies = {}
+    rule_packs = {}
+    extra = []
+
+    def issue(path, detail):
+        extra.append({
+            "severity": "error",
+            "code": "LOGIC_ASSET_INTEGRITY",
+            "node_id": None,
+            "detail": f"{_logic_asset_path(cfg, path)}: {detail}",
+            "source": "derivations",
+        })
+
+    for path in cfg.logic_vocabulary_paths:
+        try:
+            vocabulary = load_vocabulary(path)
+            previous = vocabularies.get(vocabulary["id"])
+            if previous is not None:
+                raise LogicError(
+                    f"duplicate configured vocabulary id {vocabulary['id']!r}"
+                )
+            vocabularies[vocabulary["id"]] = vocabulary
+        except LogicError as exc:
+            issue(path, exc)
+
+    for path in cfg.logic_rule_pack_paths:
+        try:
+            raw_pack = _read_logic_asset(cfg, path)
+            if not isinstance(raw_pack, dict):
+                raise LogicError("symbolic rule pack must be a JSON object")
+            vocabulary_id = raw_pack.get("vocabulary_id")
+            vocabulary = vocabularies.get(vocabulary_id)
+            if vocabulary is None:
+                raise LogicError(
+                    f"rule pack references unconfigured vocabulary {vocabulary_id!r}"
+                )
+            rule_pack = load_rule_pack(raw_pack, vocabulary)
+            if rule_pack["id"] in rule_packs:
+                raise LogicError(
+                    f"duplicate configured rule-pack id {rule_pack['id']!r}"
+                )
+            rule_packs[rule_pack["id"]] = rule_pack
+        except LogicError as exc:
+            issue(path, exc)
+
+    projected = {
+        "vocabularies": sorted(
+            ({"id": item["id"], "version": item["version"]}
+             for item in vocabularies.values()),
+            key=lambda item: (item["id"], item["version"]),
+        ),
+        "rule_packs": sorted(
+            ({
+                "id": item["id"], "version": item["version"],
+                "vocabulary_id": item["vocabulary_id"],
+            } for item in rule_packs.values()),
+            key=lambda item: (item["id"], item["version"], item["vocabulary_id"]),
+        ),
+    }
+    return vocabularies, rule_packs, projected, extra
+
+
+def _derivation_projection(cfg, raw):
+    """Project conditional symbolic derivations without converting them into claim links."""
+    vocabularies, rule_packs, assets, asset_findings = _logic_assets(cfg)
+    declaration_findings = [
+        {
+            "severity": "error",
+            "code": "LOGIC_DECLARATION_INVALID",
+            "node_id": issue["node_id"],
+            "detail": f"{issue['declaration']}: {issue['detail']}",
+            "source": "derivations",
+        }
+        for issue in validate_graph_logic_declarations(
+            cfg, raw, vocabularies, rule_packs,
+        )
+    ]
+    store_findings = []
+    store = derivations_path(cfg)
+    if store.is_symlink() or (store.exists() and not store.is_dir()):
+        documents = []
+        store_findings.append({
+            "severity": "error",
+            "code": "DERIVATION_INTEGRITY",
+            "node_id": None,
+            "detail": (
+                f"{_logic_asset_path(cfg, store)}: derivation store must be a regular directory "
+                "and must not be a symbolic link"
+            ),
+            "source": "derivations",
+        })
+    else:
+        documents, integrity_issues = load_derivations(cfg)
+        for issue in integrity_issues:
+            store_findings.append({
+                "severity": "error",
+                "code": issue["code"],
+                "node_id": None,
+                "detail": f"{issue['path']}: {issue['detail']}",
+                "source": "derivations",
+            })
+
+    reference_findings = []
+    resolved = {}
+    for document in documents:
+        subject = document["subject"]
+        vocabulary = vocabularies.get(subject["vocabulary_id"])
+        rule_pack = rule_packs.get(subject["rule_pack_id"])
+        if vocabulary is None:
+            reference_findings.append({
+                "severity": "error",
+                "code": "LOGIC_ASSET_INTEGRITY",
+                "node_id": subject["claim_id"],
+                "detail": (
+                    f"{document['id']}: vocabulary {subject['vocabulary_id']!r} "
+                    "is not configured"
+                ),
+                "source": "derivations",
+            })
+            continue
+        if rule_pack is None:
+            reference_findings.append({
+                "severity": "error",
+                "code": "LOGIC_ASSET_INTEGRITY",
+                "node_id": subject["claim_id"],
+                "detail": (
+                    f"{document['id']}: rule pack {subject['rule_pack_id']!r} "
+                    "is not configured"
+                ),
+                "source": "derivations",
+            })
+            continue
+        if rule_pack["vocabulary_id"] != vocabulary["id"]:
+            reference_findings.append({
+                "severity": "error",
+                "code": "LOGIC_ASSET_INTEGRITY",
+                "node_id": subject["claim_id"],
+                "detail": (
+                    f"{document['id']}: configured rule pack and vocabulary do not match"
+                ),
+                "source": "derivations",
+            })
+            continue
+        resolved[document["id"]] = (vocabulary, rule_pack)
+
+    integrity_findings = [
+        *asset_findings, *declaration_findings, *store_findings, *reference_findings,
+    ]
+    integrity_error = bool(integrity_findings)
+    items = []
+    active_proofs = []
+    evaluation_findings = []
+    for document in sorted(documents, key=lambda item: item["id"]):
+        subject = document["subject"]
+        pair = resolved.get(document["id"])
+        if pair is None:
+            effective = copy.deepcopy(document["derived"])
+        else:
+            try:
+                effective = evaluate_derivation(
+                    cfg, document, vocabulary=pair[0], rule_pack=pair[1],
+                )
+                for finding in effective.get("findings", []):
+                    evaluation_findings.append({
+                        "severity": finding["severity"],
+                        "code": finding["code"],
+                        "node_id": subject["claim_id"],
+                        "detail": f"{document['id']}: {finding['detail']}",
+                        "source": "derivations",
+                    })
+            except LogicError as exc:
+                integrity_error = True
+                integrity_findings.append({
+                    "severity": "error",
+                    "code": "DERIVATION_INTEGRITY",
+                    "node_id": subject["claim_id"],
+                    "detail": f"{document['id']}: {exc}",
+                    "source": "derivations",
+                })
+                effective = copy.deepcopy(document["derived"])
+
+        effective = copy.deepcopy(effective)
+        if integrity_error:
+            effective["active"] = False
+            effective["effective_state"] = "integrity_error"
+        else:
+            effective["effective_state"] = "active" if effective["active"] else "inactive"
+        items.append({
+            "id": document["id"],
+            "recorded_at": document["recorded_at"],
+            "actor": document["actor"],
+            "subject": copy.deepcopy(subject),
+            "agent_input": copy.deepcopy(document["agent_input"]),
+            "mechanical_snapshot": copy.deepcopy(document["mechanical_snapshot"]),
+            "stored_derived": copy.deepcopy(document["derived"]),
+            "effective": effective,
+        })
+
+    # A later document can expose an integrity fault. Apply the global fail-closed gate
+    # after all evaluations so no earlier item remains active by iteration order.
+    if integrity_error:
+        for item in items:
+            item["effective"]["active"] = False
+            item["effective"]["effective_state"] = "integrity_error"
+    else:
+        for item in items:
+            effective = item["effective"]
+            if not effective["active"]:
+                continue
+            subject = item["subject"]
+            active_proofs.append({
+                "derivation_id": item["id"],
+                "derivation_ids": [item["id"]],
+                "proof_id": effective["proof_id"],
+                "claim_id": subject["claim_id"],
+                "result_ids": copy.deepcopy(effective.get("used_result_ids", [])),
+                "vocabulary_id": subject["vocabulary_id"],
+                "rule_pack_id": subject["rule_pack_id"],
+                "proof_state": effective["proof_state"],
+                "target": copy.deepcopy(effective["target"]),
+                "rendered_target": effective["rendered_target"],
+                "outcome_relation": effective["outcome_relation"],
+                "outcome_atoms": copy.deepcopy(effective["outcome_atoms"]),
+                "rendered_outcomes": copy.deepcopy(effective["rendered_outcomes"]),
+                "assumptions": copy.deepcopy(effective["assumptions"]),
+            })
+
+    proof_groups = {}
+    for proof in active_proofs:
+        existing = proof_groups.get(proof["proof_id"])
+        if existing is None:
+            proof_groups[proof["proof_id"]] = proof
+            continue
+        existing["derivation_ids"].extend(proof["derivation_ids"])
+        existing["derivation_ids"] = sorted(set(existing["derivation_ids"]))
+        existing["derivation_id"] = existing["derivation_ids"][0]
+    active_proofs = list(proof_groups.values())
+
+    target_groups = defaultdict(list)
+    for proof in active_proofs:
+        key = (
+            proof["claim_id"], proof["vocabulary_id"], proof["rule_pack_id"],
+            _canonical_json(proof["target"]),
+        )
+        target_groups[key].append(proof)
+    conflict_findings = []
+    for key, proofs in target_groups.items():
+        states = {proof["proof_state"] for proof in proofs}
+        conflicted = {"derivable", "refutable"} <= states
+        for proof in proofs:
+            proof["claim_level_active"] = not conflicted
+        if conflicted:
+            conflict_findings.append({
+                "severity": "error",
+                "code": "SYMBOLIC_CROSS_DERIVATION_CONFLICT",
+                "node_id": key[0],
+                "detail": (
+                    "active conditional proofs derive both the formal target and its explicit "
+                    "opposite under the same vocabulary and rule pack"
+                ),
+                "source": "derivations",
+            })
+
+    logic_claims = sorted(
+        node["id"] for node in raw["nodes"]
+        if (node.get("type") in {"claim", "hypothesis", "prediction", "conclusion"}
+            and node.get("status") in (None, "current", "confirmed")
+            and isinstance(node.get("logic"), dict)
+            and "target" in node["logic"])
+    )
+    derived_claims = {
+        item["claim_id"] for item in active_proofs
+        if item["proof_state"] == "derivable" and item["claim_level_active"]
+    }
+    policy_findings = []
+    if cfg.require_derivations:
+        for claim_id in sorted(set(logic_claims) - derived_claims):
+            policy_findings.append({
+                "severity": "warning",
+                "code": "MISSING_CLAIM_DERIVATION",
+                "node_id": claim_id,
+                "detail": (
+                    "formalized claim has no active target-deriving symbolic proof under the "
+                    "configured vocabulary and rule pack; a refutation does not satisfy this policy"
+                ),
+                "source": "derivations",
+            })
+
+    active_proofs.sort(key=lambda item: (
+        item["claim_id"], item["proof_state"], item["proof_id"], item["derivation_id"],
+    ))
+    return {
+        "derivation_schema_version": DERIVATION_SCHEMA,
+        "integrity": "error" if integrity_error else "ok",
+        "policy": {"require_derivations": cfg.require_derivations},
+        "assets": assets,
+        "items": items,
+        "active_proofs": active_proofs,
+    }, [
+        *integrity_findings, *evaluation_findings, *conflict_findings, *policy_findings,
+    ]
+
+
 def build_report(cfg, *, strict=False, raw=None):
     """Build one deterministic report without printing, mutation, or verifier execution.
 
@@ -646,9 +973,10 @@ def build_report(cfg, *, strict=False, raw=None):
     warnings = lint_issues(cfg, raw=graph)
     receipts, receipt_findings = _receipt_projection(cfg, graph)
     assessments, assessment_findings = _assessment_projection(cfg, graph)
+    derivations, derivation_findings = _derivation_projection(cfg, graph)
     findings = _findings(
         problems, warnings, pending, bool(strict),
-        [*receipt_findings, *assessment_findings],
+        [*receipt_findings, *assessment_findings, *derivation_findings],
     )
     counts = Counter(item["severity"] for item in findings)
     blocking = sum(1 for item in findings if item["blocking"])
@@ -670,6 +998,7 @@ def build_report(cfg, *, strict=False, raw=None):
         "graph": _graph_projection(graph),
         "receipts": receipts,
         "assessments": assessments,
+        "derivations": derivations,
         "findings": findings,
         "fatal": None,
     })
@@ -686,6 +1015,7 @@ def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
         "graph": None,
         "receipts": None,
         "assessments": None,
+        "derivations": None,
         "findings": [],
         "fatal": {"code": str(code), "detail": str(detail)},
     })

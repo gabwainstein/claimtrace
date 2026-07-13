@@ -65,6 +65,45 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
     assert agents.read_text(encoding="utf-8") == expected
 
 
+def test_logic_config_is_project_scoped_and_requires_explicit_external_opt_in(tmp_path):
+    graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
+    cfg = _project(tmp_path, graph, config={
+        "root": ".",
+        "graph": "claimtrace/graph.json",
+        "logic": {
+            "derivations": "claimtrace/derivations",
+            "vocabularies": ["claimtrace/logic/vocabulary.json"],
+            "rule_packs": ["claimtrace/logic/rules.json"],
+            "require_derivations": True,
+        },
+    })
+    assert cfg.derivations_path == (tmp_path / "claimtrace" / "derivations").resolve()
+    assert cfg.logic_vocabulary_paths == [
+        (tmp_path / "claimtrace" / "logic" / "vocabulary.json").resolve()
+    ]
+    assert cfg.require_derivations is True
+
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["logic"]["vocabularies"] = ["../external-vocabulary.json"]
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(SystemExit, match="logic path escapes"):
+        Config(cfg.config_path)
+
+    config["logic"]["allow_external_packs"] = True
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    allowed = Config(cfg.config_path)
+    assert allowed.logic_vocabulary_paths == [
+        (tmp_path.parent / "external-vocabulary.json").resolve()
+    ]
+
+    config["logic"]["vocabularies"] = [
+        "claimtrace/logic/vocabulary.json", "claimtrace/logic/vocabulary.json",
+    ]
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(SystemExit, match="duplicate paths"):
+        Config(cfg.config_path)
+
+
 # --------------------------------------------------------------------------- structural integrity
 
 def test_dangling_edge_is_caught(tmp_path):

@@ -16,12 +16,44 @@ claimtrace run --input data/clean.csv --input results/fit.json --input analysis/
   --output figures/fit.svg -- python analysis/03_figure.py
 
 claimtrace check        # OK — all paths exist, nothing stale, nothing on a retired branch
-claimtrace check --strict --json  # graph declarations reconcile with the run receipts
+claimtrace check --strict --json  # also audits whether these runs genuinely produced the outputs
 claimtrace verify       # PASS — slope ≈ 2.0 and R2 > 0.9, read live from results/fit.json
 claimtrace assessments  # accepted support plus an explicit causal-language narrowing
 claimtrace snapshot     # lock figures/fit.svg's input hashes into a manifest
+claimtrace derive symbolic-positive-slope.proposal.json --actor widget-demo-agent --json
+claimtrace derivations --json
 claimtrace view --output research-map.html
 ```
+
+The generated outputs are checked in. A deterministic rerun that leaves an output unchanged is
+recorded as validation-only, not falsely promoted to a production receipt. Therefore, in an
+untouched checkout, strict mode honestly reports `NO_RUN_RECEIPT` for those pre-existing outputs.
+To exercise a strict-green production workflow, use a disposable copy, remove the three generated
+outputs, and then run the wrapped commands above so Claimtrace observes genuine missing-to-produced
+transitions before `snapshot`. Normal `check`, `lint --strict`, and `verify` pass on the checked-in
+demo as supplied.
+
+## See the symbolic claim check
+
+`pred:slope` pins a project-local formal target, while `fig:fit` exposes one reviewed complete
+binding profile through stable SVG metadata. The checked-in selection proposal contains only the
+claim ID and approved `{result_id, binding_id}` pair. Claimtrace obtains the vocabulary, rule pack,
+target, predicate, polarity, extractors, and exact slope value from project-owned files:
+
+```bash
+claimtrace derive symbolic-positive-slope.proposal.json --actor widget-demo-agent --json
+claimtrace explain proof:sha256:<digest> --json
+```
+
+`widget-demo-agent` is a synthetic fixture actor. In a real project, pass the truthful identity of
+the user or agent making the selection; Claimtrace records the value but does not authenticate it.
+
+With the current figure this is conditionally `derivable` under `widget:slope-rules`. A non-positive
+metadata value would make the same target `refutable`; it would not make the prose prediction true
+or false outside that declared formalization. The proposal is a reviewed demo fixture, not a
+temporary file to delete. `logic.require_derivations` remains `false`, so a clean checkout is valid
+before anyone records a local derivation; projects can enable it when they want formalized claims to
+require a current active certificate.
 
 ## See the meaning check
 

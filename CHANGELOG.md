@@ -31,6 +31,18 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Add checked-in widget-study assessments showing accepted support for an associational claim and
   an accepted `supports_narrower_claim` judgement that keeps causal language at `related` rather
   than silently upgrading it to support.
+- Add an optional data-only symbolic claim layer with typed project vocabularies, explicit-polarity
+  function-free rules, complete result-to-fact bindings, graph-pinned formal targets, finite
+  open-world/paraconsistent evaluation, and composite content-addressed proof certificates.
+- Add the preferred `claimtrace.symbolic-selection/1` integration format: users and agents select
+  only existing result/binding IDs while Claimtrace materializes typed artifact values plus the
+  claim-pinned target and policy. Retain the explicit atom format as a low-level import, debugging,
+  and assumption interface.
+- Add `claimtrace derive`, `claimtrace derivations`, and `claimtrace explain`, structured live drift
+  records, configurable streamed provenance hashing, strict optional derivation coverage, and
+  symbolic proof/conflict nodes in the standalone trajectory view.
+- Group equivalent active submissions by canonical `proof_id`, preserve their derivation history,
+  and detect opposing active proofs for the same formal target as a hard claim-level conflict.
 
 ### Fixed
 - Scope node backbones to named concepts when a graph has multiple independent canonical choices;
@@ -56,6 +68,14 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Revalidate single-result and independent-first-reviewer invariants from stored assessment chains,
   suppress every active-looking semantic relation when store integrity fails, and serialize the
   review leaf check with its append across threads and processes.
+- Reevaluate symbolic records against current claim/result nodes, complete artifact anchors,
+  vocabulary/rule content, and scoped upstream provenance; deactivate proofs on drift, assumptions,
+  ineligible statuses/types, store faults, irrelevant declared results, or cross-derivation
+  contradiction.
+- Validate every graph-owned formal target and result binding during `claimtrace check`, including
+  live artifact extraction, and allow one result to expose profiles for multiple vocabularies.
+- Bound symbolic parsing, inference, proof search, grounding memory, stored documents, structured
+  drift, and provenance hashing so adversarial or accidentally oversized inputs fail closed.
 
 ### Tests
 - Add regression coverage for multiple concepts, topological impact order, manifest completeness,
@@ -71,6 +91,10 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Add adversarial semantic-assessment coverage for causal/associational mismatch, incomplete
   alignment, invalid exact anchors, file and node drift, conflicts, immutable review chains, CLI
   field rejection, and strict-report coverage policy.
+- Add symbolic regressions for exact typed grounding, automatic binding materialization, opposing
+  polarity, unknown and assumption-dependent proofs, canonical proof grouping, cross-derivation
+  conflict, asset/artifact/provenance drift, resource limits, store integrity, CLI output, and view
+  projection.
 
 ### Migration
 - Render manifests are now required for a green `claimtrace check`. Existing projects must re-render
@@ -82,6 +106,11 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Semantic assessments are advisory by default. Projects that want strict coverage of direct
   `supports` and `refutes` edges can add an `assessments` path and set `require_assessments` to `true` after their
   existing links have been reviewed.
+- Symbolic derivations are optional and advisory by default. Projects adopting them should first
+  review and protect their graph bindings, vocabularies, rules, and prose-to-target mappings, then
+  add a `logic` config object. Enable `require_derivations` only after active formal targets have
+  current target-deriving proofs; refutations, conflicts, unknowns, and assumption-dependent proofs
+  do not satisfy that policy.
 
 ## 0.2.0
 

@@ -344,7 +344,7 @@ def test_json_report_is_one_deterministic_document(tmp_path, capsys):
     assert main(["--config", str(cfg.config_path), "check", "--json"]) == 0
     captured = capsys.readouterr()
     parsed = json.loads(captured.out)
-    assert parsed["report_schema_version"] == "1.1"
+    assert parsed["report_schema_version"] == "1.2"
     assert parsed["fatal"] is None
     assert captured.err == ""
 
@@ -357,6 +357,7 @@ def test_malformed_graph_gets_fatal_json_envelope(tmp_path, capsys):
     parsed = json.loads(captured.out)
     assert parsed["fatal"]["code"] == "GRAPH_ERROR"
     assert parsed["receipts"] is None
+    assert parsed["derivations"] is None
     assert parsed["exit_code"] == 2
     assert captured.err == ""
 

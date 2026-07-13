@@ -1,6 +1,6 @@
 ---
 name: claimtrace-log
-description: Capture substantive research commands, record positive and negative outcomes, and propose grounded semantic assessments between results and claims in claimtrace. Use while running or immediately after analysis, when interpreting whether evidence supports a claim, or when asked to log or sweep research work. Do not infer unobserved dependencies or directly certify support.
+description: Capture substantive research commands, record positive and negative outcomes, propose grounded semantic assessments, and submit typed symbolic premises to project-owned Claimtrace rule packs. Use while running or immediately after analysis, when interpreting whether evidence supports a claim, when testing whether a formal claim is derivable under configured rules, or when asked to log or sweep research work. Do not infer unobserved dependencies, author computed proofs, or directly certify support.
 ---
 
 # Log research work
@@ -161,16 +161,81 @@ successful ones so another scientist or agent can see what happened and avoid si
      than authenticated, so do not describe this as cryptographic authorization.
      `supports_narrower_claim` relates evidence to the original claim but never
     supports the original wording; create a new narrowed claim only after review.
-11. Run `claimtrace --config <absolute-config> check --strict --json` and
+11. If the project config declares `logic.vocabularies` and `logic.rule_packs`, inspect those exact
+    JSON files, the claim node's complete `logic` declaration, and each selected result node's
+    complete fact profile. Do not add predicates, edit a vocabulary or rule pack, change the claim
+    target, or select an unconfigured external pack during routine logging. These files are trusted
+    project declarations that require separate review; they are not semantically certified by
+    Claimtrace. A valid result profile pins the vocabulary, input predicate, polarity, and extractor
+    for every predicate argument, for example:
+
+    ```json
+    {
+      "logic_bindings": [{
+        "id": "project:observed-measure-complete",
+        "vocabulary_id": "project:vocabulary",
+        "predicate": "project:observed_measure",
+        "polarity": "positive",
+        "arguments": {
+          "subject": {"kind": "json_pointer", "pointer": "/subject"},
+          "value": {"kind": "json_pointer", "pointer": "/estimate"}
+        }
+      }]
+    }
+    ```
+
+    Treat the whole profile as one reviewed meaning-bearing binding. Do not combine individual
+    arguments from separate profiles, rows, or results. Prefer a
+    `claimtrace.symbolic-selection/1` proposal. Supply only the schema, claim, approved complete
+    binding identities, a concise public note, and reported provenance:
+
+    ```json
+    {
+      "schema_version": "claimtrace.symbolic-selection/1",
+      "claim_id": "claim:<existing-id>",
+      "bindings": [{
+        "result_id": "art:<first-result>",
+        "binding_id": "project:observed-measure-complete"
+      }],
+      "note": "Concise public rationale; no hidden chain-of-thought.",
+      "provenance": {"agent": "<reported-agent-id>"}
+    }
+    ```
+
+    Select only complete profile IDs already declared in each result node's reviewed
+    `logic_bindings`; never supply a target, vocabulary, rule pack, JSON Pointer, text locator,
+    predicate, polarity, type, unit, or observed value in a selection proposal. Claimtrace resolves
+    the claim's pinned target and policy assets, then materializes each fact's predicate, polarity,
+    extractors, types, units, and values from the selected result binding. It rejects incomplete,
+    duplicate, unknown, or unused selections.
+
+    Use the verbose typed-fact proposal only for an explicit bounded assumption or a deliberate
+    low-level import. In that form, every predicate, type, unit, argument, polarity, and target must
+    exactly match the configured vocabulary and claim policy; integers and decimals are canonical
+    JSON strings. Never use the verbose form to override a project binding. Assumption-dependent
+    conclusions remain visible but inactive.
+
+    Submit with `claimtrace --config <absolute-config> derive <proposal.json> --actor <agent-id>
+    --json`. Never provide a closure, proof state, proof steps, proof ID, mechanical snapshot, or
+    `active` flag. Claimtrace validates the assets and anchors, computes the paraconsistent closure,
+    and records one composite proof for all selected results. Report `derivable`, `refutable`,
+    `conflict`, or `unknown` exactly. It groups equivalent proofs, surfaces target-versus-opposite
+    conflicts across proof submissions, and marks proofs inactive when artifacts, graph ancestry, or
+    policy assets drift. Do not choose a convenient proof when a conflict is reported. Say
+    “derivable under rule pack X,” never “proved true” or “scientifically supported.” Formal
+    derivation checks declared logic only; a separate semantic assessment is still required to judge
+    whether the declaration and result actually mean what the prose claim says.
+12. Run `claimtrace --config <absolute-config> check --strict --json` and
    `claimtrace --config <absolute-config> lint --strict`. The strict JSON report
    reconciles graph declarations with content-addressed run receipts and is the machine-facing gate;
    it also surfaces pending, stale, contested, invalid, or missing semantic assessments. It does not
    execute project verifiers or establish scientific truth. Report exact failures and distinguish a
    successful write from a project-wide validation pass. Run `claimtrace verify` only when the
    project is trusted and numeric verification is part of the requested workflow.
-12. Delete temporary entry and proposal files after validation. If `claimtrace` is not on `PATH`, use
-   `python -m claimtrace` only when the package is already importable; otherwise stop with the exact
-   setup failure rather than changing the environment silently.
+13. Delete disposable temporary entry and proposal files after validation. Do not delete
+    intentionally checked-in or reviewed example proposals. If `claimtrace` is not on `PATH`, use
+    `python -m claimtrace` only when the package is already importable; otherwise stop with the exact
+    setup failure rather than changing the environment silently.
 
 ## Evidence rules
 
@@ -194,12 +259,26 @@ successful ones so another scientist or agent can see what happened and avoid si
   capture, and configured semantic-review policy. An accepted assessment remains an attributed
   judgement; it does not establish scientific truth, observed reads, complete writes, or scientific
   validity.
+- Treat vocabularies, rule packs, claim targets, and result bindings as reviewed project policy, not
+  as semantically certified facts. “Project-owned” is a workflow convention, not access control: an
+  agent with workspace write access could edit those files, and actor/provenance strings are
+  self-asserted rather than authenticated. Protect policy files through the project's own review,
+  ownership, signature, or CI controls and report which controls were actually verified.
+- Prefer approved binding selections. Never provide computed proof fields or silently modify the
+  policy that decides what follows. Keep the separate semantic assessment even when formal
+  derivation succeeds; symbolic consistency does not establish meaning, truth, or scientific support.
+- Keep symbolic derivations composite. Multiple result IDs are premises of one proof; never flatten
+  that proof into separate per-result `supports` edges. Missing premises produce `unknown`; explicit
+  positive and negative conclusions produce `conflict` rather than arbitrary explosion. Treat
+  cross-proof conflicts and drift-inactivated proofs as unresolved, visible states.
 
 ## Sweep a session
 
 List substantive analyses chronologically, then log one focused node per result. Include negative
 and abandoned work. Link existing run receipts when available; never backfill them by inference.
 Propose one grounded assessment per material result-claim comparison and preserve disagreement rather
-than choosing the most convenient review. Finish with explicit-config `check --strict --json` and
-`lint --strict`, then summarize what was recorded, what remains declaration-only, and which semantic
-assessments still need review.
+than choosing the most convenient review. Where configured, submit typed grounded premises for the
+project-owned symbolic rules without editing those rules. Finish with explicit-config `check
+--strict --json` and `lint --strict`, then summarize what was recorded, what remains
+declaration-only, which proofs are conditional or unknown, and which semantic assessments still need
+review.

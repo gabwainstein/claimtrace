@@ -10,6 +10,8 @@ from claimtrace.config import Config
 from claimtrace.cli import main
 from claimtrace.engine import GraphError
 from claimtrace.events import run_command
+from claimtrace.logic import (append_derivation, create_derivation, load_rule_pack,
+                              load_vocabulary)
 from claimtrace.view import render_view
 
 
@@ -123,6 +125,144 @@ def _record_assessment(cfg, verdict="supports_as_written", *, accepted=False,
     )
     append_assessment(cfg, decision)
     return decision
+
+
+def _record_symbolic_proof(cfg, *, passed=True, include_negative_rule=True):
+    target = {
+        "predicate": "view:validated", "polarity": "positive",
+        "arguments": {
+            "subject": {"type": "view:subject", "value": "widget", "unit": None},
+        },
+    }
+    vocabulary = {
+        "schema_version": "claimtrace.symbolic-vocabulary/1",
+        "id": "view:vocabulary", "version": "1.0.0",
+        "types": [{"id": "view:subject", "base": "ct:symbol"}],
+        "units": [],
+        "predicates": [
+            {"id": "view:observed", "kind": "input", "arguments": [
+                {"name": "subject", "type": "view:subject", "unit": None},
+                {"name": "passed", "type": "ct:boolean", "unit": None},
+            ]},
+            {"id": "view:validated", "kind": "derived", "arguments": [
+                {"name": "subject", "type": "view:subject", "unit": None},
+            ]},
+        ],
+        "renderers": [
+            {
+                "id": "view:validated-en", "predicate": "view:validated",
+                "polarity": "positive", "language": "en",
+                "template": "{subject} satisfies the configured validation rule.",
+            },
+            {
+                "id": "view:invalid-en", "predicate": "view:validated",
+                "polarity": "negative", "language": "en",
+                "template": "{subject} does not satisfy the configured validation rule.",
+            },
+        ],
+    }
+    rules = {
+        "schema_version": "claimtrace.symbolic-rules/1",
+        "id": "view:rules", "version": "1.0.0", "vocabulary_id": "view:vocabulary",
+        "rules": [{
+            "id": "view:validation-pass",
+            "when": [{
+                "predicate": "view:observed", "polarity": "positive",
+                "arguments": {"subject": {"var": "subject"}, "passed": {"var": "passed"}},
+            }],
+            "where": [{
+                "op": "eq", "left": {"var": "passed"},
+                "right": {"const": {"type": "ct:boolean", "value": True, "unit": None}},
+            }],
+            "then": {
+                "predicate": "view:validated", "polarity": "positive",
+                "arguments": {"subject": {"var": "subject"}},
+            },
+        }],
+    }
+    if include_negative_rule:
+        rules["rules"].append({
+            "id": "view:validation-fail",
+            "when": [{
+                "predicate": "view:observed", "polarity": "positive",
+                "arguments": {"subject": {"var": "subject"}, "passed": {"var": "passed"}},
+            }],
+            "where": [{
+                "op": "eq", "left": {"var": "passed"},
+                "right": {"const": {"type": "ct:boolean", "value": False, "unit": None}},
+            }],
+            "then": {
+                "predicate": "view:validated", "polarity": "negative",
+                "arguments": {"subject": {"var": "subject"}},
+            },
+        })
+    logic_dir = cfg.base / "claimtrace" / "logic"
+    logic_dir.mkdir()
+    (logic_dir / "vocabulary.json").write_text(json.dumps(vocabulary), encoding="utf-8")
+    (logic_dir / "rules.json").write_text(json.dumps(rules), encoding="utf-8")
+    (cfg.root / "out.txt").write_text(
+        json.dumps({"subject": "widget", "passed": passed, "failed": False}),
+        encoding="utf-8",
+    )
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:result")
+    claim["logic"] = {
+        "vocabulary_id": "view:vocabulary", "rule_pack_id": "view:rules",
+        "target": target,
+    }
+    result = next(item for item in graph["nodes"] if item["id"] == "artifact:result")
+    result["logic_bindings"] = [
+        {
+            "id": "view:result-observed", "vocabulary_id": "view:vocabulary",
+            "predicate": "view:observed", "polarity": "positive",
+            "arguments": {
+                "subject": {"kind": "json_pointer", "pointer": "/subject"},
+                "passed": {"kind": "json_pointer", "pointer": "/passed"},
+            },
+        },
+        {
+            "id": "view:result-failed", "vocabulary_id": "view:vocabulary",
+            "predicate": "view:observed", "polarity": "positive",
+            "arguments": {
+                "subject": {"kind": "json_pointer", "pointer": "/subject"},
+                "passed": {"kind": "json_pointer", "pointer": "/failed"},
+            },
+        },
+    ]
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["logic"] = {
+        "derivations": "claimtrace/derivations",
+        "vocabularies": ["claimtrace/logic/vocabulary.json"],
+        "rule_packs": ["claimtrace/logic/rules.json"],
+    }
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    configured = Config(cfg.config_path)
+    document = create_derivation(
+        configured, "claim:result", ["artifact:result"],
+        {
+            "target": target,
+            "facts": [{
+                "atom": {
+                    "predicate": "view:observed", "polarity": "positive",
+                    "arguments": {
+                        "subject": {"type": "view:subject", "value": "widget", "unit": None},
+                        "passed": {"type": "ct:boolean", "value": passed, "unit": None},
+                    },
+                },
+                "evidence": [{
+                    "result_id": "artifact:result", "binding_id": "view:result-observed",
+                }],
+                "assumption": None,
+            }],
+            "note": "Deterministic view fixture.",
+            "provenance": {"agent": "agent:view-test"},
+        },
+        vocabulary=vocabulary, rule_pack=rules, actor="agent:view-test",
+        recorded_at="2026-07-14T03:00:00.000Z",
+    )
+    append_derivation(configured, document)
+    return configured, document
 
 
 def test_render_view_is_standalone_atomic_and_deterministic(tmp_path):
@@ -271,7 +411,7 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     payload = _payload(html)
     nodes = {node["key"]: node for node in payload["nodes"]}
 
-    assert payload["schema"] == "claimtrace.view/2"
+    assert payload["schema"] == "claimtrace.view/3"
     review = nodes["review:" + accepted["id"]]
     assert review["kind"] == "assessment"
     assert review["status"] == "accepted"
@@ -286,6 +426,133 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     assert all(edge["traversable"] for edge in assessment_edges)
     assert 'document.createElement("table")' in html
     assert "Claim as written" in html and "Result actually obtained" in html
+
+
+def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, document = _record_symbolic_proof(cfg)
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    nodes = {node["key"]: node for node in payload["nodes"]}
+
+    assert payload["schema"] == "claimtrace.view/3"
+    assert payload["derivation_integrity"] == "ok"
+    proof = nodes["proof:" + document["id"]]
+    assert proof["kind"] == "proof"
+    assert proof["status"] == "derivable"
+    assert proof["proof"]["used_result_ids"] == ["artifact:result"]
+    proof_edges = [edge for edge in payload["edges"] if edge["kind"] == "proof"]
+    assert len(proof_edges) == 2
+    assert not any(edge["traversable"] for edge in proof_edges)
+    assert [edge["relation"] for edge in proof_edges] == [
+        "composite premise 1/1",
+        "formal conclusion · target derivable under view:rules",
+    ]
+    assert "not a certificate of truth, scientific meaning, or evidentiary support" in html
+
+
+def test_refutable_symbolic_outcome_is_never_drawn_as_claim_support(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, document = _record_symbolic_proof(cfg, passed=False)
+    output = tmp_path / "refutable.html"
+    render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    proof = next(node for node in payload["nodes"] if node["kind"] == "proof")
+    proof_edges = [edge for edge in payload["edges"] if edge["kind"] == "proof"]
+
+    assert document["derived"]["proof_state"] == "refutable"
+    assert proof["status"] == "refutable"
+    assert proof["value"] == "widget does not satisfy the configured validation rule."
+    assert proof_edges[-1]["relation"] == (
+        "formal refutation · target refutable under view:rules"
+    )
+    assert "The target is refutable because its explicit opposite is derivable" in (
+        output.read_text(encoding="utf-8")
+    )
+
+
+def test_unknown_symbolic_evaluation_shows_checked_inputs_but_no_active_proof(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, document = _record_symbolic_proof(
+        cfg, passed=False, include_negative_rule=False,
+    )
+    output = tmp_path / "unknown.html"
+    render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    proof = next(node for node in payload["nodes"] if node["kind"] == "proof")
+    proof_edges = [edge for edge in payload["edges"] if edge["kind"] == "proof"]
+
+    assert document["derived"]["proof_state"] == "unknown"
+    assert proof["status"] == "inactive_unknown"
+    assert proof_edges[0]["relation"] == "evaluated input 1/1"
+    assert proof_edges[-1]["relation"] == "inactive formal outcome · unknown"
+
+
+def test_duplicate_submissions_render_as_one_canonical_proof_node(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, first = _record_symbolic_proof(cfg)
+    vocabulary = load_vocabulary(cfg.base / "claimtrace" / "logic" / "vocabulary.json")
+    rules = load_rule_pack(
+        cfg.base / "claimtrace" / "logic" / "rules.json", vocabulary,
+    )
+    proposal = json.loads(json.dumps(first["agent_input"]))
+    proposal["note"] = "Independent duplicate submission."
+    second = create_derivation(
+        cfg, "claim:result", ["artifact:result"], proposal,
+        vocabulary=vocabulary, rule_pack=rules, actor="agent:duplicate",
+        recorded_at="2026-07-14T03:00:01.000Z",
+    )
+    append_derivation(cfg, second)
+    output = tmp_path / "deduplicated.html"
+    render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    proofs = [node for node in payload["nodes"] if node["kind"] == "proof"]
+
+    assert first["derived"]["proof_id"] == second["derived"]["proof_id"]
+    assert len(proofs) == 1
+    assert proofs[0]["derivation_ids"] == sorted([first["id"], second["id"]])
+    assert payload["summary"]["derivations"] == 2
+    assert payload["summary"]["proof_nodes"] == 1
+
+
+def test_cross_derivation_opposites_render_as_one_claim_conflict_node(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, positive = _record_symbolic_proof(cfg)
+    vocabulary = load_vocabulary(cfg.base / "claimtrace" / "logic" / "vocabulary.json")
+    rules = load_rule_pack(
+        cfg.base / "claimtrace" / "logic" / "rules.json", vocabulary,
+    )
+    proposal = json.loads(json.dumps(positive["agent_input"]))
+    proposal["facts"][0]["atom"]["arguments"]["passed"]["value"] = False
+    proposal["facts"][0]["evidence"][0]["binding_id"] = "view:result-failed"
+    negative = create_derivation(
+        cfg, "claim:result", ["artifact:result"], proposal,
+        vocabulary=vocabulary, rule_pack=rules, actor="agent:negative",
+        recorded_at="2026-07-14T03:00:01.000Z",
+    )
+    append_derivation(cfg, negative)
+    output = tmp_path / "conflict.html"
+    render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    proofs = [node for node in payload["nodes"] if node["kind"] == "proof"]
+    proof_edges = [edge for edge in payload["edges"] if edge["kind"] == "proof"]
+
+    assert positive["derived"]["proof_state"] == "derivable"
+    assert negative["derived"]["proof_state"] == "refutable"
+    assert len(proofs) == 1
+    assert proofs[0]["status"] == "claim_conflict"
+    assert proofs[0]["type"] == "symbolic conflict"
+    assert len(proofs[0]["proof"]["conditional_proofs"]) == 2
+    assert proof_edges[-1]["relation"] == (
+        "formal conflict · target and opposite conditionally derivable under view:rules"
+    )
+    assert payload["summary"]["active_proofs"] == 0
+    assert payload["summary"]["claim_conflicts"] == 1
+    html = output.read_text(encoding="utf-8")
+    assert ".ct-type-symbolic-conflict polygon" in html
+    assert ".ct-status-claim-conflict" in html
 
 
 def test_related_assessment_is_visible_but_not_dependency_traversable(tmp_path):
@@ -397,9 +664,23 @@ def test_view_cli_requires_explicit_output_and_reports_summary(tmp_path, capsys)
 
 @pytest.mark.parametrize("target", [
     "claimtrace/graph.json", "data.txt", "claimtrace/events/view.html",
-    "claimtrace/assessments/view.html",
+    "claimtrace/assessments/view.html", "claimtrace/derivations/view.html",
+    "out.txt.manifest.json",
 ])
 def test_view_refuses_to_overwrite_provenance_or_graph_files(tmp_path, target):
     cfg = _project(tmp_path)
     with pytest.raises(GraphError, match="refusing to overwrite"):
         render_view(cfg, tmp_path / target)
+
+
+def test_view_refuses_to_overwrite_configured_verifier(tmp_path):
+    cfg = _project(tmp_path)
+    verifier = tmp_path / "claimtrace" / "verifiers.py"
+    verifier.write_text("# project verification policy\n", encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["verifiers"] = "claimtrace/verifiers.py"
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+
+    with pytest.raises(GraphError, match="refusing to overwrite"):
+        render_view(cfg, verifier)
