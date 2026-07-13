@@ -1,0 +1,471 @@
+"""Deterministic, JSON-safe read model for graph checks and future visualizations.
+
+The report deliberately separates structural/provenance findings from numeric verification and
+scientific validity. It is a projection of declared provenance plus the disk checks performed by
+``compute_check``; it does not turn a green graph into a scientific-truth claim.
+"""
+from __future__ import annotations
+
+import copy
+import json
+import os
+from collections import Counter
+from pathlib import Path
+
+from . import __version__
+from .engine import (_ordered_subset, build_adj, compute_check, direct_inputs,
+                     lint_issues, load_graph, load_raw)
+from .events import (EVENT_SCHEMA, RUN_ID_RE, load_active_markers, load_events,
+                     materialize_runs, snapshot_file)
+
+REPORT_SCHEMA_VERSION = "1.0"
+_SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2}
+
+
+def _canonical_json(value):
+    """Return a stable JSON representation suitable for ordering JSON-derived values."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _item_sort_key(item, primary_keys):
+    """Sort a JSON object by selected fields, with its full canonical form as a tie-breaker."""
+    if not isinstance(item, dict):
+        return tuple("" for _ in primary_keys) + (_canonical_json(item),)
+    return tuple(_canonical_json(item.get(key)) for key in primary_keys) + (
+        _canonical_json(item),)
+
+
+def _base_report(strict):
+    blocking = ["error", "warning", "pending"] if strict else ["error"]
+    return {
+        "report_schema_version": REPORT_SCHEMA_VERSION,
+        "tool": {"name": "claimtrace", "version": __version__},
+        "scope": {
+            "dependency_coverage": "graph_and_run_declarations",
+            "runtime_observation": "partial_reads_and_write_causation_not_observed",
+            "numeric_verification": "not-run",
+            "scientific_validity": "not-assessed",
+        },
+        "policy": {"strict": bool(strict), "blocking_severities": blocking},
+    }
+
+
+def _normalise_node_id(node_id):
+    """Use JSON null for graph-level findings and strings for declared node identifiers."""
+    if node_id in (None, "-"):
+        return None
+    return str(node_id)
+
+
+def _add_finding(found, *, severity, code, node_id, detail, source):
+    """Add or merge one finding; an error dominates an identical lint warning."""
+    node_id = _normalise_node_id(node_id)
+    code = str(code)
+    detail = str(detail)
+    key = (code, node_id, detail)
+    existing = found.get(key)
+    if existing is None:
+        found[key] = {
+            "severity": severity,
+            "code": code,
+            "node_id": node_id,
+            "detail": detail,
+            "sources": {source},
+        }
+        return
+    if _SEVERITY_RANK[severity] < _SEVERITY_RANK[existing["severity"]]:
+        existing["severity"] = severity
+    existing["sources"].add(source)
+
+
+def _findings(problems, warnings, pending, strict, extra=()):
+    found = {}
+    for code, node_id, detail in problems:
+        _add_finding(found, severity="error", code=code, node_id=node_id,
+                     detail=detail, source="check")
+    for code, node_id, detail in warnings:
+        _add_finding(found, severity="warning", code=code, node_id=node_id,
+                     detail=detail, source="lint")
+    for node_id, _node_type, movement, _path in pending:
+        _add_finding(found, severity="pending", code="PENDING", node_id=node_id,
+                     detail=movement, source="node_status")
+    for item in extra:
+        _add_finding(
+            found,
+            severity=item["severity"],
+            code=item["code"],
+            node_id=item.get("node_id"),
+            detail=item["detail"],
+            source=item.get("source", "receipts"),
+        )
+
+    out = []
+    for finding in found.values():
+        finding["sources"] = sorted(finding["sources"])
+        finding["blocking"] = (finding["severity"] == "error" or
+                               strict and finding["severity"] in ("warning", "pending"))
+        out.append(finding)
+    out.sort(key=lambda item: (
+        _SEVERITY_RANK[item["severity"]],
+        item["code"],
+        "" if item["node_id"] is None else item["node_id"],
+        item["detail"],
+    ))
+    return out
+
+
+def _graph_projection(raw):
+    """Return a canonical graph copy plus an independent stable trajectory order."""
+    nodes_by_id, edges, concepts = load_graph(None, raw=raw)
+    down, _up = build_adj(edges)
+    trajectory_order = _ordered_subset(nodes_by_id, nodes_by_id, down)
+    metadata = {key: copy.deepcopy(raw[key]) for key in sorted(raw)
+                if key not in {"schema_version", "concepts", "nodes", "edges"}}
+    return {
+        "schema_version": copy.deepcopy(raw.get("schema_version")),
+        "concepts": {key: copy.deepcopy(concepts[key]) for key in sorted(concepts)},
+        "nodes": sorted((copy.deepcopy(item) for item in raw["nodes"]),
+                        key=lambda item: _item_sort_key(item, ("id", "type", "status"))),
+        "edges": sorted((copy.deepcopy(item) for item in edges),
+                        key=lambda item: _item_sort_key(item, ("from", "to", "rel"))),
+        "trajectory_order": trajectory_order,
+        "metadata": metadata,
+    }
+
+
+def _path_identity(cfg, value):
+    path = Path(value)
+    resolved = path.resolve(strict=False) if path.is_absolute() else cfg.resolve(value).resolve(strict=False)
+    return os.path.normcase(str(resolved))
+
+
+def _compact_snapshot(snapshot):
+    if not isinstance(snapshot, dict):
+        return None
+    return {key: copy.deepcopy(snapshot[key]) for key in
+            ("path", "state", "sha256", "file_version_id", "size", "method", "reason", "error")
+            if key in snapshot}
+
+
+def _compact_run(run):
+    start, finish = run.get("start"), run.get("finish")
+    plan = start.get("payload", {}).get("plan", {}) if start else {}
+    finish_payload = finish.get("payload", {}) if finish else {}
+    input_transitions = []
+    for item in finish_payload.get("input_transitions", []):
+        input_transitions.append({
+            "path": item.get("path"),
+            "transition": item.get("transition"),
+            "before": _compact_snapshot(item.get("before")),
+            "after": _compact_snapshot(item.get("after")),
+        })
+    transitions = []
+    for item in finish_payload.get("output_transitions", []):
+        transitions.append({
+            "path": item.get("path"),
+            "transition": item.get("transition"),
+            "produced": bool(item.get("produced")),
+            "before": _compact_snapshot(item.get("before")),
+            "after": _compact_snapshot(item.get("after")),
+        })
+    return {
+        "run_id": run["run_id"],
+        "start_event_id": start.get("id") if start else None,
+        "finish_event_id": finish.get("id") if finish else None,
+        "started_at": start.get("recorded_at") if start else None,
+        "finished_at": finish.get("recorded_at") if finish else None,
+        "name": start.get("payload", {}).get("name") if start else None,
+        "plan_id": (start.get("payload", {}).get("plan_id") if start else None),
+        "result_id": finish_payload.get("result_id"),
+        "argv": copy.deepcopy(plan.get("argv", [])),
+        "argv_capture": plan.get("argv_capture"),
+        "cwd": plan.get("cwd"),
+        "parameters": copy.deepcopy(plan.get("parameters", {})),
+        "seeds": copy.deepcopy(plan.get("seeds", {})),
+        "declared_inputs": [item.get("path") for item in plan.get("declared_inputs", [])],
+        "declared_outputs": copy.deepcopy(plan.get("declared_outputs", [])),
+        "outcome": finish_payload.get("outcome"),
+        "direct_child_returncode": finish_payload.get("direct_child_returncode"),
+        "contract_errors": copy.deepcopy(finish_payload.get("contract_errors", [])),
+        "input_transitions": input_transitions,
+        "output_transitions": transitions,
+        "window_deltas": copy.deepcopy(finish_payload.get("window_deltas", [])),
+        "receipt_integrity": finish_payload.get("receipt_integrity"),
+        "lineage_coverage": copy.deepcopy(finish_payload.get("lineage_coverage")),
+        "bindings": [],
+    }
+
+
+def _receipt_projection(cfg, raw):
+    events, event_issues = load_events(cfg.events_path)
+    runs, run_issues = materialize_runs(events)
+    markers, marker_issues = load_active_markers(cfg.root)
+    nodes, edges, _concepts = load_graph(cfg, raw=raw)
+    extra = []
+
+    for issue in event_issues:
+        extra.append({"severity": "error", "code": issue["code"], "node_id": None,
+                      "detail": f"{issue['event_path']}: {issue['detail']}"})
+    for issue in run_issues:
+        extra.append({"severity": "error", "code": issue["code"], "node_id": None,
+                      "detail": f"{issue['run_id']}: {issue['detail']}"})
+    for issue in marker_issues:
+        extra.append({"severity": "error", "code": issue["code"], "node_id": None,
+                      "detail": f"{issue['marker']}: {issue['detail']}"})
+    for marker in markers:
+        extra.append({"severity": "pending", "code": "RUN_INCOMPLETE", "node_id": None,
+                      "detail": f"{marker['run_id']} has an active out-of-worktree start marker"})
+
+    active_by_path = {}
+    for node_id, node in nodes.items():
+        if not node.get("path") or node.get("status") not in {"current", "confirmed"}:
+            continue
+        active_by_path.setdefault(_path_identity(cfg, node["path"]), []).append(node_id)
+    for identity, node_ids in sorted(active_by_path.items()):
+        if len(node_ids) > 1:
+            display = nodes[node_ids[0]].get("path", identity)
+            extra.append({
+                "severity": "error", "code": "DUPLICATE_ACTIVE_PATH", "node_id": None,
+                "detail": f"{display} is claimed by active nodes {', '.join(sorted(node_ids))}",
+            })
+
+    projected_runs = [_compact_run(run) for run in runs]
+    projected_by_id = {run["run_id"]: run for run in projected_runs}
+    raw_by_id = {run["run_id"]: run for run in runs}
+
+    # A failed scientific/analytic command is legitimate historical evidence. A provenance
+    # contract failure is different: strict checking must surface it, and mutation of claimtrace's
+    # own control plane is always a hard integrity error even for a run with no declared outputs.
+    for raw_run in runs:
+        finish = raw_run.get("finish")
+        if not finish:
+            continue
+        payload = finish.get("payload", {})
+        outcome = payload.get("outcome")
+        contract_errors = payload.get("contract_errors", [])
+        detail = "; ".join(str(item) for item in contract_errors) or f"run outcome is {outcome}"
+        control_mutated = bool(
+            payload.get("control_plane", {}).get("forbidden_change_during_child")
+        )
+        if control_mutated:
+            extra.append({
+                "severity": "error",
+                "code": "RUN_CONTROL_PLANE_MUTATION",
+                "node_id": None,
+                "detail": f"{raw_run['run_id']}: {detail}",
+            })
+        elif outcome in {"contract_failed", "capture_precondition_failed"}:
+            extra.append({
+                "severity": "warning",
+                "code": "RUN_CAPTURE_CONTRACT_FAILED",
+                "node_id": None,
+                "detail": f"{raw_run['run_id']}: {detail}",
+            })
+
+    # Semantic notebook nodes may explicitly cite the mechanical runs that produced their verdict.
+    # This is an attributed link, not an inferred file binding, and it is valid for null/dead-end
+    # results as well as positive ones.
+    for node_id, node in sorted(nodes.items()):
+        references = node.get("run_ids", [])
+        for run_id in sorted(set(references)):
+            if not RUN_ID_RE.fullmatch(run_id):
+                extra.append({
+                    "severity": "error", "code": "INVALID_RUN_REFERENCE", "node_id": node_id,
+                    "detail": f"invalid run id in run_ids: {run_id!r}",
+                })
+                continue
+            raw_run = raw_by_id.get(run_id)
+            if not raw_run:
+                extra.append({
+                    "severity": "error", "code": "MISSING_RUN_REFERENCE", "node_id": node_id,
+                    "detail": f"referenced receipt {run_id} is not present in the event ledger",
+                })
+                continue
+            projected_by_id[run_id]["bindings"].append({
+                "binding_kind": "explicit_run_reference",
+                "node_id": node_id,
+                "path": node.get("path"),
+                "declaration_comparison": None,
+                "output_evidence": None,
+            })
+            finish = raw_run.get("finish")
+            outcome = finish.get("payload", {}).get("outcome") if finish else None
+            if node.get("status") in {"current", "confirmed", "null"} and outcome != "succeeded":
+                extra.append({
+                    "severity": "error", "code": "SEMANTIC_RUN_OUTCOME_MISMATCH",
+                    "node_id": node_id,
+                    "detail": (f"status {node.get('status')} references {run_id} with command "
+                               f"outcome {outcome or 'incomplete'}"),
+                })
+    successful_receipts = {}
+    for raw_run in runs:
+        start, finish = raw_run.get("start"), raw_run.get("finish")
+        if not start or not finish:
+            continue
+        payload = finish["payload"]
+        outcome = payload.get("outcome")
+        for item in payload.get("output_transitions", []):
+            path = item.get("path")
+            if not isinstance(path, str):
+                continue
+            identity = _path_identity(cfg, path)
+            if outcome == "succeeded":
+                if item.get("transition") in {"created", "content_changed", "unchanged"} and item.get("after", {}).get("state") == "stable":
+                    key = (finish.get("recorded_at", ""), finish["id"])
+                    successful_receipts.setdefault(identity, []).append((key, raw_run, item))
+            if not item.get("declared_output", True):
+                continue
+        for delta in payload.get("window_deltas", []):
+            if not delta.get("declared_output"):
+                extra.append({
+                    "severity": "warning", "code": "POSSIBLE_UNDECLARED_OUTPUT", "node_id": None,
+                    "detail": (f"{raw_run['run_id']} saw {delta.get('transition')} at "
+                               f"{delta.get('path')} in an unattributed pre/post window"),
+                })
+
+    bound_nodes = set()
+    for identity, candidates in sorted(successful_receipts.items()):
+        candidates.sort(key=lambda item: item[0])
+        _key, raw_run, output_item = candidates[-1]
+        node_ids = active_by_path.get(identity, [])
+        if not node_ids:
+            extra.append({
+                "severity": "warning", "code": "UNBOUND_RUN_OUTPUT", "node_id": None,
+                "detail": f"{raw_run['run_id']} has declared output {output_item.get('path')} with no active graph node",
+            })
+            continue
+        if len(node_ids) != 1:
+            continue
+        node_id = node_ids[0]
+        bound_nodes.add(node_id)
+        start_plan = raw_run["start"]["payload"].get("plan", {})
+        declared = {item.get("path") for item in start_plan.get("declared_inputs", [])
+                    if isinstance(item.get("path"), str)}
+        expected = set(direct_inputs(cfg, nodes, edges, node_id))
+        declared_ids = {_path_identity(cfg, path): path for path in declared}
+        expected_ids = {_path_identity(cfg, path): path for path in expected}
+        missing = sorted(expected_ids[key] for key in set(expected_ids) - set(declared_ids))
+        extra_declared = sorted(declared_ids[key] for key in set(declared_ids) - set(expected_ids))
+        agreement = "declarations_agree" if not missing and not extra_declared else "declarations_differ"
+        projected_by_id[raw_run["run_id"]]["bindings"].append({
+            "binding_kind": "output_path",
+            "node_id": node_id,
+            "path": nodes[node_id].get("path"),
+            "declaration_comparison": agreement,
+            "output_evidence": ("content_transition_detected" if output_item.get("produced")
+                                else "unchanged_not_proven_produced"),
+            "graph_declared_inputs": sorted(expected),
+            "run_declared_inputs": sorted(declared),
+        })
+        if missing:
+            extra.append({
+                "severity": "warning", "code": "RUN_DECLARATION_INCOMPLETE", "node_id": node_id,
+                "detail": "graph inputs absent from run declaration: " + ", ".join(missing),
+            })
+        if extra_declared:
+            extra.append({
+                "severity": "warning", "code": "GRAPH_DECLARATION_INCOMPLETE", "node_id": node_id,
+                "detail": "run inputs absent from graph declaration: " + ", ".join(extra_declared),
+            })
+        for captured in start_plan.get("declared_inputs", []):
+            path = captured.get("path")
+            if not isinstance(path, str):
+                continue
+            current_input = snapshot_file(cfg.resolve(path), path)
+            captured_stable = captured.get("state") == "stable"
+            current_stable = current_input.get("state") == "stable"
+            if (captured_stable and current_stable
+                    and captured.get("sha256") == current_input.get("sha256")):
+                continue
+            extra.append({
+                "severity": "error", "code": "RUN_INPUT_DRIFT", "node_id": node_id,
+                "detail": (f"{path} differs from input snapshot captured by latest successful "
+                           f"output receipt {raw_run['run_id']} "
+                           f"(captured={captured.get('state')}, current={current_input.get('state')})"),
+            })
+        after = output_item.get("after", {})
+        current_path = cfg.resolve(nodes[node_id]["path"])
+        current = snapshot_file(current_path, nodes[node_id]["path"])
+        if after.get("state") == "stable" and current.get("state") == "stable" and after.get("sha256") != current.get("sha256"):
+            extra.append({
+                "severity": "error", "code": "RUN_OUTPUT_DRIFT", "node_id": node_id,
+                "detail": f"{nodes[node_id]['path']} differs from latest successful output receipt {raw_run['run_id']}",
+            })
+
+    expected_types = set(cfg.render_types) | set(cfg.run_output_types)
+    for node_id, node in sorted(nodes.items()):
+        if (node.get("status") not in {"current", "confirmed"} or not node.get("path")
+                or node.get("type") not in expected_types or node_id in bound_nodes):
+            continue
+        extra.append({
+            "severity": "warning", "code": "NO_RUN_RECEIPT", "node_id": node_id,
+            "detail": f"{node['path']} has no successful finalized run receipt",
+        })
+
+    for run in projected_runs:
+        run["bindings"].sort(key=lambda item: (item["node_id"], item.get("binding_kind", "")))
+    projected_runs.sort(key=lambda item: (item.get("finished_at") or item.get("started_at") or "", item["run_id"]))
+    return {
+        "event_schema_version": EVENT_SCHEMA,
+        "integrity": "error" if event_issues or run_issues or marker_issues else "ok",
+        "active_runs": [marker["run_id"] for marker in markers],
+        "runs": projected_runs,
+    }, extra
+
+
+def build_report(cfg, *, strict=False, raw=None):
+    """Build one deterministic report without printing, mutation, or verifier execution.
+
+    A caller may pass a graph previously returned by ``load_raw``. Otherwise this function reads
+    the graph exactly once and shares that snapshot with the hard checks, lint, and projection.
+    Strictness is only a blocking policy: all evidence remains present in both modes.
+    """
+    graph = raw if raw is not None else load_raw(cfg)
+    problems, pending = compute_check(cfg, raw=graph)
+    warnings = lint_issues(cfg, raw=graph)
+    receipts, receipt_findings = _receipt_projection(cfg, graph)
+    findings = _findings(problems, warnings, pending, bool(strict), receipt_findings)
+    counts = Counter(item["severity"] for item in findings)
+    blocking = sum(1 for item in findings if item["blocking"])
+
+    report = _base_report(strict)
+    report.update({
+        "ok": blocking == 0,
+        "exit_code": 0 if blocking == 0 else 1,
+        "summary": {
+            "nodes": len(graph["nodes"]),
+            "edges": len(graph.get("edges", [])),
+            "concepts": len(graph.get("concepts", {})),
+            "errors": counts["error"],
+            "warnings": counts["warning"],
+            "pending": counts["pending"],
+            "blocking": blocking,
+        },
+        "graph": _graph_projection(graph),
+        "receipts": receipts,
+        "findings": findings,
+        "fatal": None,
+    })
+    return report
+
+
+def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
+    """Build the stable exit-2 envelope used when no complete audit can be produced."""
+    report = _base_report(strict)
+    report.update({
+        "ok": False,
+        "exit_code": 2,
+        "summary": None,
+        "graph": None,
+        "receipts": None,
+        "findings": [],
+        "fatal": {"code": str(code), "detail": str(detail)},
+    })
+    return report
+
+
+def dumps_report(report):
+    """Serialize a report canonically as one UTF-8-friendly JSON document plus newline."""
+    return json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+    ) + "\n"
