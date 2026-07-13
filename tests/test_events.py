@@ -53,6 +53,41 @@ def _process_append(events_path, event, start, results):
         results.put(type(exc).__name__ + ": " + str(exc))
 
 
+def _process_run_shared_output(config_path, project_root, token, start, results):
+    start.wait()
+    script = (
+        "import os, sys, time\n"
+        "from pathlib import Path\n"
+        "guard = Path('child-active.lock')\n"
+        "owned = False\n"
+        "try:\n"
+        "    fd = os.open(str(guard), os.O_CREAT | os.O_EXCL | os.O_WRONLY)\n"
+        "    os.close(fd)\n"
+        "    owned = True\n"
+        "except FileExistsError:\n"
+        "    Path('overlap.txt').touch()\n"
+        "try:\n"
+        "    time.sleep(0.5)\n"
+        "    Path('out.txt').write_text(sys.argv[1], encoding='utf-8')\n"
+        "finally:\n"
+        "    if owned:\n"
+        "        guard.unlink(missing_ok=True)\n"
+    )
+    try:
+        result = run_command(
+            Config(Path(config_path)),
+            [sys.executable, "-c", script, token],
+            inputs=[], outputs=["out.txt"], no_inputs=True,
+            cwd=project_root, scan_writes=False,
+        )
+        results.put({
+            "outcome": result["outcome"],
+            "transition": result["output_transitions"][0]["transition"],
+        })
+    except Exception as exc:  # pragma: no cover - failure detail crosses process boundary
+        results.put(type(exc).__name__ + ": " + str(exc))
+
+
 def _project(tmp_path):
     tmp_path.mkdir(parents=True, exist_ok=True)
     trace = tmp_path / "claimtrace"
@@ -186,6 +221,23 @@ def test_event_is_content_addressed_and_tamper_is_detected(tmp_path):
     assert events == []
     assert [item["code"] for item in issues] == ["EVENT_INTEGRITY"]
     assert "does not match" in issues[0]["detail"]
+
+
+@pytest.mark.parametrize("recorded_at", [
+    "not-a-dateZ",
+    "2026-02-30T00:00:00Z",
+    "2026-07-13 00:00:00Z",
+    "2026-07-13T25:00:00Z",
+    "2026-07-13T00:00:00+00:00",
+    "2026-07-13T00:00:00z",
+])
+def test_recorded_at_requires_valid_rfc3339_utc(tmp_path, recorded_at):
+    with pytest.raises(EventError, match="valid RFC 3339 UTC"):
+        append_event(tmp_path, _start_event(recorded_at))
+
+
+def test_recorded_at_accepts_rfc3339_utc_without_fraction(tmp_path):
+    append_event(tmp_path, _start_event("2026-07-13T00:00:00Z"))
 
 
 @pytest.mark.parametrize(("outcome", "returncode", "errors", "launch_error", "match"), [
@@ -358,6 +410,37 @@ def test_concurrent_process_append_never_overwrites(tmp_path):
     events, issues = load_events(tmp_path)
     assert events == [event]
     assert issues == []
+
+
+def test_concurrent_process_runs_serialize_the_same_declared_output(tmp_path):
+    cfg = _project(tmp_path)
+    context = mp.get_context("spawn")
+    start, results = context.Event(), context.Queue()
+    processes = [
+        context.Process(
+            target=_process_run_shared_output,
+            args=(str(cfg.config_path), str(tmp_path), token, start, results),
+        )
+        for token in ("first", "second")
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    outcomes = [results.get(timeout=30) for _ in processes]
+    for process in processes:
+        process.join(timeout=30)
+        assert process.exitcode == 0
+
+    assert all(isinstance(item, dict) and item["outcome"] == "succeeded"
+               for item in outcomes), outcomes
+    assert sorted(item["transition"] for item in outcomes) == ["content_changed", "created"]
+    assert not (tmp_path / "overlap.txt").exists()
+    assert not (tmp_path / "child-active.lock").exists()
+    events, event_issues = load_events(cfg.events_path)
+    runs, run_issues = materialize_runs(events)
+    assert len(events) == 4
+    assert len(runs) == 2
+    assert event_issues == run_issues == []
 
 
 def test_successful_run_records_partial_lineage_without_mutating_graph(tmp_path):
@@ -545,17 +628,28 @@ def test_child_control_plane_mutation_is_a_contract_failure(tmp_path):
 
 def test_concurrent_runs_accept_append_only_receipt_activity(tmp_path):
     cfg = _project(tmp_path)
-    commands = [
-        [sys.executable, "-c",
-         "import time; from pathlib import Path; time.sleep(0.2); Path('a.txt').write_text('a')"],
-        [sys.executable, "-c",
-         "import time; from pathlib import Path; time.sleep(0.6); Path('b.txt').write_text('b')"],
-    ]
+
+    def command(index):
+        own, other = f"{'ab'[index]}.ready", f"{'ba'[index]}.ready"
+        output = f"{'ab'[index]}.txt"
+        script = (
+            "import time\n"
+            "from pathlib import Path\n"
+            f"own, other = Path({own!r}), Path({other!r})\n"
+            "own.touch()\n"
+            "deadline = time.monotonic() + 5\n"
+            "while not other.exists() and time.monotonic() < deadline:\n"
+            "    time.sleep(0.02)\n"
+            "if not other.exists():\n"
+            "    raise SystemExit(9)\n"
+            f"Path({output!r}).write_text({output[0]!r}, encoding='utf-8')\n"
+        )
+        return [sys.executable, "-c", script]
 
     def execute(index):
         return run_command(
-            cfg, commands[index], inputs=[], outputs=[f"{'ab'[index]}.txt"],
-            no_inputs=True, cwd=str(tmp_path),
+            cfg, command(index), inputs=[], outputs=[f"{'ab'[index]}.txt"],
+            no_inputs=True, cwd=str(tmp_path), scan_writes=False,
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:

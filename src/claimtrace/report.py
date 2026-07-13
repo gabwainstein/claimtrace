@@ -9,17 +9,19 @@ from __future__ import annotations
 import copy
 import json
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from . import __version__
+from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
+                         evaluate_assessment, load_assessments)
 from .engine import (_ordered_subset, build_adj, compute_check, direct_inputs,
                      lint_issues, load_graph, load_raw)
 from .events import (EVENT_SCHEMA, RUN_ID_RE, load_active_markers, load_events,
                      materialize_runs, snapshot_file)
 
-REPORT_SCHEMA_VERSION = "1.0"
-_SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2}
+REPORT_SCHEMA_VERSION = "1.1"
+_SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2, "info": 3}
 
 
 def _canonical_json(value):
@@ -45,6 +47,7 @@ def _base_report(strict):
             "runtime_observation": "partial_reads_and_write_causation_not_observed",
             "numeric_verification": "not-run",
             "scientific_validity": "not-assessed",
+            "semantic_assessment": "external-agent-judgement-policy-checked-not-truth",
         },
         "policy": {"strict": bool(strict), "blocking_severities": blocking},
     }
@@ -297,7 +300,8 @@ def _receipt_projection(cfg, raw):
                     "detail": (f"status {node.get('status')} references {run_id} with command "
                                f"outcome {outcome or 'incomplete'}"),
                 })
-    successful_receipts = {}
+    producing_receipts = {}
+    validation_receipts = {}
     for raw_run in runs:
         start, finish = raw_run.get("start"), raw_run.get("finish")
         if not start or not finish:
@@ -309,10 +313,14 @@ def _receipt_projection(cfg, raw):
             if not isinstance(path, str):
                 continue
             identity = _path_identity(cfg, path)
-            if outcome == "succeeded":
-                if item.get("transition") in {"created", "content_changed", "unchanged"} and item.get("after", {}).get("state") == "stable":
-                    key = (finish.get("recorded_at", ""), finish["id"])
-                    successful_receipts.setdefault(identity, []).append((key, raw_run, item))
+            if outcome == "succeeded" and item.get("after", {}).get("state") == "stable":
+                key = (finish.get("recorded_at", ""), finish["id"])
+                if (item.get("produced") is True
+                        and item.get("transition") in {"created", "content_changed"}):
+                    producing_receipts.setdefault(identity, []).append((key, raw_run, item))
+                elif (item.get("produced") is False
+                      and item.get("transition") == "unchanged"):
+                    validation_receipts.setdefault(identity, []).append((key, raw_run, item))
             if not item.get("declared_output", True):
                 continue
         for delta in payload.get("window_deltas", []):
@@ -323,8 +331,33 @@ def _receipt_projection(cfg, raw):
                                f"{delta.get('path')} in an unattributed pre/post window"),
                 })
 
+    # An unchanged pre-existing file is useful validation evidence, but it does not
+    # establish which run produced those bytes. Keep that evidence explicitly attached
+    # to the graph without allowing it to satisfy the producing-receipt requirement.
+    for identity, candidates in sorted(validation_receipts.items()):
+        candidates.sort(key=lambda item: item[0])
+        node_ids = active_by_path.get(identity, [])
+        if len(node_ids) != 1:
+            if not node_ids:
+                for _key, raw_run, output_item in candidates:
+                    extra.append({
+                        "severity": "warning", "code": "UNBOUND_RUN_OUTPUT", "node_id": None,
+                        "detail": (f"{raw_run['run_id']} validated declared output "
+                                   f"{output_item.get('path')} with no active graph node"),
+                    })
+            continue
+        node_id = node_ids[0]
+        for _key, raw_run, _output_item in candidates:
+            projected_by_id[raw_run["run_id"]]["bindings"].append({
+                "binding_kind": "output_validation",
+                "node_id": node_id,
+                "path": nodes[node_id].get("path"),
+                "declaration_comparison": None,
+                "output_evidence": "unchanged_not_proven_produced",
+            })
+
     bound_nodes = set()
-    for identity, candidates in sorted(successful_receipts.items()):
+    for identity, candidates in sorted(producing_receipts.items()):
         candidates.sort(key=lambda item: item[0])
         _key, raw_run, output_item = candidates[-1]
         node_ids = active_by_path.get(identity, [])
@@ -352,8 +385,7 @@ def _receipt_projection(cfg, raw):
             "node_id": node_id,
             "path": nodes[node_id].get("path"),
             "declaration_comparison": agreement,
-            "output_evidence": ("content_transition_detected" if output_item.get("produced")
-                                else "unchanged_not_proven_produced"),
+            "output_evidence": "content_transition_detected",
             "graph_declared_inputs": sorted(expected),
             "run_declared_inputs": sorted(declared),
         })
@@ -399,7 +431,7 @@ def _receipt_projection(cfg, raw):
             continue
         extra.append({
             "severity": "warning", "code": "NO_RUN_RECEIPT", "node_id": node_id,
-            "detail": f"{node['path']} has no successful finalized run receipt",
+            "detail": f"{node['path']} has no successful finalized producing run receipt",
         })
 
     for run in projected_runs:
@@ -410,6 +442,195 @@ def _receipt_projection(cfg, raw):
         "integrity": "error" if event_issues or run_issues or marker_issues else "ok",
         "active_runs": [marker["run_id"] for marker in markers],
         "runs": projected_runs,
+    }, extra
+
+
+def _assessment_projection(cfg, raw):
+    """Project immutable semantic reviews without treating them as scientific truth."""
+    documents, integrity_issues = load_assessments(cfg)
+    _nodes, edges, _concepts = load_graph(cfg, raw=raw)
+    extra = []
+    for issue in integrity_issues:
+        extra.append({
+            "severity": "error",
+            "code": issue["code"],
+            "node_id": None,
+            "detail": f"{issue['path']}: {issue['detail']}",
+            "source": "assessments",
+        })
+
+    superseded = {
+        item["review"].get("supersedes_assessment_id")
+        for item in documents
+        if item["review"].get("supersedes_assessment_id")
+    }
+    items = []
+    active_relations = []
+    accepted_by_pair = defaultdict(list)
+    for document in sorted(documents, key=lambda item: item["id"]):
+        is_current = (
+            document["id"] not in superseded
+            and document["review"]["state"] != "superseded"
+        )
+        evaluation = evaluate_assessment(cfg, document, documents)
+        # Passing only valid documents to ``evaluate_assessment`` avoids re-reading
+        # the store, so that function cannot see rejected files or broken chains.
+        # This projection is the trust boundary: one store issue invalidates every
+        # current relation while immutable stored derivations remain as history.
+        if integrity_issues:
+            evaluation = copy.deepcopy(evaluation)
+            evaluation["active_relation"] = None
+        item = {
+            "id": document["id"],
+            "recorded_at": document["recorded_at"],
+            "subject": copy.deepcopy(document["subject"]),
+            "mechanical_snapshot": copy.deepcopy(document["mechanical_snapshot"]),
+            "agent_input": copy.deepcopy(document["agent_input"]),
+            "review": copy.deepcopy(document["review"]),
+            "stored_derived": copy.deepcopy(document["derived"]),
+            "current_derived": copy.deepcopy(evaluation),
+            "is_current": is_current,
+        }
+        items.append(item)
+        if not is_current:
+            continue
+
+        review_state = evaluation["effective_review_state"]
+        claim_id = document["subject"]["claim_id"]
+        if review_state == "proposed":
+            extra.append({
+                "severity": "pending",
+                "code": "ASSESSMENT_REVIEW_PENDING",
+                "node_id": claim_id,
+                "detail": f"{document['id']} awaits acceptance or rejection",
+                "source": "assessments",
+            })
+        if review_state in {"proposed", "accepted", "contested"}:
+            for finding in evaluation["findings"]:
+                severity = finding["severity"]
+                # Accepted narrowing records preserve their acknowledged mismatch as
+                # inspectable context without making the accepted `related` link fail strict.
+                if review_state == "accepted" and severity == "warning":
+                    severity = "info"
+                extra.append({
+                    "severity": severity,
+                    "code": finding["code"],
+                    "node_id": claim_id,
+                    "detail": f"{document['id']}: {finding['detail']}",
+                    "source": "assessments",
+                })
+        evaluation_errors = [
+            finding for finding in evaluation["findings"]
+            if finding["severity"] == "error"
+        ]
+        relation = evaluation.get("active_relation")
+        if relation and not integrity_issues:
+            for result_id in document["subject"]["result_ids"]:
+                active_relations.append({
+                    "assessment_id": document["id"],
+                    "from": result_id,
+                    "to": claim_id,
+                    "rel": relation,
+                })
+        if (review_state == "accepted" and not evaluation_errors
+                and not integrity_issues):
+            for result_id in document["subject"]["result_ids"]:
+                accepted_by_pair[(result_id, claim_id)].append({
+                    "assessment_id": document["id"],
+                    "verdict": document["agent_input"]["verdict"],
+                    "active_relation": relation,
+                })
+
+    declared_links = []
+    for edge in edges:
+        declared_relation = edge.get("rel")
+        if declared_relation not in {"supports", "refutes"}:
+            continue
+        pair = (edge.get("from"), edge.get("to"))
+        assessments = sorted(
+            accepted_by_pair.get(pair, []), key=lambda item: item["assessment_id"]
+        )
+        covered = [
+            item for item in assessments
+            if item["active_relation"] == declared_relation
+        ]
+        opposite_relation = "refutes" if declared_relation == "supports" else "supports"
+        opposite = [
+            item for item in assessments
+            if item["active_relation"] == opposite_relation
+        ]
+        if covered:
+            status = "covered"
+        elif opposite:
+            status = "assessed_conflict"
+        elif assessments:
+            status = "assessed_not_as_written"
+        else:
+            status = "unassessed"
+        declared_links.append({
+            "from": pair[0],
+            "to": pair[1],
+            "declared_relation": declared_relation,
+            "status": status,
+            "assessment_ids": [item["assessment_id"] for item in assessments],
+            "assessed_relations": sorted({
+                item["active_relation"] or "none" for item in assessments
+            }),
+        })
+        if status == "covered":
+            continue
+        if status == "assessed_conflict":
+            extra.append({
+                "severity": "error",
+                "code": "DECLARED_CLAIM_LINK_CONFLICT",
+                "node_id": edge.get("to"),
+                "detail": (
+                    f"declared {declared_relation} {edge.get('from')} -> {edge.get('to')} "
+                    f"conflicts with accepted {opposite_relation} assessment(s): "
+                    + ", ".join(item["assessment_id"] for item in opposite)
+                ),
+                "source": "assessments",
+            })
+        elif status == "assessed_not_as_written":
+            extra.append({
+                "severity": "warning" if cfg.require_assessments else "info",
+                "code": "ASSESSED_CLAIM_LINK_MISMATCH",
+                "node_id": edge.get("to"),
+                "detail": (
+                    f"declared {declared_relation} {edge.get('from')} -> {edge.get('to')} "
+                    "was assessed, but not as that relation: "
+                    + ", ".join(
+                        f"{item['assessment_id']}={item['active_relation'] or 'none'}"
+                        for item in assessments
+                    )
+                ),
+                "source": "assessments",
+            })
+        else:
+            extra.append({
+                "severity": "warning" if cfg.require_assessments else "info",
+                "code": "UNASSESSED_CLAIM_LINK",
+                "node_id": edge.get("to"),
+                "detail": (
+                    f"declared {declared_relation} {edge.get('from')} -> {edge.get('to')} "
+                    "has no current accepted semantic assessment"
+                ),
+                "source": "assessments",
+            })
+
+    active_relations.sort(key=lambda item: (
+        item["from"], item["to"], item["rel"], item["assessment_id"],
+    ))
+    declared_links.sort(key=lambda item: (
+        item["from"], item["to"], item["declared_relation"],
+    ))
+    return {
+        "assessment_schema_version": ASSESSMENT_SCHEMA_VERSION,
+        "integrity": "error" if integrity_issues else "ok",
+        "policy": {"require_assessments": cfg.require_assessments},
+        "items": items,
+        "active_relations": active_relations,
+        "declared_links": declared_links,
     }, extra
 
 
@@ -424,7 +645,11 @@ def build_report(cfg, *, strict=False, raw=None):
     problems, pending = compute_check(cfg, raw=graph)
     warnings = lint_issues(cfg, raw=graph)
     receipts, receipt_findings = _receipt_projection(cfg, graph)
-    findings = _findings(problems, warnings, pending, bool(strict), receipt_findings)
+    assessments, assessment_findings = _assessment_projection(cfg, graph)
+    findings = _findings(
+        problems, warnings, pending, bool(strict),
+        [*receipt_findings, *assessment_findings],
+    )
     counts = Counter(item["severity"] for item in findings)
     blocking = sum(1 for item in findings if item["blocking"])
 
@@ -439,10 +664,12 @@ def build_report(cfg, *, strict=False, raw=None):
             "errors": counts["error"],
             "warnings": counts["warning"],
             "pending": counts["pending"],
+            "info": counts["info"],
             "blocking": blocking,
         },
         "graph": _graph_projection(graph),
         "receipts": receipts,
+        "assessments": assessments,
         "findings": findings,
         "fatal": None,
     })
@@ -458,6 +685,7 @@ def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
         "summary": None,
         "graph": None,
         "receipts": None,
+        "assessments": None,
         "findings": [],
         "fatal": {"code": str(code), "detail": str(detail)},
     })

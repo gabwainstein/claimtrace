@@ -10,6 +10,8 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
+from .assessment import (AssessmentError, append_assessment, append_review_transition,
+                         create_assessment, evaluate_assessment, load_assessments)
 from .config import CONFIG_NAME, load_config, strict_json_loads
 from .engine import (ANNOT_RELS, GraphError, compute_check, downstream, impact,
                      lint_issues, load_graph, log_entry, upstream)
@@ -161,6 +163,151 @@ def cmd_log(args):
     return 0 if ok else 1
 
 
+def _read_json_object(path_value, label):
+    try:
+        value = strict_json_loads(
+            Path(path_value).read_text(encoding="utf-8-sig"), str(path_value)
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise AssessmentError(f"cannot read {label} {path_value}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise AssessmentError(f"{label} must contain one JSON object")
+    return value
+
+
+def _write_json(value):
+    sys.stdout.write(json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+    ) + "\n")
+
+
+def _assessment_output(document, evaluation, path=None):
+    return {
+        "id": document["id"],
+        "path": str(path) if path is not None else None,
+        "recorded_at": document["recorded_at"],
+        "subject": document["subject"],
+        "review": document["review"],
+        "agent_input": document["agent_input"],
+        "mechanical_snapshot": document["mechanical_snapshot"],
+        "current_derived": evaluation,
+    }
+
+
+def _fail_closed_assessment_evaluation(evaluation, integrity_issues):
+    """Suppress current relations when any part of the assessment store is invalid."""
+    if not integrity_issues:
+        return evaluation
+    projected = dict(evaluation)
+    projected["active_relation"] = None
+    return projected
+
+
+def cmd_assess(args):
+    """Validate and append a schema-constrained external-agent semantic proposal."""
+    cfg = _cfg(args)
+    _documents, existing_issues = load_assessments(cfg)
+    if existing_issues:
+        detail = "; ".join(
+            f"{item['path']}: {item['detail']}" for item in existing_issues
+        )
+        raise AssessmentError(f"assessment store integrity failed before append: {detail}")
+    entry = _read_json_object(args.entry, "assessment proposal")
+    expected = {"claim_id", "result_ids", "agent_input"}
+    if set(entry) != expected:
+        raise AssessmentError(
+            "assessment proposal must contain exactly claim_id, result_ids, and agent_input; "
+            "mechanical_snapshot and derived are computed by claimtrace"
+        )
+    document = create_assessment(
+        cfg, entry["claim_id"], entry["result_ids"], entry["agent_input"], actor=args.actor,
+    )
+    path = append_assessment(cfg, document)
+    documents, issues = load_assessments(cfg)
+    if issues:
+        detail = "; ".join(f"{item['path']}: {item['detail']}" for item in issues)
+        raise AssessmentError(f"assessment store integrity failed after append: {detail}")
+    evaluation = evaluate_assessment(cfg, document, documents)
+    output = _assessment_output(document, evaluation, path)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"claimtrace assess: recorded {document['id']}")
+        print(f"  verdict: {document['agent_input']['verdict']}")
+        print(f"  proposed relation: {evaluation.get('proposed_relation') or 'none'}")
+        print(f"  review: {evaluation['effective_review_state']}")
+        for finding in evaluation["findings"]:
+            print(f"  {finding['severity']}: {finding['code']} - {finding['detail']}")
+    return 1 if any(item["severity"] == "error" for item in evaluation["findings"]) else 0
+
+
+def _current_assessment_ids(documents):
+    superseded = {
+        item["review"].get("supersedes_assessment_id")
+        for item in documents
+        if item["review"].get("supersedes_assessment_id")
+    }
+    return {
+        item["id"] for item in documents
+        if item["id"] not in superseded and item["review"]["state"] != "superseded"
+    }
+
+
+def cmd_assessments(args):
+    cfg = _cfg(args)
+    documents, issues = load_assessments(cfg)
+    current_ids = _current_assessment_ids(documents)
+    items = []
+    for document in sorted(documents, key=lambda item: item["id"]):
+        is_current = document["id"] in current_ids
+        if not args.all and not is_current:
+            continue
+        evaluation = evaluate_assessment(cfg, document, documents)
+        if args.state and evaluation["effective_review_state"] != args.state:
+            continue
+        item = _assessment_output(
+            document,
+            _fail_closed_assessment_evaluation(evaluation, issues),
+        )
+        item["is_current"] = is_current
+        items.append(item)
+    output = {
+        "schema": "claimtrace.assessment-list/1",
+        "integrity": "error" if issues else "ok",
+        "issues": issues,
+        "items": items,
+    }
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"claimtrace assessments: {len(items)} assessment(s), integrity {output['integrity']}")
+        for item in items:
+            derived = item["current_derived"]
+            print(
+                f"  {item['id']}  {derived['effective_review_state']}  "
+                f"{item['agent_input']['verdict']}  "
+                f"{item['subject']['result_ids']} -> {item['subject']['claim_id']}"
+            )
+        for issue in issues:
+            print(f"  error: {issue['code']} - {issue['path']}: {issue['detail']}")
+    return 2 if issues else 0
+
+
+def cmd_review(args):
+    cfg = _cfg(args)
+    transition, path, evaluation = append_review_transition(
+        cfg, args.assessment_id, args.state, actor=args.actor,
+    )
+    output = _assessment_output(transition, evaluation, path)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"claimtrace review: {transition['id']}")
+        print(f"  {args.assessment_id} -> {args.state} by {args.actor}")
+        print(f"  active relation: {evaluation.get('active_relation') or 'none'}")
+    return 0
+
+
 def cmd_journal(args):
     cfg = _cfg(args)
     nodes, edges, _ = load_graph(cfg)
@@ -296,8 +443,9 @@ def cmd_init(args):
     (base / "claimtrace").mkdir(exist_ok=True)
     cfg_path.write_text(json.dumps(
         {"root": ".", "graph": "claimtrace/graph.json", "verifiers": "claimtrace/verifiers.py",
-         "events": "claimtrace/events", "render_types": ["figure"],
-         "input_types": ["data", "artifact", "code"], "run_output_types": ["artifact"]},
+         "events": "claimtrace/events", "assessments": "claimtrace/assessments",
+         "render_types": ["figure"], "input_types": ["data", "artifact", "code"],
+         "run_output_types": ["artifact"], "require_assessments": False},
         indent=2) + "\n",
         encoding="utf-8")
     gp = base / "claimtrace" / "graph.json"
@@ -389,6 +537,20 @@ def main(argv=None):
     p = sub.add_parser("impact", help="propagation to-do list for a canonical change"); p.add_argument("--set", required=True)
     p = sub.add_parser("node", help="show a node + its edges"); p.add_argument("node")
     p = sub.add_parser("log", help="append a lab-notebook entry from a JSON file"); p.add_argument("entry"); p.add_argument("--update", action="store_true")
+    p = sub.add_parser("assess", help="append a grounded external-agent semantic assessment")
+    p.add_argument("entry", help="JSON proposal containing claim_id, result_ids, and agent_input")
+    p.add_argument("--actor", required=True, help="identity submitting the assessment proposal")
+    p.add_argument("--json", action="store_true", help="emit the recorded assessment as JSON")
+    p = sub.add_parser("assessments", help="list semantic assessments and current review state")
+    p.add_argument("--state", choices=("proposed", "accepted", "rejected", "contested", "superseded"))
+    p.add_argument("--all", action="store_true", help="include superseded assessment history")
+    p.add_argument("--json", action="store_true", help="emit one deterministic JSON document")
+    p = sub.add_parser("review", help="append an immutable assessment review decision")
+    p.add_argument("assessment_id", help="content-addressed assessment id to review")
+    p.add_argument("--state", required=True,
+                   choices=("accepted", "rejected", "contested", "superseded"))
+    p.add_argument("--actor", required=True, help="identity making the review decision")
+    p.add_argument("--json", action="store_true", help="emit the review transition as JSON")
     p = sub.add_parser("journal", help="lab-notebook view grouped by verdict"); p.add_argument("--status", default="")
     sub.add_parser("snapshot", help="lock each render's input hashes into a manifest")
     sub.add_parser("verify", help="run project-specific numeric checks")
@@ -418,6 +580,7 @@ def main(argv=None):
     dispatch = {
         "check": cmd_check, "lint": cmd_lint, "downstream": cmd_downstream, "upstream": cmd_upstream,
         "impact": cmd_impact, "node": cmd_node, "log": cmd_log, "journal": cmd_journal,
+        "assess": cmd_assess, "assessments": cmd_assessments, "review": cmd_review,
         "snapshot": cmd_snapshot, "verify": cmd_verify, "summary": cmd_summary, "run": cmd_run,
         "view": cmd_view, "init": cmd_init, "install-skill": cmd_install_skill,
     }
@@ -427,6 +590,9 @@ def main(argv=None):
         print(f"claimtrace: {e}", file=sys.stderr)
         return 2
     except EventError as e:
+        print(f"claimtrace: {e}", file=sys.stderr)
+        return 2
+    except AssessmentError as e:
         print(f"claimtrace: {e}", file=sys.stderr)
         return 2
 

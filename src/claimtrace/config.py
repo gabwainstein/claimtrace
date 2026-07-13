@@ -8,10 +8,12 @@ claimtrace.config.json schema (all paths relative to the config file's directory
     "root":         ".",                     # project root; node `path`s are relative to THIS
     "graph":        "claimtrace/graph.json", # the graph file
     "events":       "claimtrace/events",     # content-addressed mechanical run receipts
+    "assessments":  "claimtrace/assessments", # content-addressed semantic reviews
     "verifiers":    "claimtrace/verifiers.py", # optional: project-specific numeric checks
     "render_types": ["figure"],              # node types whose staleness is checked
     "input_types":  ["data", "artifact", "code"], # types that count as staleness INPUTS to a render
-    "run_output_types": ["artifact"]         # non-render node types expected to have run receipts
+    "run_output_types": ["artifact"],        # non-render node types expected to have run receipts
+    "require_assessments": false              # strict-block unassessed supports/refutes links
   }
 Canonical concepts live inside graph.json under "concepts" (so `impact` can read them).
 """
@@ -63,17 +65,22 @@ class Config:
             raise SystemExit(f"claimtrace: {self.config_path.name} is not valid JSON - {e}")
         if not isinstance(data, dict):
             raise SystemExit(f"claimtrace: {self.config_path.name} must contain a JSON object")
-        for key in ("root", "graph", "events", "verifiers"):
+        for key in ("root", "graph", "events", "assessments", "verifiers"):
             if key in data and data[key] is not None and not isinstance(data[key], str):
                 raise SystemExit(f"claimtrace: config field {key!r} must be a string")
         for key in ("render_types", "input_types", "run_output_types"):
             if key in data and (not isinstance(data[key], list)
                                 or not all(isinstance(item, str) and item for item in data[key])):
                 raise SystemExit(f"claimtrace: config field {key!r} must be a list of strings")
+        if "require_assessments" in data and not isinstance(data["require_assessments"], bool):
+            raise SystemExit("claimtrace: config field 'require_assessments' must be a boolean")
         self.data = data
         self.root = (self.base / data.get("root", ".")).resolve()
         self.graph_path = (self.base / data.get("graph", "claimtrace/graph.json")).resolve()
         self.events_path = (self.base / data.get("events", "claimtrace/events")).resolve()
+        self.assessments_path = (
+            self.base / data.get("assessments", "claimtrace/assessments")
+        ).resolve()
         v = data.get("verifiers")
         self.verifiers = (self.base / v).resolve() if v else None
         # node types whose render-staleness (mtime / content hash) is checked
@@ -82,6 +89,7 @@ class Config:
         self.input_types = set(data.get("input_types", DEFAULT_INPUT_TYPES))
         # materialized node types expected to have run receipts under strict checking
         self.run_output_types = set(data.get("run_output_types", DEFAULT_RUN_OUTPUT_TYPES))
+        self.require_assessments = bool(data.get("require_assessments", False))
 
     def resolve(self, relpath: str) -> Path:
         """Resolve a node path (relative to project root) to an absolute path."""

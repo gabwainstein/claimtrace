@@ -12,6 +12,10 @@ old version, silently. Nobody re-ran them because nothing *told* anyone to.
 stale. It also keeps a **lab-notebook journal** of every attempt (including dead-ends and
 retractions), captures content-addressed mechanical receipts around analysis commands, and runs
 **project-specific numeric checks** that confirm headline numbers still reproduce from disk.
+For the part that cannot be reduced to hashes, an external agent can submit a schema-constrained
+semantic assessment that compares what a result means with what a claim says. Claimtrace pins the
+exact nodes and evidence bytes, applies deterministic policy, and leaves acceptance to a separate
+review step.
 
 It was extracted from the system used to harden a neuroscience manuscript end-to-end — where a
 single un-propagated "use dataset version B, not A" decision had quietly left several figures and
@@ -67,6 +71,8 @@ claimtrace check --strict --json      # deterministic graph + receipt reconcilia
 claimtrace impact --set model=v2      # what must change if I switch the canonical model?
 claimtrace downstream art:clean_data  # what depends on this artifact?
 claimtrace verify                     # do my headline numbers still reproduce from disk?
+claimtrace assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
+claimtrace assessments --json        # inspect proposals, reviews, findings, and staleness
 claimtrace journal --status dead_end  # show me everything I already tried that didn't work
 claimtrace view --output research-map.html  # semantic trajectory + mechanical receipt overlay
 ```
@@ -86,6 +92,7 @@ claimtrace run --input data/clean.csv --input results/fit.json --input analysis/
 claimtrace check        # green
 claimtrace check --strict --json  # declarations agree with captured run boundaries
 claimtrace verify       # confirms slope ≈ 2.0, R² > 0.9 from results/fit.json
+claimtrace assessments  # accepted support plus a visible causal-language narrowing
 claimtrace snapshot     # lock the figure's input hashes
 claimtrace view --output research-map.html
 claimtrace impact --set dataset_version=v2   # see the propagation list
@@ -140,11 +147,59 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace node <id>` | a node and its edges |
 | `claimtrace log entry.json` | append a lab-notebook node (+ edges); use for nulls/dead-ends too |
 | `claimtrace journal [--status ...]` | every attempt grouped by verdict |
+| `claimtrace assess ENTRY --actor ID` | append an external-agent semantic proposal; claimtrace computes evidence snapshots and policy output |
+| `claimtrace assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
+| `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append an independent acceptance, rejection, contest, or supersession decision |
 | `claimtrace snapshot` | lock each render's input content-hashes into a manifest |
 | `claimtrace verify` | run your project-specific numeric checks |
 | `claimtrace summary` | node/edge/concept counts |
 | `claimtrace init` | scaffold a config in a project |
 | `claimtrace install-skill [--target ...]` | install the packaged `claimtrace-log` skill without silently overwriting project customizations |
+
+## Grounded semantic assessments
+
+A graph edge can declare that a result supports a claim, but a hash cannot tell whether the result
+actually has the same population, exposure, comparator, outcome, direction, magnitude, time scope,
+or inference level as the claim. Semantic assessments add that meaning check without pretending it
+is fully mechanical.
+
+An external agent submits a JSON object containing exactly `claim_id`, `result_ids`, and
+`agent_input`. Schema v1 accepts exactly one result per assessment. The agent authors the verdict,
+complete structured claim and result frames, all eight fixed
+alignment dimensions, exact evidence anchors, a concise rationale, limitations, and its provenance.
+Allowed verdicts are `supports_as_written`, `supports_narrower_claim`,
+`contradicts_as_written`, `insufficient`, `ambiguous`, and `unrelated`. Evidence anchors must point
+to exact JSON values with JSON Pointer or exact text line spans with a SHA-256 digest.
+
+The external agent must not provide `mechanical_snapshot`, `derived`, or a review decision.
+Claimtrace computes the node and artifact SHA-256 identities, resolves every anchor, detects later
+node/file drift and conflicting active assessments, and derives the eligible relation and findings.
+A narrowing can activate `related`; it never becomes support for the original wording.
+
+```bash
+claimtrace assess semantic-proposal.json --actor analysis-agent --json
+claimtrace assessments --state proposed --json
+claimtrace review assessment:sha256:<digest> --state accepted --actor independent-reviewer --json
+claimtrace assessments --all --json
+```
+
+Assessments are immutable, content-addressed JSON documents. A review appends one successor; it does
+not rewrite or branch the proposal. The first reviewer string must differ from the proposer string,
+but those identities are self-asserted rather than authenticated. Acceptance fails closed for
+invalid anchors, staleness, accepted-review conflicts, store-integrity failures, and inconsistent
+modality declarations. An unreviewed conflicting proposal cannot deactivate an accepted relation.
+Set `"require_assessments": true` to make a direct, active `supports` or `refutes` edge without
+matching accepted semantic coverage block strict checking; the default is advisory for gradual
+adoption. An accepted opposite-polarity assessment is always a hard conflict.
+
+Acceptance records an attributed judgement under this policy. It is not proof that the analysis is
+valid or the scientific claim is true. The checked-in widget demo makes the distinction concrete:
+`art:fit` has accepted support for the associational `claim:slope`, while the same OLS artifact is
+only `related` to the causal `hyp:linear` after an accepted `supports_narrower_claim` assessment.
+There is no direct support edge from the fit to that hypothesis.
+
+Staleness pins the exact claim node, result node, and result artifact. It does not snapshot every
+upstream graph edge or canonical concept; those remain the separate graph/receipt integrity layer.
 
 ## Agent add-on
 
@@ -164,9 +219,11 @@ The skill makes the safe workflow explicit: resolve and pin the absolute config,
 script and file roles, execute new substantive analyses through `claimtrace run`, then log the
 scientific verdict separately and finish with deterministic strict checks. It records nulls,
 dead-ends, retractions, and superseded work as first-class outcomes. It never fabricates a receipt
-for historical work or infers a dependency from a filename. Agents still need the user or project
-to define scientific meaning; claimtrace automates integrity, reconciliation, propagation, and
-display.
+for historical work or infers a dependency from a filename. When asked to compare a result with a
+claim, the skill prepares only the external `agent_input` proposal with exact anchors; it does not
+self-accept its judgement or inject computed fields. Agents still need the user or an independent
+reviewer to judge scientific meaning; claimtrace automates integrity, reconciliation, propagation,
+policy checks, and display.
 
 ## Optional: a git pre-commit hook
 
@@ -188,7 +245,7 @@ dangling edges, claims cite on-backbone artifacts, headline numbers reproduce. I
 coherent, not that the conclusion is right. That boundary is the point — it tells you what has *not*
 been re-derived, so a human still does the judging.
 
-The system deliberately has two evidence layers:
+The system deliberately has three evidence layers:
 
 - The **semantic graph** contains attributed scientific assertions: hypotheses, predictions,
   methods, claims, conclusions, and their declared dependencies. A generic command wrapper must not
@@ -196,6 +253,9 @@ The system deliberately has two evidence layers:
 - The **mechanical receipt ledger** records declared inputs/outputs, stable pre/post SHA-256 file
   versions, direct-child argv and return code, best-effort Git/lockfile context, and project-window
   deltas.
+- The **semantic assessment ledger** stores an external agent's schema-constrained interpretation,
+  exact evidence anchors, claimtrace-computed hashes and policy findings, and a separate reviewer's
+  immutable decision. It can detect drift and disagreement; it cannot make the interpretation true.
 
 A semantic node can explicitly cite the receipt for its tested verdict with
 `"run_ids": ["run:<uuid>"]`. This is how pathless, null, and dead-end results stay visibly linked to

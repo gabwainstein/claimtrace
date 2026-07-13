@@ -18,9 +18,43 @@ claimtrace run --input data/clean.csv --input results/fit.json --input analysis/
 claimtrace check        # OK — all paths exist, nothing stale, nothing on a retired branch
 claimtrace check --strict --json  # graph declarations reconcile with the run receipts
 claimtrace verify       # PASS — slope ≈ 2.0 and R2 > 0.9, read live from results/fit.json
+claimtrace assessments  # accepted support plus an explicit causal-language narrowing
 claimtrace snapshot     # lock figures/fit.svg's input hashes into a manifest
 claimtrace view --output research-map.html
 ```
+
+## See the meaning check
+
+The demo has two deterministic, checked-in proposal→acceptance chains in
+`claimtrace/assessments/`. Both cite exact `/slope` and `/r2` values in `results/fit.json`:
+
+- `art:fit` has an accepted `supports_as_written` assessment for `claim:slope`. Both frames are
+  associational, so the accepted active relation is `supports`.
+- `art:fit` has an accepted `supports_narrower_claim` assessment for `hyp:linear`. The hypothesis
+  says polishing *causally* increases shininess, but this demo runs only an OLS association. The
+  inference-level mismatch stays visible and the accepted active relation is only `related`.
+
+There is deliberately no direct `supports` edge from `art:fit` to `hyp:linear`. The named demo agent
+and reviewer are synthetic actors that make the external-proposal/independent-review boundary
+visible; their acceptance records a judgement, not proof that the science is true.
+
+```bash
+claimtrace assessments --json       # current accepted leaves and live findings
+claimtrace assessments --all --json # proposals plus their immutable review decisions
+```
+
+For a new assessment, an external agent writes only `claim_id`, `result_ids`, and `agent_input`,
+then submits it with `claimtrace assess proposal.json --actor <agent-id>`. A separate actor reviews
+the returned content-addressed ID with:
+
+```bash
+claimtrace review assessment:sha256:<digest> --state accepted --actor <reviewer-id>
+```
+
+Claimtrace itself computes node/file hashes, resolves the exact evidence anchors, and derives the
+eligible relation. Edit `results/fit.json` after review and `claimtrace assessments` will mark both
+chains stale (and the exact anchors invalid); strict checking blocks until the evidence and reviews
+are brought back into alignment.
 
 ## See it catch drift
 
