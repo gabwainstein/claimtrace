@@ -8,13 +8,18 @@ claim rests on the fit. The graph in `claimtrace/graph.json` wires it all togeth
 
 ```bash
 cd examples/widget_study
-python analysis/01_clean.py      # data/raw_measurements.csv -> data/clean.csv
-python analysis/02_fit.py        # -> results/fit.json   (slope ~ 2.0, R2 ~ 0.99)
-python analysis/03_figure.py     # -> figures/fit.svg
+claimtrace run --input data/raw_measurements.csv --input analysis/01_clean.py \
+  --output data/clean.csv -- python analysis/01_clean.py
+claimtrace run --input data/clean.csv --input analysis/02_fit.py \
+  --output results/fit.json -- python analysis/02_fit.py
+claimtrace run --input data/clean.csv --input results/fit.json --input analysis/03_figure.py \
+  --output figures/fit.svg -- python analysis/03_figure.py
 
 claimtrace check        # OK — all paths exist, nothing stale, nothing on a retired branch
+claimtrace check --strict --json  # graph declarations reconcile with the run receipts
 claimtrace verify       # PASS — slope ≈ 2.0 and R2 > 0.9, read live from results/fit.json
 claimtrace snapshot     # lock figures/fit.svg's input hashes into a manifest
+claimtrace view --output research-map.html
 ```
 
 ## See it catch drift

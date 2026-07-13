@@ -34,3 +34,9 @@ Issues = "https://github.com/gabwainstein/claimtrace/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+claimtrace = ["templates/claimtrace-log/SKILL.md"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
