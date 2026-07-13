@@ -38,6 +38,12 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
     expected = canonical.read_text(encoding="utf-8")
     assert agents_source.read_text(encoding="utf-8") == expected
     assert claude_source.read_text(encoding="utf-8") == expected
+    assert "do not add a direct `supports` edge" in expected
+    assert "assess <proposal.json> --actor <agent-id> --json" in expected
+    assert "Never provide `mechanical_snapshot`, `derived`" in expected
+    assert '`provenance.agent` is required' in expected
+    assert 'never use the literal string `"not stated"`' in expected
+    assert '"rel": "supports"' not in expected
 
     assert main(["install-skill", "--dir", str(tmp_path)]) == 0
     agents = tmp_path / ".agents" / "skills" / "claimtrace-log" / "SKILL.md"

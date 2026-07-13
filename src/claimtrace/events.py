@@ -19,12 +19,9 @@ import tempfile
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-
-from . import __version__
-
 
 EVENT_SCHEMA = "claimtrace.event/1"
 ACTIVE_SCHEMA = "claimtrace.active-run/1"
@@ -58,6 +55,9 @@ CAPTURE_WRITE_ATTRIBUTION = {
 RUN_ID_RE = re.compile(r"^run:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 EVENT_ID_RE = re.compile(r"^event:sha256:([0-9a-f]{64})$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+RFC3339_UTC_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
+)
 GLOB_CHARS = set("*?[]")
 DEFAULT_IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".pytest_cache", ".mypy_cache", ".ruff_cache",
@@ -74,6 +74,8 @@ DEFAULT_SENSITIVE_FLAGS = {
     "--token", "--access-token", "--refresh-token", "--private-key",
 }
 _PROCESS_EVENT_LOCK = threading.Lock()
+_OUTPUT_THREAD_LOCKS_GUARD = threading.Lock()
+_OUTPUT_THREAD_LOCKS: dict[str, threading.Lock] = {}
 
 
 class EventError(RuntimeError):
@@ -96,6 +98,19 @@ def canonical_bytes(value) -> bytes:
 
 def canonical_sha256(value) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+
+def _validate_recorded_at(value) -> None:
+    if not isinstance(value, str) or not RFC3339_UTC_RE.fullmatch(value):
+        raise EventError("recorded_at must be a valid RFC 3339 UTC timestamp ending in Z")
+    try:
+        # ``fromisoformat`` validates calendar and clock ranges. The regular expression
+        # above deliberately limits the accepted offset spelling to RFC 3339's UTC ``Z``.
+        datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise EventError(
+            "recorded_at must be a valid RFC 3339 UTC timestamp ending in Z"
+        ) from exc
 
 
 def _strict_json(text: str, source: str):
@@ -331,8 +346,7 @@ def validate_event(event: dict) -> str:
         raise EventError(f"unsupported event type: {event['type']!r}")
     if not RUN_ID_RE.fullmatch(str(event["run_id"])):
         raise EventError(f"invalid run id: {event['run_id']!r}")
-    if not isinstance(event["recorded_at"], str) or not event["recorded_at"].endswith("Z"):
-        raise EventError("recorded_at must be a UTC ISO-8601 string ending in Z")
+    _validate_recorded_at(event["recorded_at"])
     if not isinstance(event["payload"], dict):
         raise EventError("event payload must be an object")
     _validate_event_payload(event["type"], event["payload"])
@@ -382,6 +396,80 @@ def _event_lock(path: Path, timeout: float = 30.0):
             else:
                 import fcntl
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _output_thread_lock(identity: str) -> threading.Lock:
+    with _OUTPUT_THREAD_LOCKS_GUARD:
+        return _OUTPUT_THREAD_LOCKS.setdefault(identity, threading.Lock())
+
+
+@contextmanager
+def _one_output_lock(identity: str, display: str, lock_root: Path, deadline: float):
+    """Hold one in-process and advisory cross-process output-path lock."""
+    thread_lock = _output_thread_lock(identity)
+    remaining = max(0.0, deadline - time.monotonic())
+    if not thread_lock.acquire(timeout=remaining):
+        raise EventError(f"timed out waiting for declared output lock: {display}")
+
+    handle = None
+    advisory_locked = False
+    try:
+        lock_name = hashlib.sha256(identity.encode("utf-8")).hexdigest() + ".lock"
+        handle = (lock_root / lock_name).open("a+b")
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        while True:
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                advisory_locked = True
+                break
+            except (OSError, BlockingIOError):
+                if time.monotonic() >= deadline:
+                    raise EventError(
+                        f"timed out waiting for declared output lock: {display}"
+                    )
+                time.sleep(0.02)
+        yield
+    finally:
+        try:
+            if advisory_locked and handle is not None:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            try:
+                if handle is not None:
+                    handle.close()
+            finally:
+                thread_lock.release()
+
+
+@contextmanager
+def _output_locks(declared_outputs, timeout: float = 30.0):
+    """Lock declared output paths in stable order for the complete receipt window."""
+    lock_root = Path(tempfile.gettempdir()) / "claimtrace-output-locks"
+    lock_root.mkdir(parents=True, exist_ok=True)
+    ordered = sorted(
+        (os.path.normcase(str(path.resolve(strict=False))), display)
+        for path, display in declared_outputs
+    )
+    deadline = time.monotonic() + timeout
+    with ExitStack() as stack:
+        for identity, display in ordered:
+            stack.enter_context(_one_output_lock(identity, display, lock_root, deadline))
+        yield
 
 
 def _event_path(events_path: Path, digest: str) -> Path:
@@ -895,7 +983,12 @@ def run_command(
     scan_writes: bool = True,
     redact_flags: list[str] | None = None,
 ) -> dict:
-    """Run a direct child and append content-addressed start/finish receipts."""
+    """Run a direct child and append content-addressed start/finish receipts.
+
+    Cooperative claimtrace runs that declare the same output are serialized across
+    threads and processes. Locks are path-scoped, so disjoint output sets can proceed
+    concurrently.
+    """
     if not command:
         raise EventError("a command is required after --")
     if bool(inputs) == bool(no_inputs):
@@ -915,6 +1008,38 @@ def run_command(
         identities = [os.path.normcase(str(path)) for path, _ in values]
         if len(identities) != len(set(identities)):
             raise EventError(f"duplicate declared {role} path")
+
+    with _output_locks(declared_outputs):
+        return _run_command_locked(
+            cfg,
+            command,
+            project_root=project_root,
+            run_cwd=run_cwd,
+            declared_inputs=declared_inputs,
+            declared_outputs=declared_outputs,
+            name=name,
+            parameters=parameters,
+            seeds=seeds,
+            scan_writes=scan_writes,
+            redact_flags=redact_flags,
+        )
+
+
+def _run_command_locked(
+    cfg,
+    command: list[str],
+    *,
+    project_root: Path,
+    run_cwd: Path,
+    declared_inputs,
+    declared_outputs,
+    name: str | None,
+    parameters: dict | None,
+    seeds: dict | None,
+    scan_writes: bool,
+    redact_flags: list[str] | None,
+) -> dict:
+    """Capture and finalize one run while all of its declared output locks are held."""
 
     input_before = _paired_snapshots(declared_inputs, "before")
     output_before = _paired_snapshots(declared_outputs, "before")

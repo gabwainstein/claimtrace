@@ -22,6 +22,15 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   and dead-end results, while rejecting missing receipts and incompatible successful-result status.
 - Package the `claimtrace-log` agent skill and add overwrite-safe `claimtrace install-skill` support
   for shared `.agents` and Claude project-local layouts.
+- Add immutable, content-addressed semantic assessments with schema-constrained external-agent
+  input, exact JSON/text evidence anchors, claimtrace-computed node and artifact snapshots, and
+  deterministic staleness, modality, alignment, and conflict findings.
+- Add `claimtrace assess`, `claimtrace assessments`, and `claimtrace review` for a proposal-to-
+  independent-review workflow, with accepted relations projected into strict reports and the
+  standalone trajectory view.
+- Add checked-in widget-study assessments showing accepted support for an associational claim and
+  an accepted `supports_narrower_claim` judgement that keeps causal language at `related` rather
+  than silently upgrading it to support.
 
 ### Fixed
 - Scope node backbones to named concepts when a graph has multiple independent canonical choices;
@@ -40,6 +49,13 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   complete or causally observed runtime coverage.
 - Warn when `null`, `dead_end`, or `retracted` evidence uses the positive-only `supports` relation.
 - Keep graph-level receipt findings inspectable in the standalone trajectory view.
+- Treat successful `unchanged` outputs as validation-only receipts: they never become the canonical
+  producing receipt, satisfy `NO_RUN_RECEIPT`, or hide drift in an earlier producing run's inputs.
+- Require strict RFC 3339 UTC event timestamps and serialize capture/finalization per output path
+  across threads and processes while allowing runs with disjoint outputs to proceed concurrently.
+- Revalidate single-result and independent-first-reviewer invariants from stored assessment chains,
+  suppress every active-looking semantic relation when store integrity fails, and serialize the
+  review leaf check with its append across threads and processes.
 
 ### Tests
 - Add regression coverage for multiple concepts, topological impact order, manifest completeness,
@@ -52,6 +68,9 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   explicit semantic run links, status/relation compatibility, and control-plane mutation.
 - Verify that the packaged skill matches both repository copies and that installation preserves
   differing project customizations unless `--force` is explicit.
+- Add adversarial semantic-assessment coverage for causal/associational mismatch, incomplete
+  alignment, invalid exact anchors, file and node drift, conflicts, immutable review chains, CLI
+  field rejection, and strict-report coverage policy.
 
 ### Migration
 - Render manifests are now required for a green `claimtrace check`. Existing projects must re-render
@@ -60,6 +79,9 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Strict checking now expects successful finalized receipts for current `render_types` and
   `run_output_types`. Existing projects remain compatible with bare `claimtrace check`; adopt
   `claimtrace run` before enabling the strict gate.
+- Semantic assessments are advisory by default. Projects that want strict coverage of direct
+  `supports` and `refutes` edges can add an `assessments` path and set `require_assessments` to `true` after their
+  existing links have been reviewed.
 
 ## 0.2.0
 

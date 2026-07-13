@@ -2,8 +2,10 @@
   "root": ".",
   "graph": "claimtrace/graph.json",
   "events": "claimtrace/events",
+  "assessments": "claimtrace/assessments",
   "verifiers": "claimtrace/verifiers.py",
   "render_types": ["figure"],
   "input_types": ["data", "artifact", "code"],
-  "run_output_types": ["artifact"]
+  "run_output_types": ["artifact"],
+  "require_assessments": true
 }

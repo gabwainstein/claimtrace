@@ -96,6 +96,126 @@ not create them.
 Annotations appear in `claimtrace journal` and `claimtrace node` but are skipped when computing
 dependents/ancestors, so they never create false staleness.
 
+## Semantic assessment documents
+
+Semantic assessments live under the configured `assessments` directory (default
+`claimtrace/assessments`). They are separate from `graph.json`: the graph records attributed
+dependencies, while an assessment records one external agent's structured interpretation of exact
+result evidence against one claim-like node. The assessment schema is
+`claimtrace.semantic-assessment/1`.
+
+An assessment subject contains one `claim_id` and, in schema v1, exactly one `result_id`. Multiple
+results require separate assessments; v1 deliberately avoids expanding a joint judgement into
+false per-result edges.
+Claim-like node types are `claim`, `hypothesis`, `prediction`, and `conclusion`; result-like node
+types are `artifact`, `figure`, `experiment`, and `data`.
+
+Each document has these top-level sections:
+
+| section | author and meaning |
+|---|---|
+| `id` | claimtrace-computed `assessment:sha256:<digest>` over the canonical document content excluding `id` |
+| `schema_version`, `recorded_at`, `subject` | schema identity, strict RFC 3339 UTC time, and exact assessed nodes |
+| `agent_input` | the external agent's schema-constrained semantic judgement |
+| `mechanical_snapshot` | claimtrace-computed node hashes, result-node hashes, artifact byte hashes, and anchor checks |
+| `review` | attributed state and optional predecessor; proposals and decisions are separate immutable documents |
+| `derived` | claimtrace-computed policy findings, proposed/active relation, effective state, and recorded staleness flag |
+
+The input to `claimtrace assess` must contain exactly `claim_id`, `result_ids`, and `agent_input`.
+It must not contain `mechanical_snapshot`, `derived`, `review`, or a preselected assessment ID.
+
+### External-agent input
+
+`agent_input` requires:
+
+- `verdict`: one of `supports_as_written`, `supports_narrower_claim`,
+  `contradicts_as_written`, `insufficient`, `ambiguous`, or `unrelated`;
+- `claim_frame` and `result_frame`: all eight explicit fields `population`, `exposure`, `comparator`,
+  `outcome`, `direction`, `magnitude`, `time_scope`, and `inference_level`; unavailable or
+  inapplicable non-inference values are represented by JSON `null` rather than omission;
+- `alignment`: every one of those eight dimensions, each set to `match`, `partial`, `mismatch`,
+  `not_stated`, or `not_applicable`;
+- `evidence_anchors`: at least one exact anchor, with every assessed result represented;
+- `rationale`: a concise explanation, plus a `limitations` list;
+- `provenance`: required `agent`, with optional `model`, `skill_version`, and `prompt_sha256`;
+- optional `recommended_claim`, which is required when the verdict is `supports_narrower_claim`.
+
+The allowed inference levels are `descriptive`, `associational`, `predictive`, `causal`,
+`mechanistic`, and `not_stated`. A causal or mechanistic claim frame paired with weaker result
+evidence is a deterministic modality mismatch. It can never yield `supports` as written. With a
+`supports_narrower_claim` verdict and otherwise valid evidence it can yield only `related`, while
+`contradicts_as_written` can yield `refutes` only for an explicit direction mismatch with adequate
+matching scope and modality elsewhere. Associational evidence cannot refute a causal claim.
+Predictive claims require predictive result evidence; causal claims require causal or mechanistic
+evidence; mechanistic claims require mechanistic evidence. A declared `match` that contradicts these
+rules is an `ALIGNMENT_INCONSISTENT` hard block.
+
+Evidence anchors are exact, not fuzzy citations:
+
+```json
+{ "result_id": "art:fit", "kind": "json_pointer", "pointer": "/slope", "expected_value": 2.0147 }
+```
+
+A `json_pointer` anchor compares the canonical JSON value at an RFC 6901 pointer with
+`expected_value`. A `text_lines` anchor instead supplies 1-based inclusive `start_line` and
+`end_line` plus `text_sha256`; claimtrace hashes the exact selected bytes, preserving line endings.
+An unresolved or changed anchor produces `EVIDENCE_ANCHOR_INVALID`.
+
+### Mechanical and derived fields
+
+Claimtrace snapshots the complete graph-node JSON for the claim and each result as SHA-256 node
+version IDs. For a result with a path, it also records the relative path, file SHA-256, byte size,
+and file version ID. Mechanical fields are structurally validated on load, and stored `derived`
+content is recomputed from the snapshot and compared exactly; an external agent cannot override
+either section.
+
+Listing or reporting reevaluates the stored document against the live graph, artifact bytes, and
+other accepted current assessments. A changed claim node, result node, or result artifact produces
+`ASSESSMENT_STALE`. Different accepted verdicts for the exact same claim/result subject produce
+`ASSESSMENT_CONTESTED`; an unreviewed proposal cannot deactivate an accepted relation. Store
+corruption, a missing predecessor, a branching chain, an invalid review transition, or a review that
+changes immutable subject/input/snapshot fields fails closed and suppresses all assessment-derived
+relations until repaired.
+
+### Review workflow
+
+`claimtrace assess ENTRY --actor ID` always appends a `proposed` document. An independent actor then
+uses `claimtrace review ASSESSMENT_ID --state accepted|rejected|contested|superseded --actor ID`.
+The review appends a new content-addressed document with `supersedes_assessment_id`; it never edits
+the proposal. Use `claimtrace assessments` for current leaves and `claimtrace assessments --all`
+for the complete chain.
+
+The first reviewer actor string must differ from the proposal actor string. These strings provide
+attribution, not authentication: the local JSON store has no signatures or access-control boundary.
+Use a protected or signed approval system when authorization rather than traceable attribution is
+required.
+
+Allowed state transitions are:
+
+- `proposed` to `accepted`, `rejected`, `contested`, or `superseded`;
+- `accepted` to `contested` or `superseded`;
+- `rejected` to `superseded`;
+- `contested` to `accepted`, `rejected`, or `superseded`;
+- `superseded` is terminal.
+
+Only a current, accepted, non-stale, non-conflicting assessment with an eligible derived relation
+creates an active relation in the report and visualization. `supports_as_written` activates
+`supports`; `supports_narrower_claim` activates `related`; `contradicts_as_written` activates
+`refutes`. Other verdicts record the judgement but do not create an active relation. Acceptance is
+an attributed review decision, not proof that the analysis is valid or the scientific claim is
+true.
+
+A direct `supports` or `refutes` edge in `graph.json` remains a declaration. With no current accepted
+assessment it emits `UNASSESSED_CLAIM_LINK`; an accepted but non-matching judgement emits
+`ASSESSED_CLAIM_LINK_MISMATCH`. Both are informational by default and become strict blockers when
+`require_assessments` is true. An accepted opposite-polarity relation emits the hard error
+`DECLARED_CLAIM_LINK_CONFLICT`. A narrower or negative assessment therefore records that the pair
+was reviewed without validating a direct support edge as written.
+
+Assessment staleness covers the exact claim node, result node, and result artifact bytes. It does
+not snapshot the entire upstream provenance closure, graph concepts, or surrounding edges; graph
+and receipt checks cover those declarations separately.
+
 ## What `claimtrace check` enforces
 
 | signal | meaning |
@@ -217,7 +337,7 @@ event directory has no independently anchored head, so deleting complete start/f
 detectable from that directory alone. Commit it to Git or use an external ledger commitment when
 deletion evidence is required.
 
-## Config: render, input, receipt, and event types
+## Config: render, input, receipt, event, and assessment policy
 
 In `claimtrace.config.json`, `render_types` (default `["figure"]`) are the node types whose
 staleness is checked, and `input_types` (default `["data", "artifact", "code"]`) are the types that
@@ -226,3 +346,10 @@ nodes differently (e.g. `render_types: ["report", "table"]`) so staleness is not
 `run_output_types` (default `["artifact"]`) adds non-render materialized types that need successful
 run receipts under strict checking. `events` (default `claimtrace/events`) selects the local
 event-ledger directory.
+
+`assessments` (default `claimtrace/assessments`) selects the content-addressed semantic-assessment
+store. `require_assessments` defaults to `false`; when `true`, a direct active `supports` or
+`refutes` graph edge without matching current accepted coverage becomes a strict-check blocker.
+This policy does not
+turn an accepted assessment into scientific truth; it only requires that the attributed semantic
+review exists and remains grounded to the current nodes and artifact bytes.
