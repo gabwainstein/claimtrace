@@ -1,0 +1,5 @@
+# Normalize all text files to LF in the repository (consistent across Windows/macOS/Linux).
+# The git hook (hooks/pre-commit) is a POSIX shell script and must stay LF.
+* text=auto eol=lf
+*.png binary
+*.svg text eol=lf
