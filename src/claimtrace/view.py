@@ -138,6 +138,7 @@ def _assessment_view_record(item, raw_nodes, *, allow_active_relations=True):
         })
     return {
         "id": item.get("id"),
+        "schema_version": item.get("schema_version"),
         "recorded_at": item.get("recorded_at"),
         "subject": {"claim_id": claim_id, "result_ids": result_ids},
         "claim": {
@@ -265,7 +266,7 @@ def _derivation_view_record(item, raw_nodes, *, allow_active_proofs=True):
     }
 
 
-def _build_payload(report):
+def _build_payload(report, layout_id):
     graph = report.get("graph") or {}
     raw_nodes = {item["id"]: item for item in graph.get("nodes", [])}
     order = _semantic_order(graph)
@@ -489,6 +490,10 @@ def _build_payload(report):
         (item.get("from"), item.get("to"), item.get("declared_relation")): item
         for item in assessment_projection.get("declared_links") or []
     }
+    required_dependency_records = {
+        (item.get("from"), item.get("to"), item.get("declared_relation")): item
+        for item in assessment_projection.get("required_dependencies") or []
+    }
     claim_links_by_node = defaultdict(list)
     for edge in graph.get("edges", []):
         if edge.get("rel") not in {"supports", "refutes"}:
@@ -500,6 +505,11 @@ def _build_payload(report):
         }
         link = copy.deepcopy(record)
         for node_id in key[:2]:
+            if node_id in raw_nodes:
+                claim_links_by_node[node_id].append(link)
+    for record in required_dependency_records.values():
+        link = copy.deepcopy(record)
+        for node_id in (record.get("from"), record.get("to")):
             if node_id in raw_nodes:
                 claim_links_by_node[node_id].append(link)
 
@@ -742,6 +752,12 @@ def _build_payload(report):
             }.get(assessment_state, assessment_state.replace("_", " "))
             declaration_label = "support" if relation == "supports" else "refutation"
             relation = f"declared {declaration_label} · {state_label}"
+        elif relation == "derives_from":
+            record = required_dependency_records.get((
+                edge.get("from"), edge.get("to"), relation,
+            ))
+            if record:
+                assessment_state = record.get("status", "unassessed")
         if dependency:
             source, target = _dependency_direction(edge)
         edges.append({
@@ -925,6 +941,7 @@ def _build_payload(report):
     summary = report.get("summary") or {}
     return {
         "schema": "claimtrace.view/3",
+        "layout_id": layout_id,
         "scope": report.get("scope") or {},
         "assessment_integrity": assessment_integrity or "unknown",
         "derivation_integrity": derivation_integrity or "unknown",
@@ -1090,22 +1107,84 @@ select {
   padding: 7px 9px;
   font: inherit;
 }
+button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover { border-color: var(--selected); }
+button:focus-visible, select:focus-visible {
+  outline: 3px solid var(--selected);
+  outline-offset: 2px;
+}
+button:disabled { cursor: not-allowed; opacity: .48; }
+.move-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.move-controls button {
+  min-width: 34px;
+  padding: 7px 8px;
+}
+.layout-help {
+  align-self: center;
+  max-width: 560px;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.35;
+}
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 520px);
   gap: 16px;
   align-items: start;
 }
+.graph-panel { position: relative; min-width: 0; }
 .graph-scroll {
   overflow: auto;
+  height: clamp(420px, 68vh, 760px);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
+  overscroll-behavior: contain;
+  cursor: grab;
 }
 #trajectory {
   display: block;
-  min-width: 100%;
+  cursor: grab;
+  touch-action: none;
 }
+.graph-scroll.ct-panning,
+.graph-scroll.ct-panning #trajectory {
+  cursor: grabbing;
+  user-select: none;
+}
+.viewport-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .24);
+}
+.viewport-controls button {
+  min-width: 34px;
+  padding: 7px 9px;
+}
+#zoom-reset { min-width: 58px; font-variant-numeric: tabular-nums; }
+#viewport-fit { min-width: 42px; }
 .details {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1174,7 +1253,40 @@ select {
 .swatch.artifact { background: var(--artifact); }
 .swatch.claim { background: var(--claim); }
 .ct-layer-label { fill: var(--muted); font-size: 12px; font-weight: 600; }
-.ct-edge { fill: none; stroke: var(--edge); stroke-width: 1.5; opacity: .7; }
+.ct-edge-group { transition: opacity .12s ease; }
+.ct-edge {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .7;
+  pointer-events: none;
+}
+.ct-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.ct-edge-group:hover .ct-edge,
+.ct-edge-group:focus .ct-edge,
+.ct-edge-group:focus-within .ct-edge { opacity: 1; stroke-width: 2.5px; }
+.ct-edge-group:focus { outline: none; }
+.ct-edge-group.ct-edge-selected { opacity: 1 !important; }
+.ct-edge-group.ct-edge-selected .ct-edge {
+  stroke: var(--selected) !important;
+  stroke-width: 3px !important;
+  opacity: 1;
+}
+.ct-edge-group.ct-edge-selected .ct-edge-label {
+  fill: var(--selected);
+  font-weight: 700;
+}
 .ct-edge-dependency { stroke: var(--dependency); }
 .ct-edge-annotation { stroke: var(--annotation); stroke-dasharray: 3 5; }
 .ct-edge-receipt { stroke: var(--receipt); stroke-dasharray: 8 5; stroke-width: 2; }
@@ -1185,8 +1297,26 @@ select {
 .ct-edge-state-covered { stroke: var(--downstream); stroke-width: 2.4; }
 .ct-edge-state-assessed-conflict,
 .ct-edge-state-contested { stroke: var(--danger); stroke-dasharray: 2 4; stroke-width: 2.4; }
-.ct-edge-label { fill: var(--muted); font-size: 10px; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
-.ct-node { cursor: pointer; transition: opacity .12s ease; }
+.ct-edge-label {
+  fill: var(--muted);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  cursor: pointer;
+}
+.ct-node {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: opacity .12s ease;
+}
+.ct-node.ct-dragging { cursor: grabbing; }
+.ct-node.ct-dragging :is(rect, polygon) {
+  stroke: var(--selected) !important;
+  stroke-width: 4px !important;
+}
+.ct-manual-layout .ct-layer-label { opacity: .46; }
 .ct-node rect, .ct-node polygon { stroke: var(--border); stroke-width: 1.5; }
 .ct-node text { pointer-events: none; fill: var(--text); }
 .ct-node .ct-title { font-size: 13px; font-weight: 650; }
@@ -1234,6 +1364,9 @@ select {
 .ct-ancestor :is(rect, polygon) { stroke: var(--upstream) !important; stroke-width: 3px !important; }
 .ct-descendant { opacity: 1 !important; }
 .ct-descendant :is(rect, polygon) { stroke: var(--downstream) !important; stroke-width: 3px !important; }
+.ct-edge-source, .ct-edge-target { opacity: 1 !important; }
+.ct-edge-source :is(rect, polygon) { stroke: var(--upstream) !important; stroke-width: 4px !important; }
+.ct-edge-target :is(rect, polygon) { stroke: var(--downstream) !important; stroke-width: 4px !important; }
 .ct-edge.ct-related { opacity: 1; stroke-width: 2.7; }
 .ct-edge.ct-upstream { stroke: var(--upstream); }
 .ct-edge.ct-downstream { stroke: var(--downstream); }
@@ -1260,33 +1393,57 @@ select {
     <label for="focus-select">Focus
       <select id="focus-select"><option value="">Choose a node or run</option></select>
     </label>
+    <label for="edge-select">Relationship
+      <select id="edge-select"><option value="">Choose an edge</option></select>
+    </label>
+    <span class="move-controls" role="group" aria-label="Move focused node">
+      <button id="move-left" type="button" aria-label="Move focused node left" title="Move left" disabled>←</button>
+      <button id="move-up" type="button" aria-label="Move focused node up" title="Move up" disabled>↑</button>
+      <button id="move-down" type="button" aria-label="Move focused node down" title="Move down" disabled>↓</button>
+      <button id="move-right" type="button" aria-label="Move focused node right" title="Move right" disabled>→</button>
+    </span>
+    <button id="layout-reset" type="button">Auto-arrange</button>
+    <span id="layout-status" class="layout-help" role="status" aria-live="polite">
+      Wheel to zoom; drag empty background to pan; drag nodes to rearrange them; click an edge to inspect it. Node positions are browser-local and visual only; the graph, provenance, and logical layers do not change.
+    </span>
   </div>
   <div class="workspace">
-    <div class="graph-scroll">
-      <svg id="trajectory" role="img" aria-labelledby="trajectory-title trajectory-description">
-        <title id="trajectory-title">Claimtrace research trajectory</title>
-        <desc id="trajectory-description">A deterministic layered graph of declared semantic lineage, conditional symbolic proofs, semantic reviews, and partial mechanical run receipts.</desc>
-        <defs>
-          <marker id="arrow-dependency" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 z" fill="var(--dependency)"></path>
+    <div class="graph-panel">
+      <div class="graph-scroll" role="region" tabindex="0" aria-label="Research trajectory canvas. Use the mouse wheel to zoom and drag empty background to pan." aria-describedby="layout-status">
+        <svg id="trajectory" role="img" preserveAspectRatio="xMinYMin meet" aria-labelledby="trajectory-title trajectory-description">
+          <title id="trajectory-title">Claimtrace research trajectory</title>
+          <desc id="trajectory-description">A deterministic layered graph of declared semantic lineage, conditional symbolic proofs, semantic reviews, and partial mechanical run receipts.</desc>
+          <defs>
+          <marker id="arrow-dependency" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--dependency)"></path>
           </marker>
-          <marker id="arrow-annotation" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 z" fill="var(--annotation)"></path>
+          <marker id="arrow-annotation" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--annotation)"></path>
           </marker>
-          <marker id="arrow-receipt" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 z" fill="var(--receipt)"></path>
+          <marker id="arrow-receipt" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--receipt)"></path>
           </marker>
-          <marker id="arrow-assessment" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 z" fill="var(--annotation)"></path>
+          <marker id="arrow-assessment" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--annotation)"></path>
           </marker>
-          <marker id="arrow-proof" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 z" fill="var(--dependency)"></path>
+          <marker id="arrow-proof" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--dependency)"></path>
           </marker>
-        </defs>
-        <g id="layer-labels"></g>
-        <g id="edge-layer"></g>
-        <g id="node-layer"></g>
-      </svg>
+          <marker id="arrow-selected" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--selected)"></path>
+          </marker>
+          </defs>
+          <g id="layer-labels"></g>
+          <g id="edge-layer"></g>
+          <g id="node-layer"></g>
+        </svg>
+      </div>
+      <div class="viewport-controls" role="group" aria-label="Graph view controls">
+        <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
+        <button id="zoom-reset" type="button" aria-label="Reset zoom to 100%" title="Reset zoom to 100%">100%</button>
+        <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+        <button id="viewport-fit" type="button" aria-label="Fit graph in view" title="Fit graph in view">Fit</button>
+      </div>
     </div>
     <aside class="details" role="region" aria-live="polite" aria-labelledby="detail-title">
       <h2 id="detail-title">Trajectory overview</h2>
@@ -1325,12 +1482,29 @@ _HTML_SCRIPT = """
   const labelLayer = document.getElementById("layer-labels");
   const layerSelect = document.getElementById("layer-select");
   const focusSelect = document.getElementById("focus-select");
+  const edgeSelect = document.getElementById("edge-select");
   const graphScroll = document.querySelector(".graph-scroll");
+  const zoomOutButton = document.getElementById("zoom-out");
+  const zoomResetButton = document.getElementById("zoom-reset");
+  const zoomInButton = document.getElementById("zoom-in");
+  const viewportFitButton = document.getElementById("viewport-fit");
+  const layoutReset = document.getElementById("layout-reset");
+  const layoutStatus = document.getElementById("layout-status");
+  const moveButtons = {
+    left: document.getElementById("move-left"),
+    up: document.getElementById("move-up"),
+    down: document.getElementById("move-down"),
+    right: document.getElementById("move-right")
+  };
   const detailTitle = document.getElementById("detail-title");
   const detailContent = document.getElementById("detail-content");
   const assessmentControl = document.getElementById("assessment-control");
   const assessmentSelect = document.getElementById("assessment-select");
   const nodes = new Map(data.nodes.map(function (node) { return [node.key, node]; }));
+  const edges = new Map(data.edges.map(function (edge) { return [edge.key, edge]; }));
+  const defaultPositions = new Map(data.nodes.map(function (node) {
+    return [node.key, {x: node.x, y: node.y}];
+  }));
   const assessments = new Map((data.assessments || []).map(function (item) {
     return [item.id, item];
   }));
@@ -1338,8 +1512,38 @@ _HTML_SCRIPT = """
   const edgeElements = new Map();
   const outgoing = new Map();
   const incoming = new Map();
+  const baseCanvasWidth = Number(data.width) || 640;
+  const baseCanvasHeight = Number(data.height) || 480;
+  const canvasPadding = 48;
+  const minimumCoordinate = 12;
+  const maximumCanvasWidth = baseCanvasWidth + Math.max(
+    4096, Math.min(16384, baseCanvasWidth * 2)
+  );
+  const maximumCanvasHeight = baseCanvasHeight + Math.max(
+    4096, Math.min(16384, baseCanvasHeight * 2)
+  );
+  const dragThreshold = 4;
+  const routingClearance = 10;
+  const nodeSeparation = routingClearance * 2 + 2;
+  const routingBendPenalty = 28;
+  const routingCongestionPenalty = 64;
+  const routingLaneSeparation = 20;
+  const edgeApproachLength = 20;
+  const edgeArrowGap = 5;
+  const edgeCornerRadius = 8;
+  const minimumViewportZoom = 0.25;
+  const maximumViewportZoom = 3;
+  const viewportZoomStep = 1.2;
+  const layoutStorageKey = "claimtrace.layout.v1." + stableHash(
+    data.schema + "|" + data.layout_id + "|" + window.location.pathname
+  );
   let selected = null;
+  let selectedEdge = null;
   let selectedAssessment = null;
+  let dragState = null;
+  let panState = null;
+  let viewportZoom = 1;
+  let suppressClickKey = null;
 
   function svgElement(tag, attributes, text) {
     const element = document.createElementNS(NS, tag);
@@ -1376,6 +1580,1079 @@ _HTML_SCRIPT = """
     map.get(key).push(value);
   }
 
+  function stableHash(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function boundedCoordinate(value, size, maximumCanvasDimension) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    const upper = Math.max(
+      minimumCoordinate, maximumCanvasDimension - size - canvasPadding
+    );
+    return Math.min(upper, Math.max(minimumCoordinate, Math.round(value)));
+  }
+
+  function setManualLayout(active) {
+    svg.classList.toggle("ct-manual-layout", Boolean(active));
+  }
+
+  function rectanglesOverlap(left, right, gap) {
+    return left.x < right.x + right.width + gap &&
+      left.x + left.width + gap > right.x &&
+      left.y < right.y + right.height + gap &&
+      left.y + left.height + gap > right.y;
+  }
+
+  function proposedLayoutOverlaps(proposed) {
+    const items = data.nodes.map(function (node) {
+      const position = proposed.get(node.key) || node;
+      return {
+        key: node.key, x: position.x, y: position.y,
+        width: node.width, height: node.height
+      };
+    });
+    for (let left = 0; left < items.length; left += 1) {
+      for (let right = left + 1; right < items.length; right += 1) {
+        if (rectanglesOverlap(items[left], items[right], nodeSeparation)) return true;
+      }
+    }
+    return false;
+  }
+
+  function nodePositionOverlaps(key, x, y) {
+    const node = nodes.get(key);
+    if (!node) return true;
+    const candidate = {x: x, y: y, width: node.width, height: node.height};
+    let overlaps = false;
+    nodes.forEach(function (other, otherKey) {
+      if (!overlaps && otherKey !== key &&
+          rectanglesOverlap(candidate, other, nodeSeparation)) overlaps = true;
+    });
+    return overlaps;
+  }
+
+  function restoreSavedLayout() {
+    let raw;
+    try {
+      raw = window.localStorage.getItem(layoutStorageKey);
+    } catch (error) {
+      return "unavailable";
+    }
+    if (raw === null) return "none";
+    let saved;
+    try {
+      saved = JSON.parse(raw);
+    } catch (error) {
+      return "invalid";
+    }
+    if (!saved || saved.version !== 1 || saved.layout_id !== data.layout_id ||
+        !saved.positions ||
+        typeof saved.positions !== "object" || Array.isArray(saved.positions)) {
+      return "invalid";
+    }
+    const proposed = new Map();
+    nodes.forEach(function (node, key) {
+      if (!Object.prototype.hasOwnProperty.call(saved.positions, key)) return;
+      const position = saved.positions[key];
+      if (!position || typeof position !== "object" || Array.isArray(position)) return;
+      const x = boundedCoordinate(position.x, node.width, maximumCanvasWidth);
+      const y = boundedCoordinate(position.y, node.height, maximumCanvasHeight);
+      if (x === null || y === null) return;
+      proposed.set(key, {x: x, y: y});
+    });
+    if (!proposed.size || proposedLayoutOverlaps(proposed)) return "invalid";
+    proposed.forEach(function (position, key) {
+      const node = nodes.get(key);
+      node.x = position.x;
+      node.y = position.y;
+    });
+    return "restored";
+  }
+
+  function saveLayout(action) {
+    const positions = Object.create(null);
+    nodes.forEach(function (node, key) {
+      positions[key] = {x: Math.round(node.x), y: Math.round(node.y)};
+    });
+    setManualLayout(true);
+    try {
+      window.localStorage.setItem(layoutStorageKey, JSON.stringify({
+        version: 1,
+        layout_id: data.layout_id,
+        positions: positions
+      }));
+      layoutStatus.textContent = action +
+        " Saved in this browser; the graph, provenance, and logical layers are unchanged.";
+      return true;
+    } catch (error) {
+      layoutStatus.textContent = action +
+        " Browser storage is unavailable, so this arrangement lasts only for this page. The graph and provenance are unchanged.";
+      return false;
+    }
+  }
+
+  function viewportClientCenter() {
+    const rectangle = graphScroll.getBoundingClientRect();
+    return {
+      x: rectangle.left + graphScroll.clientLeft + graphScroll.clientWidth / 2,
+      y: rectangle.top + graphScroll.clientTop + graphScroll.clientHeight / 2
+    };
+  }
+
+  function updateZoomControls() {
+    const percentage = Math.round(viewportZoom * 100) + "%";
+    zoomResetButton.textContent = percentage;
+    zoomResetButton.setAttribute(
+      "aria-label", "Reset zoom to 100%. Current zoom " + percentage
+    );
+    zoomResetButton.title = "Reset zoom to 100% (currently " + percentage + ")";
+    zoomOutButton.disabled = viewportZoom <= minimumViewportZoom;
+    zoomInButton.disabled = viewportZoom >= maximumViewportZoom;
+  }
+
+  function applyZoomDimensions() {
+    const width = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const height = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    svg.style.width = Math.max(1, width * viewportZoom) + "px";
+    svg.style.height = Math.max(1, height * viewportZoom) + "px";
+    updateZoomControls();
+  }
+
+  function setViewportZoom(value, clientX, clientY) {
+    if (dragState || panState || !Number.isFinite(value)) return false;
+    const nextZoom = Math.round(Math.min(
+      maximumViewportZoom, Math.max(minimumViewportZoom, value)
+    ) * 10000) / 10000;
+    if (nextZoom === viewportZoom) return false;
+    const anchor = svgPoint({clientX: clientX, clientY: clientY});
+    viewportZoom = nextZoom;
+    applyZoomDimensions();
+    if (anchor) {
+      const matrix = svg.getScreenCTM();
+      if (matrix) {
+        const point = svg.createSVGPoint();
+        point.x = anchor.x;
+        point.y = anchor.y;
+        const transformed = point.matrixTransform(matrix);
+        graphScroll.scrollLeft += transformed.x - clientX;
+        graphScroll.scrollTop += transformed.y - clientY;
+      }
+    }
+    return true;
+  }
+
+  function zoomViewportBy(factor) {
+    const center = viewportClientCenter();
+    return setViewportZoom(
+      viewportZoom * factor, center.x, center.y
+    );
+  }
+
+  function fitViewport() {
+    if (dragState || panState) return false;
+    const width = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const height = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    const availableWidth = Math.max(1, graphScroll.clientWidth - 24);
+    const availableHeight = Math.max(1, graphScroll.clientHeight - 24);
+    viewportZoom = Math.round(Math.min(
+      maximumViewportZoom,
+      Math.max(minimumViewportZoom, Math.min(
+        availableWidth / width, availableHeight / height
+      ))
+    ) * 10000) / 10000;
+    applyZoomDimensions();
+    graphScroll.scrollLeft = 0;
+    graphScroll.scrollTop = 0;
+    return true;
+  }
+
+  function updateCanvasSize() {
+    let width = baseCanvasWidth;
+    let height = baseCanvasHeight;
+    nodes.forEach(function (node) {
+      width = Math.max(width, node.x + node.width + canvasPadding);
+      height = Math.max(height, node.y + node.height + canvasPadding);
+    });
+    width = Math.min(maximumCanvasWidth, Math.ceil(width));
+    height = Math.min(maximumCanvasHeight, Math.ceil(height));
+    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    applyZoomDimensions();
+  }
+
+  function prepareDragCanvas(node) {
+    const currentWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const currentHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    const width = Math.min(
+      maximumCanvasWidth,
+      Math.max(currentWidth, node.x + node.width + canvasPadding + 512)
+    );
+    const height = Math.min(
+      maximumCanvasHeight,
+      Math.max(currentHeight, node.y + node.height + canvasPadding + 384)
+    );
+    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    applyZoomDimensions();
+  }
+
+  function pointKey(point) {
+    return point.x + "|" + point.y;
+  }
+
+  function samePoint(left, right) {
+    return left.x === right.x && left.y === right.y;
+  }
+
+  function appendRoutePoint(points, point) {
+    const clean = {x: point.x, y: point.y};
+    if (!points.length || !samePoint(points[points.length - 1], clean)) points.push(clean);
+  }
+
+  function simplifyRoute(points) {
+    const simplified = [];
+    points.forEach(function (point) {
+      appendRoutePoint(simplified, point);
+      while (simplified.length >= 3) {
+        const first = simplified[simplified.length - 3];
+        const middle = simplified[simplified.length - 2];
+        const last = simplified[simplified.length - 1];
+        if ((first.x === middle.x && middle.x === last.x) ||
+            (first.y === middle.y && middle.y === last.y)) {
+          simplified.splice(simplified.length - 2, 1);
+        } else {
+          break;
+        }
+      }
+    });
+    return simplified;
+  }
+
+  function clearEscapeDistance(node, side, coordinate, desiredDistance) {
+    let available = desiredDistance;
+    nodes.forEach(function (other) {
+      if (other === node) return;
+      if (side === "left" || side === "right") {
+        if (coordinate <= other.y - routingClearance ||
+            coordinate >= other.y + other.height + routingClearance) return;
+        const anchor = side === "left" ? node.x : node.x + node.width;
+        const boundary = side === "left"
+          ? other.x + other.width + routingClearance
+          : other.x - routingClearance;
+        const distance = side === "left" ? anchor - boundary : boundary - anchor;
+        if (distance >= 0) available = Math.min(available, distance);
+        return;
+      }
+      if (coordinate <= other.x - routingClearance ||
+          coordinate >= other.x + other.width + routingClearance) return;
+      const anchor = side === "top" ? node.y : node.y + node.height;
+      const boundary = side === "top"
+        ? other.y + other.height + routingClearance
+        : other.y - routingClearance;
+      const distance = side === "top" ? anchor - boundary : boundary - anchor;
+      if (distance >= 0) available = Math.min(available, distance);
+    });
+    return Math.max(routingClearance, available);
+  }
+
+  function portFor(node, side, laneOffset, escapeOffset) {
+    const sideInset = 14;
+    const desiredEscape = Math.min(
+      canvasPadding - 2, edgeApproachLength + (escapeOffset || 0)
+    );
+    if (side === "left" || side === "right") {
+      const y = Math.max(
+        node.y + sideInset,
+        Math.min(node.y + node.height - sideInset,
+          node.y + node.height / 2 + laneOffset)
+      );
+      const anchorX = side === "left" ? node.x : node.x + node.width;
+      const direction = side === "left" ? -1 : 1;
+      const escapeDistance = clearEscapeDistance(
+        node, side, y, desiredEscape
+      );
+      return {
+        anchor: {x: anchorX, y: y},
+        tip: {x: anchorX + direction * edgeArrowGap, y: y},
+        escape: {
+          x: side === "left" ? Math.max(2, anchorX - escapeDistance)
+            : anchorX + escapeDistance,
+          y: y
+        }
+      };
+    }
+    const x = Math.max(
+      node.x + sideInset,
+      Math.min(node.x + node.width - sideInset,
+        node.x + node.width / 2 + laneOffset)
+    );
+    const anchorY = side === "top" ? node.y : node.y + node.height;
+    const direction = side === "top" ? -1 : 1;
+    const escapeDistance = clearEscapeDistance(
+      node, side, x, desiredEscape
+    );
+    return {
+      anchor: {x: x, y: anchorY},
+      tip: {x: x, y: anchorY + direction * edgeArrowGap},
+      escape: {
+        x: x,
+        y: side === "top" ? Math.max(2, anchorY - escapeDistance)
+          : anchorY + escapeDistance
+      }
+    };
+  }
+
+  function edgePortSides(edge) {
+    const source = nodes.get(edge.source);
+    const target = nodes.get(edge.target);
+    if (!source || !target) return null;
+    if (source === target) {
+      return {source: "right", target: "top"};
+    }
+    const deltaX = target.x + target.width / 2 - (source.x + source.width / 2);
+    const deltaY = target.y + target.height / 2 - (source.y + source.height / 2);
+    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+      return deltaX >= 0
+        ? {source: "right", target: "left"}
+        : {source: "left", target: "right"};
+    }
+    return deltaY >= 0
+      ? {source: "bottom", target: "top"}
+      : {source: "top", target: "bottom"};
+  }
+
+  function buildEdgePorts() {
+    const assignments = new Map();
+    const groups = new Map();
+    data.edges.slice().sort(function (left, right) {
+      return left.key.localeCompare(right.key);
+    }).forEach(function (edge) {
+      const sides = edgePortSides(edge);
+      if (!sides) return;
+      assignments.set(edge.key, {sides: sides});
+      [
+        {role: "source", nodeKey: edge.source, side: sides.source},
+        {role: "target", nodeKey: edge.target, side: sides.target}
+      ].forEach(function (endpoint) {
+        const groupKey = endpoint.nodeKey + "|" + endpoint.side;
+        if (!groups.has(groupKey)) groups.set(groupKey, []);
+        groups.get(groupKey).push({edgeKey: edge.key, role: endpoint.role});
+      });
+    });
+    groups.forEach(function (items, groupKey) {
+      items.sort(function (left, right) {
+        return left.edgeKey.localeCompare(right.edgeKey) ||
+          left.role.localeCompare(right.role);
+      });
+      const separator = groupKey.lastIndexOf("|");
+      const nodeKey = groupKey.slice(0, separator);
+      const side = groupKey.slice(separator + 1);
+      const node = nodes.get(nodeKey);
+      if (!node) return;
+      const sideInset = 14;
+      const span = side === "left" || side === "right"
+        ? Math.max(0, node.height - sideInset * 2)
+        : Math.max(0, node.width - sideInset * 2);
+      const spacing = items.length > 1
+        ? Math.min(routingLaneSeparation, span / (items.length - 1)) : 0;
+      const escapeSpacing = items.length > 1
+        ? Math.min(14, 56 / (items.length - 1)) : 0;
+      items.forEach(function (item, index) {
+        const offset = (index - (items.length - 1) / 2) * spacing;
+        const assignment = assignments.get(item.edgeKey);
+        assignment[item.role] = portFor(
+          node, side, offset, index * escapeSpacing
+        );
+      });
+    });
+    const ports = new Map();
+    assignments.forEach(function (assignment, edgeKey) {
+      if (assignment.source && assignment.target) {
+        ports.set(edgeKey, {
+          source: assignment.source,
+          target: assignment.target
+        });
+      }
+    });
+    return ports;
+  }
+
+  function routingObstacles() {
+    const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    return data.nodes.map(function (node) {
+      return {
+        key: node.key,
+        left: Math.max(2, node.x - routingClearance),
+        right: Math.min(canvasWidth - 2, node.x + node.width + routingClearance),
+        top: Math.max(2, node.y - routingClearance),
+        bottom: Math.min(canvasHeight - 2, node.y + node.height + routingClearance)
+      };
+    });
+  }
+
+  function pointInsideObstacle(point, obstacles) {
+    return obstacles.some(function (obstacle) {
+      return point.x > obstacle.left && point.x < obstacle.right &&
+        point.y > obstacle.top && point.y < obstacle.bottom;
+    });
+  }
+
+  function segmentBlocked(left, right, obstacles) {
+    if (left.x === right.x) {
+      const low = Math.min(left.y, right.y);
+      const high = Math.max(left.y, right.y);
+      return obstacles.some(function (obstacle) {
+        return left.x > obstacle.left && left.x < obstacle.right &&
+          high > obstacle.top && low < obstacle.bottom;
+      });
+    }
+    if (left.y === right.y) {
+      const low = Math.min(left.x, right.x);
+      const high = Math.max(left.x, right.x);
+      return obstacles.some(function (obstacle) {
+        return left.y > obstacle.top && left.y < obstacle.bottom &&
+          high > obstacle.left && low < obstacle.right;
+      });
+    }
+    return true;
+  }
+
+  function addRoutingNeighbor(neighbors, left, right, direction, obstacles) {
+    if (segmentBlocked(left, right, obstacles)) return;
+    const leftKey = pointKey(left);
+    const rightKey = pointKey(right);
+    const length = Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+    if (!length) return;
+    if (!neighbors.has(leftKey)) neighbors.set(leftKey, []);
+    if (!neighbors.has(rightKey)) neighbors.set(rightKey, []);
+    neighbors.get(leftKey).push({key: rightKey, direction: direction, length: length});
+    neighbors.get(rightKey).push({key: leftKey, direction: direction, length: length});
+  }
+
+  function nearbySegmentUsage(left, right, usedSegments) {
+    const horizontal = left.y === right.y;
+    const low = horizontal
+      ? Math.min(left.x, right.x) : Math.min(left.y, right.y);
+    const high = horizontal
+      ? Math.max(left.x, right.x) : Math.max(left.y, right.y);
+    let usage = 0;
+    usedSegments.forEach(function (segment) {
+      const segmentHorizontal = segment.left.y === segment.right.y;
+      if (horizontal !== segmentHorizontal) return;
+      const distance = horizontal
+        ? Math.abs(left.y - segment.left.y)
+        : Math.abs(left.x - segment.left.x);
+      if (distance >= routingLaneSeparation) return;
+      const segmentLow = horizontal
+        ? Math.min(segment.left.x, segment.right.x)
+        : Math.min(segment.left.y, segment.right.y);
+      const segmentHigh = horizontal
+        ? Math.max(segment.left.x, segment.right.x)
+        : Math.max(segment.left.y, segment.right.y);
+      if (Math.min(high, segmentHigh) > Math.max(low, segmentLow)) usage += 1;
+    });
+    return usage;
+  }
+
+  function buildRoutingContext() {
+    const obstacles = routingObstacles();
+    const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    const xValues = new Set([2, canvasWidth - 2]);
+    const yValues = new Set([2, canvasHeight - 2]);
+    const ports = buildEdgePorts();
+    obstacles.forEach(function (obstacle) {
+      xValues.add(obstacle.left);
+      xValues.add(obstacle.right);
+      yValues.add(obstacle.top);
+      yValues.add(obstacle.bottom);
+    });
+    ports.forEach(function (pair) {
+      [pair.source.escape, pair.target.escape].forEach(function (point) {
+        xValues.add(point.x);
+        yValues.add(point.y);
+      });
+    });
+    const xs = Array.from(xValues).sort(function (left, right) { return left - right; });
+    const ys = Array.from(yValues).sort(function (left, right) { return left - right; });
+    const points = new Map();
+    const rows = new Map();
+    const columns = new Map();
+    ys.forEach(function (y) {
+      xs.forEach(function (x) {
+        const point = {x: x, y: y};
+        if (pointInsideObstacle(point, obstacles)) return;
+        const key = pointKey(point);
+        points.set(key, point);
+        if (!rows.has(y)) rows.set(y, []);
+        if (!columns.has(x)) columns.set(x, []);
+        rows.get(y).push(point);
+        columns.get(x).push(point);
+      });
+    });
+    const neighbors = new Map();
+    rows.forEach(function (row) {
+      row.sort(function (left, right) { return left.x - right.x; });
+      for (let index = 1; index < row.length; index += 1) {
+        addRoutingNeighbor(neighbors, row[index - 1], row[index], "h", obstacles);
+      }
+    });
+    columns.forEach(function (column) {
+      column.sort(function (left, right) { return left.y - right.y; });
+      for (let index = 1; index < column.length; index += 1) {
+        addRoutingNeighbor(neighbors, column[index - 1], column[index], "v", obstacles);
+      }
+    });
+    neighbors.forEach(function (items) {
+      items.sort(function (left, right) {
+        return left.key.localeCompare(right.key) ||
+          left.direction.localeCompare(right.direction);
+      });
+    });
+    return {
+      obstacles: obstacles, ports: ports, points: points, neighbors: neighbors,
+      usedSegments: []
+    };
+  }
+
+  function heapBefore(left, right) {
+    return left.score < right.score ||
+      (left.score === right.score && (left.cost < right.cost ||
+        (left.cost === right.cost && left.state < right.state)));
+  }
+
+  function heapPush(heap, item) {
+    heap.push(item);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (!heapBefore(heap[index], heap[parent])) break;
+      const temporary = heap[parent];
+      heap[parent] = heap[index];
+      heap[index] = temporary;
+      index = parent;
+    }
+  }
+
+  function heapPop(heap) {
+    if (!heap.length) return null;
+    const first = heap[0];
+    const last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let index = 0;
+      while (true) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let smallest = index;
+        if (left < heap.length && heapBefore(heap[left], heap[smallest])) smallest = left;
+        if (right < heap.length && heapBefore(heap[right], heap[smallest])) smallest = right;
+        if (smallest === index) break;
+        const temporary = heap[index];
+        heap[index] = heap[smallest];
+        heap[smallest] = temporary;
+        index = smallest;
+      }
+    }
+    return first;
+  }
+
+  function routeBetween(start, target, context) {
+    const startKey = pointKey(start);
+    const targetKey = pointKey(target);
+    if (!context.points.has(startKey) || !context.points.has(targetKey)) return null;
+    if (startKey === targetKey) return [start];
+    const startState = startKey + "@s";
+    const distance = new Map([[startState, 0]]);
+    const previous = new Map();
+    const heap = [];
+    heapPush(heap, {
+      state: startState, point: startKey, direction: "s", cost: 0,
+      score: Math.abs(start.x - target.x) + Math.abs(start.y - target.y)
+    });
+    let finalState = null;
+    while (heap.length) {
+      const current = heapPop(heap);
+      if (current.cost !== distance.get(current.state)) continue;
+      if (current.point === targetKey) {
+        finalState = current.state;
+        break;
+      }
+      (context.neighbors.get(current.point) || []).forEach(function (neighbor) {
+        const bend = current.direction !== "s" && current.direction !== neighbor.direction
+          ? routingBendPenalty : 0;
+        const congestion = nearbySegmentUsage(
+          context.points.get(current.point),
+          context.points.get(neighbor.key),
+          context.usedSegments
+        );
+        const cost = current.cost + neighbor.length + bend +
+          congestion * routingCongestionPenalty;
+        const state = neighbor.key + "@" + neighbor.direction;
+        const known = distance.get(state);
+        if (known !== undefined && known <= cost) return;
+        distance.set(state, cost);
+        previous.set(state, current.state);
+        const point = context.points.get(neighbor.key);
+        heapPush(heap, {
+          state: state, point: neighbor.key, direction: neighbor.direction,
+          cost: cost,
+          score: cost + Math.abs(point.x - target.x) + Math.abs(point.y - target.y)
+        });
+      });
+    }
+    if (!finalState) return null;
+    const reversed = [];
+    let state = finalState;
+    while (state) {
+      const key = state.slice(0, -2);
+      reversed.push(context.points.get(key));
+      state = previous.get(state);
+    }
+    const route = reversed.reverse();
+    for (let index = 1; index < route.length; index += 1) {
+      context.usedSegments.push({
+        left: route[index - 1], right: route[index]
+      });
+    }
+    return route;
+  }
+
+  function routeForEdge(edge, context) {
+    const pair = context.ports.get(edge.key);
+    if (!pair) return null;
+    const core = routeBetween(pair.source.escape, pair.target.escape, context);
+    if (!core) return null;
+    const points = [];
+    appendRoutePoint(points, pair.source.anchor);
+    appendRoutePoint(points, pair.source.escape);
+    core.forEach(function (point) { appendRoutePoint(points, point); });
+    appendRoutePoint(points, pair.target.escape);
+    appendRoutePoint(points, pair.target.tip);
+    return simplifyRoute(points);
+  }
+
+  function pointToward(origin, target, distance) {
+    if (origin.x === target.x) {
+      return {
+        x: origin.x,
+        y: origin.y + Math.sign(target.y - origin.y) * distance
+      };
+    }
+    return {
+      x: origin.x + Math.sign(target.x - origin.x) * distance,
+      y: origin.y
+    };
+  }
+
+  function roundedCornerClear(before, corner, after) {
+    const candidate = {
+      x: Math.min(before.x, corner.x, after.x),
+      y: Math.min(before.y, corner.y, after.y),
+      width: Math.max(before.x, corner.x, after.x) -
+        Math.min(before.x, corner.x, after.x),
+      height: Math.max(before.y, corner.y, after.y) -
+        Math.min(before.y, corner.y, after.y)
+    };
+    let clear = true;
+    nodes.forEach(function (node) {
+      if (clear && rectanglesOverlap(candidate, node, 2)) clear = false;
+    });
+    return clear;
+  }
+
+  function routePath(points) {
+    if (!points || !points.length) return "";
+    let path = "M" + points[0].x + "," + points[0].y;
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const previous = points[index - 1];
+      const corner = points[index];
+      const next = points[index + 1];
+      const incoming = Math.abs(previous.x - corner.x) +
+        Math.abs(previous.y - corner.y);
+      const outgoing = Math.abs(next.x - corner.x) +
+        Math.abs(next.y - corner.y);
+      const isTurn = (previous.x === corner.x && corner.y === next.y) ||
+        (previous.y === corner.y && corner.x === next.x);
+      const radius = Math.min(edgeCornerRadius, incoming / 2, outgoing / 2);
+      if (!isTurn || radius < 1) {
+        path += " L" + corner.x + "," + corner.y;
+        continue;
+      }
+      const before = pointToward(corner, previous, radius);
+      const after = pointToward(corner, next, radius);
+      if (!roundedCornerClear(before, corner, after)) {
+        path += " L" + corner.x + "," + corner.y;
+        continue;
+      }
+      path += " L" + before.x + "," + before.y +
+        " Q" + corner.x + "," + corner.y +
+        " " + after.x + "," + after.y;
+    }
+    const last = points[points.length - 1];
+    return path + " L" + last.x + "," + last.y;
+  }
+
+  function boxClearOfNodes(box) {
+    const candidate = {
+      x: box.left, y: box.top,
+      width: box.right - box.left, height: box.bottom - box.top
+    };
+    let clear = true;
+    nodes.forEach(function (node) {
+      if (clear && rectanglesOverlap(candidate, node, 2)) clear = false;
+    });
+    return clear;
+  }
+
+  function edgeLabelPlacement(points, text) {
+    const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    const width = Math.min(220, Math.max(36, text.length * 5.8 + 10));
+    const segments = [];
+    for (let index = 1; index < points.length; index += 1) {
+      const left = points[index - 1];
+      const right = points[index];
+      segments.push({
+        left: left, right: right,
+        horizontal: left.y === right.y,
+        length: Math.abs(left.x - right.x) + Math.abs(left.y - right.y),
+        index: index
+      });
+    }
+    segments.sort(function (left, right) {
+      return right.length - left.length ||
+        Number(right.horizontal) - Number(left.horizontal) ||
+        left.index - right.index;
+    });
+    for (const segment of segments) {
+      const centerX = (segment.left.x + segment.right.x) / 2;
+      const centerY = (segment.left.y + segment.right.y) / 2;
+      const candidates = segment.horizontal
+        ? [
+            {x: centerX, y: centerY - 8, anchor: "middle",
+             box: {left: centerX - width / 2, right: centerX + width / 2,
+                   top: centerY - 20, bottom: centerY - 3}},
+            {x: centerX, y: centerY + 17, anchor: "middle",
+             box: {left: centerX - width / 2, right: centerX + width / 2,
+                   top: centerY + 3, bottom: centerY + 20}}
+          ]
+        : [
+            {x: centerX + 8, y: centerY + 3, anchor: "start",
+             box: {left: centerX + 6, right: centerX + 6 + width,
+                   top: centerY - 8, bottom: centerY + 9}},
+            {x: centerX - 8, y: centerY + 3, anchor: "end",
+             box: {left: centerX - 6 - width, right: centerX - 6,
+                   top: centerY - 8, bottom: centerY + 9}}
+          ];
+      for (const candidate of candidates) {
+        if (candidate.box.left < 2 || candidate.box.top < 2 ||
+            candidate.box.right > canvasWidth - 2 ||
+            candidate.box.bottom > canvasHeight - 2) continue;
+        if (boxClearOfNodes(candidate.box)) return candidate;
+      }
+    }
+    return null;
+  }
+
+  function edgeDisplayLabel(edge) {
+    return edge.kind === "receipt" ? "receipt" : (edge.label || edge.relation);
+  }
+
+  function positionEdge(edge, context) {
+    const elements = edgeElements.get(edge.key);
+    if (!elements) return;
+    const points = routeForEdge(edge, context);
+    if (!points) {
+      elements.group.hidden = true;
+      return;
+    }
+    elements.group.hidden = false;
+    const pathData = routePath(points);
+    elements.path.setAttribute("d", pathData);
+    elements.hit.setAttribute("d", pathData);
+    elements.group.setAttribute("data-route-points", JSON.stringify(points));
+    const placement = edgeLabelPlacement(points, edgeDisplayLabel(edge));
+    elements.label.hidden = !placement;
+    if (placement) {
+      elements.label.setAttribute("x", placement.x);
+      elements.label.setAttribute("y", placement.y);
+      elements.label.setAttribute("text-anchor", placement.anchor);
+    }
+  }
+
+  function positionAllEdges() {
+    const context = buildRoutingContext();
+    data.edges.slice().sort(function (left, right) {
+      return left.key.localeCompare(right.key);
+    }).forEach(function (edge) { positionEdge(edge, context); });
+  }
+
+  function moveNode(key, x, y, resizeCanvas) {
+    const node = nodes.get(key);
+    const element = nodeElements.get(key);
+    if (!node || !element) return false;
+    const boundedX = boundedCoordinate(x, node.width, maximumCanvasWidth);
+    const boundedY = boundedCoordinate(y, node.height, maximumCanvasHeight);
+    if (boundedX === null || boundedY === null) return false;
+    if (node.x === boundedX && node.y === boundedY) return false;
+    if (nodePositionOverlaps(key, boundedX, boundedY)) return false;
+    node.x = boundedX;
+    node.y = boundedY;
+    element.setAttribute("transform", "translate(" + node.x + " " + node.y + ")");
+    if (resizeCanvas !== false) updateCanvasSize();
+    positionAllEdges();
+    return true;
+  }
+
+  function svgPoint(event, inverseMatrix) {
+    let inverse = inverseMatrix;
+    if (!inverse) {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return null;
+      try {
+        inverse = matrix.inverse();
+      } catch (error) {
+        return null;
+      }
+    }
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    return point.matrixTransform(inverse);
+  }
+
+  function centerNodeInViewport(node) {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const point = svg.createSVGPoint();
+    point.x = node.x + node.width / 2;
+    point.y = node.y + node.height / 2;
+    const transformed = point.matrixTransform(matrix);
+    const center = viewportClientCenter();
+    graphScroll.scrollLeft += transformed.x - center.x;
+    graphScroll.scrollTop += transformed.y - center.y;
+  }
+
+  function beginDrag(event, node, group) {
+    if (dragState || event.button !== 0) return;
+    prepareDragCanvas(node);
+    const matrix = svg.getScreenCTM();
+    if (!matrix) {
+      updateCanvasSize();
+      return;
+    }
+    let inverseMatrix;
+    try {
+      inverseMatrix = matrix.inverse();
+    } catch (error) {
+      updateCanvasSize();
+      return;
+    }
+    const point = svgPoint(event, inverseMatrix);
+    if (!point) {
+      updateCanvasSize();
+      return;
+    }
+    const nextDrag = {
+      pointerId: event.pointerId,
+      key: node.key,
+      group: group,
+      inverseMatrix: inverseMatrix,
+      startPointX: point.x,
+      startPointY: point.y,
+      startNodeX: node.x,
+      startNodeY: node.y,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      moved: false
+    };
+    try {
+      group.setPointerCapture(event.pointerId);
+    } catch (error) {
+      updateCanvasSize();
+      layoutStatus.textContent =
+        "This node could not capture the pointer, so the move was not started. The graph is unchanged.";
+      return;
+    }
+    dragState = nextDrag;
+  }
+
+  function continueDrag(event) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    if (!dragState.moved && Math.hypot(
+      event.clientX - dragState.startClientX,
+      event.clientY - dragState.startClientY
+    ) < dragThreshold) return;
+    const point = svgPoint(event, dragState.inverseMatrix);
+    if (!point) return;
+    const x = dragState.startNodeX + point.x - dragState.startPointX;
+    const y = dragState.startNodeY + point.y - dragState.startPointY;
+    if (!moveNode(dragState.key, x, y, false)) return;
+    dragState.moved = true;
+    dragState.group.classList.add("ct-dragging");
+    event.preventDefault();
+  }
+
+  function finishDrag(event) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const finished = dragState;
+    dragState = null;
+    finished.group.classList.remove("ct-dragging");
+    if (finished.group.hasPointerCapture(event.pointerId)) {
+      finished.group.releasePointerCapture(event.pointerId);
+    }
+    updateCanvasSize();
+    positionAllEdges();
+    if (!finished.moved) return;
+    suppressClickKey = finished.key;
+    window.setTimeout(function () {
+      if (suppressClickKey === finished.key) suppressClickKey = null;
+    }, 0);
+    selectNode(finished.key, false);
+    const node = nodes.get(finished.key);
+    saveLayout("Moved " + short(node.label, 60) + " to x " + node.x + ", y " + node.y + ".");
+  }
+
+  function cancelDrag(event) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const cancelled = dragState;
+    dragState = null;
+    cancelled.group.classList.remove("ct-dragging");
+    if (cancelled.group.hasPointerCapture(event.pointerId)) {
+      cancelled.group.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled.moved) {
+      moveNode(cancelled.key, cancelled.startNodeX, cancelled.startNodeY);
+    } else {
+      updateCanvasSize();
+      positionAllEdges();
+    }
+    layoutStatus.textContent =
+      "Move cancelled; the prior browser layout was restored and the graph was not changed.";
+  }
+
+  function nudgeSelected(deltaX, deltaY, direction) {
+    const node = selected ? nodes.get(selected) : null;
+    if (!node) return;
+    if (moveNode(node.key, node.x + deltaX, node.y + deltaY)) {
+      saveLayout("Moved " + short(node.label, 60) + " " + direction +
+        " to x " + node.x + ", y " + node.y + ".");
+    }
+  }
+
+  function panTargetIsInteractive(target) {
+    return Boolean(target && typeof target.closest === "function" &&
+      target.closest(".ct-node, .ct-edge-group"));
+  }
+
+  function beginPan(event) {
+    if (event.button !== 0 || dragState || panState ||
+        panTargetIsInteractive(event.target)) return;
+    const rectangle = graphScroll.getBoundingClientRect();
+    const contentLeft = rectangle.left + graphScroll.clientLeft;
+    const contentTop = rectangle.top + graphScroll.clientTop;
+    if (event.clientX < contentLeft || event.clientY < contentTop ||
+        event.clientX > contentLeft + graphScroll.clientWidth ||
+        event.clientY > contentTop + graphScroll.clientHeight) return;
+    const nextPan = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: graphScroll.scrollLeft,
+      startScrollTop: graphScroll.scrollTop,
+      moved: false
+    };
+    try {
+      graphScroll.setPointerCapture(event.pointerId);
+    } catch (error) {
+      return;
+    }
+    panState = nextPan;
+    graphScroll.classList.add("ct-panning");
+    graphScroll.focus({preventScroll: true});
+    event.preventDefault();
+  }
+
+  function continuePan(event) {
+    if (!panState || panState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - panState.startClientX;
+    const deltaY = event.clientY - panState.startClientY;
+    if (!panState.moved && Math.hypot(deltaX, deltaY) < dragThreshold) return;
+    panState.moved = true;
+    graphScroll.scrollLeft = panState.startScrollLeft - deltaX;
+    graphScroll.scrollTop = panState.startScrollTop - deltaY;
+    event.preventDefault();
+  }
+
+  function finishPan(event) {
+    if (!panState || panState.pointerId !== event.pointerId) return;
+    const finished = panState;
+    panState = null;
+    graphScroll.classList.remove("ct-panning");
+    if (graphScroll.hasPointerCapture(event.pointerId)) {
+      graphScroll.releasePointerCapture(event.pointerId);
+    }
+    if (finished.moved) event.preventDefault();
+  }
+
+  function cancelPan(event) {
+    if (!panState || panState.pointerId !== event.pointerId) return;
+    panState = null;
+    graphScroll.classList.remove("ct-panning");
+    if (graphScroll.hasPointerCapture(event.pointerId)) {
+      graphScroll.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleViewportWheel(event) {
+    if (event.deltaY === 0) return;
+    event.preventDefault();
+    if (dragState || panState) return;
+    const modeScale = event.deltaMode === 1 ? 16 :
+      event.deltaMode === 2 ? graphScroll.clientHeight : 1;
+    const delta = Math.max(-240, Math.min(240, event.deltaY * modeScale));
+    setViewportZoom(
+      viewportZoom * Math.exp(-delta * 0.0015),
+      event.clientX,
+      event.clientY
+    );
+  }
+
+  function handleViewportKeydown(event) {
+    if (event.target !== graphScroll) return;
+    let handled = true;
+    if (event.key === "+" || event.key === "=") {
+      zoomViewportBy(viewportZoomStep);
+    } else if (event.key === "-" || event.key === "_") {
+      zoomViewportBy(1 / viewportZoomStep);
+    } else if (event.key === "0") {
+      const center = viewportClientCenter();
+      setViewportZoom(1, center.x, center.y);
+    } else if (event.key === "f" || event.key === "F") {
+      fitViewport();
+    } else if (event.key === "ArrowLeft") {
+      graphScroll.scrollLeft -= 64;
+    } else if (event.key === "ArrowRight") {
+      graphScroll.scrollLeft += 64;
+    } else if (event.key === "ArrowUp") {
+      graphScroll.scrollTop -= 64;
+    } else if (event.key === "ArrowDown") {
+      graphScroll.scrollTop += 64;
+    } else {
+      handled = false;
+    }
+    if (handled) event.preventDefault();
+  }
+
   data.edges.forEach(function (edge) {
     if (edge.traversable) {
       addConnection(outgoing, edge.source, {node: edge.target, edge: edge.key});
@@ -1383,9 +2660,9 @@ _HTML_SCRIPT = """
     }
   });
 
-  svg.setAttribute("viewBox", "0 0 " + data.width + " " + data.height);
-  svg.setAttribute("width", data.width);
-  svg.setAttribute("height", data.height);
+  const restoredLayout = restoreSavedLayout();
+  setManualLayout(restoredLayout === "restored");
+  updateCanvasSize();
   document.getElementById("summary").textContent =
     data.summary.semantic_nodes + " semantic nodes · " +
     data.summary.semantic_edges + " semantic edges · " +
@@ -1397,70 +2674,106 @@ _HTML_SCRIPT = """
     data.summary.derivations + " derivation submissions · " +
     data.summary.errors + " errors · " + data.summary.warnings + " warnings";
   document.getElementById("coverage").textContent = data.coverage_notice;
+  if (restoredLayout === "restored") {
+    layoutStatus.textContent =
+      "Browser-local arrangement restored. It changes only this view; the graph, provenance, and logical layers are unchanged.";
+  } else if (restoredLayout === "invalid") {
+    layoutStatus.textContent =
+      "An invalid saved arrangement was ignored. Automatic layout is shown and the graph is unchanged.";
+  } else if (restoredLayout === "unavailable") {
+    layoutStatus.textContent =
+      "Drag nodes to rearrange them. Browser storage is unavailable, so changes last only for this page; the graph is unchanged.";
+  }
 
   data.layers.forEach(function (layer) {
     const option = document.createElement("option");
     option.value = String(layer);
     option.textContent = "Layer " + layer;
     layerSelect.appendChild(option);
-    const x = data.nodes.filter(function (node) { return node.layer === layer; })[0].x;
+    const layerNode = data.nodes.filter(function (node) { return node.layer === layer; })[0];
+    const x = defaultPositions.get(layerNode.key).x;
     labelLayer.appendChild(svgElement("text", {
       x: x + 112, y: 26, "text-anchor": "middle", "class": "ct-layer-label"
-    }, "Layer " + layer));
+    }, "Logical layer " + layer));
   });
 
-  data.edges.forEach(function (edge, index) {
+  data.edges.forEach(function (edge) {
     const source = nodes.get(edge.source);
     const target = nodes.get(edge.target);
     if (!source || !target) return;
-    let x1, y1, x2, y2, pathData, labelX, labelY;
-    if (target.x > source.x) {
-      x1 = source.x + source.width;
-      y1 = source.y + source.height / 2;
-      x2 = target.x;
-      y2 = target.y + target.height / 2;
-      const middle = (x1 + x2) / 2;
-      pathData = "M" + x1 + "," + y1 + " C" + middle + "," + y1 + " " + middle + "," + y2 + " " + x2 + "," + y2;
-      labelX = middle;
-      labelY = (y1 + y2) / 2 - 4;
-    } else {
-      x1 = source.x + source.width / 2;
-      y1 = source.y + source.height;
-      x2 = target.x + target.width / 2;
-      y2 = target.y + target.height;
-      const bend = Math.max(y1, y2) + 28 + (index % 5) * 8;
-      pathData = "M" + x1 + "," + y1 + " C" + x1 + "," + bend + " " + x2 + "," + bend + " " + x2 + "," + y2;
-      labelX = (x1 + x2) / 2;
-      labelY = bend - 4;
-    }
+    const option = document.createElement("option");
+    option.value = edge.key;
+    option.textContent = short(source.label, 24) + " — " +
+      short(edgeDisplayLabel(edge), 34) + " → " + short(target.label, 24);
+    edgeSelect.appendChild(option);
+    const group = svgElement("g", {
+      "class": "ct-edge-group",
+      "data-edge-group-key": edge.key,
+      "tabindex": "0",
+      "focusable": "true",
+      "role": "button",
+      "aria-label": "Relationship: " + source.label + " — " +
+        edge.relation + " → " + target.label
+    });
+    const hit = svgElement("path", {
+      d: "",
+      "class": "ct-edge-hit",
+      "data-edge-hit-key": edge.key
+    });
     const path = svgElement("path", {
-      d: pathData,
+      d: "",
       "class": "ct-edge ct-edge-" + edge.kind +
         (edge.assessment_state ? " ct-edge-state-" + classToken(edge.assessment_state) : ""),
-      "marker-end": "url(#arrow-" + edge.kind + ")"
+      "marker-end": "url(#arrow-" + edge.kind + ")",
+      "data-edge-key": edge.key
     });
     path.appendChild(svgElement("title", {}, edge.relation));
-    edgeLayer.appendChild(path);
-    edgeLayer.appendChild(svgElement("text", {
-      x: labelX, y: labelY, "text-anchor": "middle",
-      "class": "ct-edge-label"
-    }, edge.kind === "receipt" ? "receipt" : (edge.label || edge.relation)));
-    edgeElements.set(edge.key, path);
+    group.appendChild(hit);
+    group.appendChild(path);
+    const label = svgElement("text", {
+      x: 0, y: 0, "text-anchor": "middle",
+      "class": "ct-edge-label", "data-edge-label-for": edge.key
+    }, edgeDisplayLabel(edge));
+    group.appendChild(label);
+    group.addEventListener("click", function () { selectEdge(edge.key); });
+    group.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectEdge(edge.key);
+    });
+    edgeLayer.appendChild(group);
+    edgeElements.set(edge.key, {
+      group: group, hit: hit, path: path, label: label
+    });
   });
+  positionAllEdges();
 
-  function selectNode(key) {
+  function selectNode(key, shouldCenter) {
     selected = key || null;
+    selectedEdge = null;
     focusSelect.value = selected || "";
+    edgeSelect.value = "";
     const selectedNode = selected ? nodes.get(selected) : null;
+    Object.keys(moveButtons).forEach(function (direction) {
+      moveButtons[direction].disabled = !selectedNode;
+    });
     selectedAssessment = selectedNode ? selectedNode.default_assessment_id : null;
-    if (selectedNode && graphScroll) {
-      graphScroll.scrollLeft = Math.max(
-        0, selectedNode.x + selectedNode.width / 2 - graphScroll.clientWidth / 2
-      );
-      graphScroll.scrollTop = Math.max(
-        0, selectedNode.y + selectedNode.height / 2 - graphScroll.clientHeight / 2
-      );
+    if (selectedNode && graphScroll && shouldCenter !== false) {
+      centerNodeInViewport(selectedNode);
     }
+    updateHighlights();
+    updateDetails();
+  }
+
+  function selectEdge(key) {
+    selectedEdge = edges.has(key) ? key : null;
+    selected = null;
+    selectedAssessment = null;
+    focusSelect.value = "";
+    edgeSelect.value = selectedEdge || "";
+    Object.keys(moveButtons).forEach(function (direction) {
+      moveButtons[direction].disabled = true;
+    });
     updateHighlights();
     updateDetails();
   }
@@ -1475,7 +2788,8 @@ _HTML_SCRIPT = """
     const group = svgElement("g", {
       transform: "translate(" + node.x + " " + node.y + ")",
       "class": "ct-node ct-type-" + typeClass(node.type) + " ct-status-" + classToken(node.status),
-      "aria-hidden": "true"
+      "aria-hidden": "true",
+      "data-node-key": node.key
     });
     const isAssessment = node.kind === "assessment";
     const isProof = node.kind === "proof";
@@ -1521,7 +2835,18 @@ _HTML_SCRIPT = """
     group.appendChild(svgElement("title", {}, node.kind === "run"
       ? node.label + " — " + node.coverage
       : node.label + (node.value ? " — " + node.value : "")));
-    group.addEventListener("click", function () { selectNode(node.key); });
+    group.addEventListener("pointerdown", function (event) { beginDrag(event, node, group); });
+    group.addEventListener("pointermove", continueDrag);
+    group.addEventListener("pointerup", finishDrag);
+    group.addEventListener("pointercancel", cancelDrag);
+    group.addEventListener("lostpointercapture", cancelDrag);
+    group.addEventListener("click", function () {
+      if (suppressClickKey === node.key) {
+        suppressClickKey = null;
+        return;
+      }
+      selectNode(node.key);
+    });
     nodeLayer.appendChild(group);
     nodeElements.set(node.key, group);
   });
@@ -1546,22 +2871,39 @@ _HTML_SCRIPT = """
   function updateHighlights() {
     const upstream = selected ? closure(selected, incoming) : {nodes: new Set(), edges: new Set()};
     const downstream = selected ? closure(selected, outgoing) : {nodes: new Set(), edges: new Set()};
+    const edgeSelection = selectedEdge ? edges.get(selectedEdge) : null;
     const selectedLayer = layerSelect.value === "" ? null : Number(layerSelect.value);
     nodeElements.forEach(function (element, key) {
       const node = nodes.get(key);
-      element.classList.toggle("ct-dim", Boolean(selected) &&
-        key !== selected && !upstream.nodes.has(key) && !downstream.nodes.has(key));
+      const edgeEndpoint = Boolean(edgeSelection) &&
+        (key === edgeSelection.source || key === edgeSelection.target);
+      const nodeUnrelated = Boolean(selected) &&
+        key !== selected && !upstream.nodes.has(key) && !downstream.nodes.has(key);
+      element.classList.toggle("ct-dim",
+        edgeSelection ? !edgeEndpoint : nodeUnrelated);
       element.classList.toggle("ct-selected", key === selected);
       element.classList.toggle("ct-ancestor", upstream.nodes.has(key));
       element.classList.toggle("ct-descendant", downstream.nodes.has(key));
+      element.classList.toggle("ct-edge-source",
+        Boolean(edgeSelection) && key === edgeSelection.source);
+      element.classList.toggle("ct-edge-target",
+        Boolean(edgeSelection) && key === edgeSelection.target);
       element.classList.toggle("ct-layer-muted", selectedLayer !== null && node.layer !== selectedLayer);
     });
-    edgeElements.forEach(function (element, key) {
-      element.classList.toggle("ct-related", upstream.edges.has(key) || downstream.edges.has(key));
-      element.classList.toggle("ct-upstream", upstream.edges.has(key));
-      element.classList.toggle("ct-downstream", downstream.edges.has(key));
-      element.classList.toggle("ct-dim", Boolean(selected) &&
-        !upstream.edges.has(key) && !downstream.edges.has(key));
+    edgeElements.forEach(function (elements, key) {
+      const edge = edges.get(key);
+      const exactSelection = Boolean(edgeSelection) && key === selectedEdge;
+      elements.path.classList.toggle("ct-related", upstream.edges.has(key) || downstream.edges.has(key));
+      elements.path.classList.toggle("ct-upstream", upstream.edges.has(key));
+      elements.path.classList.toggle("ct-downstream", downstream.edges.has(key));
+      elements.path.setAttribute(
+        "marker-end", "url(#arrow-" +
+          (exactSelection ? "selected" : edge.kind) + ")"
+      );
+      elements.group.classList.toggle("ct-edge-selected", exactSelection);
+      elements.group.classList.toggle("ct-dim", edgeSelection
+        ? !exactSelection
+        : Boolean(selected) && !upstream.edges.has(key) && !downstream.edges.has(key));
     });
   }
 
@@ -1680,7 +3022,8 @@ _HTML_SCRIPT = """
 
     const status = document.createElement("p");
     status.className = "review-status";
-    status.textContent = "Agent-assessed · current state " + humanLabel(review.current_state) +
+    status.textContent = "Agent-assessed · policy " + (review.schema_version || "unknown") +
+      " · current state " + humanLabel(review.current_state) +
       " · review decision " + humanLabel(review.review_state) +
       " · " + (review.is_current ? "current record" : "historical record") +
       (review.stale ? " · stale" : "") +
@@ -1782,6 +3125,7 @@ _HTML_SCRIPT = """
     });
     const provenanceList = document.createElement("dl");
     appendDetail(provenanceList, "Assessment", review.id);
+    appendDetail(provenanceList, "Policy schema", review.schema_version);
     appendDetail(provenanceList, "Recorded", review.recorded_at);
     appendDetail(provenanceList, "Agent", review.provenance.agent);
     appendDetail(provenanceList, "Model", review.provenance.model);
@@ -1803,7 +3147,12 @@ _HTML_SCRIPT = """
       return item.status !== "covered";
     });
     if (!unresolved.length) return;
-    const priority = {assessed_conflict: 0, assessed_not_as_written: 1, unassessed: 2};
+    const priority = {
+      assessed_conflict: 0,
+      assessed_not_as_written: 1,
+      assessed_without_relation: 2,
+      unassessed: 3
+    };
     unresolved.sort(function (left, right) {
       const leftRank = priority[left.status] === undefined ? 9 : priority[left.status];
       const rightRank = priority[right.status] === undefined ? 9 : priority[right.status];
@@ -1820,6 +3169,7 @@ _HTML_SCRIPT = """
     status.textContent = "Declared " + humanLabel(link.declared_relation) + " · " + ({
       assessed_conflict: "accepted assessment conflicts",
       assessed_not_as_written: "assessed, not as written",
+      assessed_without_relation: "assessed, no active semantic relation",
       unassessed: "unassessed"
     }[link.status] || humanLabel(link.status));
     panel.appendChild(status);
@@ -1829,6 +3179,8 @@ _HTML_SCRIPT = """
       ? "The graph declaration has the opposite polarity from a current accepted semantic assessment."
       : link.status === "assessed_not_as_written"
       ? "A current accepted assessment exists, but it does not validate this relation as written."
+      : link.status === "assessed_without_relation"
+      ? "A current accepted assessment exists, but its verdict activates no semantic relation."
       : "No current accepted semantic assessment covers this result-to-claim pair.";
     panel.appendChild(note);
     detailContent.appendChild(panel);
@@ -1836,12 +3188,59 @@ _HTML_SCRIPT = """
 
   function updateDetails() {
     detailContent.replaceChildren();
+    if (selectedEdge && edges.has(selectedEdge)) {
+      assessmentControl.hidden = true;
+      detailContent.className = "";
+      const edge = edges.get(selectedEdge);
+      const source = nodes.get(edge.source);
+      const target = nodes.get(edge.target);
+      detailTitle.textContent = edgeDisplayLabel(edge);
+      const statement = document.createElement("p");
+      statement.className = "review-status";
+      statement.textContent = source.label + " — " + edge.relation + " → " + target.label;
+      detailContent.appendChild(statement);
+      const list = document.createElement("dl");
+      detailContent.appendChild(list);
+      appendDetail(list, "Relation", edge.relation);
+      appendDetail(list, "Kind", humanLabel(edge.kind));
+      appendDetail(list, "From", source.label + " (" + edge.source + ")");
+      appendDetail(list, "To", target.label + " (" + edge.target + ")");
+      appendDetail(list, "Trajectory traversal",
+        edge.traversable ? "yes — included in dependency ancestry" :
+          "no — shown without creating dependency ancestry");
+      if (edge.assessment_state) {
+        appendDetail(list, "Assessment state", humanLabel(edge.assessment_state));
+      }
+      if (edge.derivation_state) {
+        appendDetail(list, "Derivation state", humanLabel(edge.derivation_state));
+      }
+      if (edge.binding_kind) {
+        appendDetail(list, "Binding kind", humanLabel(edge.binding_kind));
+      }
+      if (edge.declaration_comparison) {
+        appendDetail(
+          list, "Declaration comparison", humanLabel(edge.declaration_comparison)
+        );
+      }
+      const boundary = document.createElement("p");
+      boundary.className = "detail-note";
+      boundary.textContent = ({
+        dependency: "This is declared semantic lineage.",
+        annotation: "This is a visible semantic annotation; it is not traversed as dependency ancestry.",
+        receipt: "This is a partial mechanical run binding, not proof of observed reads or write causation.",
+        assessment: "This is an attributed semantic-review relationship, not a deterministic proof of meaning.",
+        proof: "This is a conditional symbolic relationship under project rules, not scientific truth."
+      }[edge.kind] || "This is a declared graph relationship.") +
+        " Selecting it does not change the graph or certify the scientific claim.";
+      detailContent.appendChild(boundary);
+      return;
+    }
     if (!selected || !nodes.has(selected)) {
       assessmentControl.hidden = true;
       detailTitle.textContent = "Trajectory overview";
       const note = document.createElement("p");
       note.className = "detail-note";
-      note.textContent = "Choose a focus or click a node. Upstream dependencies and downstream consequences are highlighted without treating annotation edges as dependencies.";
+      note.textContent = "Choose a focus, click a node, or click a relationship. Node focus shows dependency ancestry; relationship focus highlights only its direct endpoints.";
       detailContent.appendChild(note);
       if ((data.global_findings || []).length) {
         const list = document.createElement("ul");
@@ -1945,8 +3344,69 @@ _HTML_SCRIPT = """
     }
   }
 
+  function resetLayout() {
+    nodes.forEach(function (node, key) {
+      const position = defaultPositions.get(key);
+      node.x = position.x;
+      node.y = position.y;
+      const element = nodeElements.get(key);
+      if (element) {
+        element.setAttribute("transform", "translate(" + node.x + " " + node.y + ")");
+      }
+    });
+    updateCanvasSize();
+    positionAllEdges();
+    setManualLayout(false);
+    try {
+      window.localStorage.removeItem(layoutStorageKey);
+      layoutStatus.textContent =
+        "Automatic layout restored and the browser-local arrangement cleared. The graph and provenance were not changed.";
+    } catch (error) {
+      layoutStatus.textContent =
+        "Automatic layout restored for this page, but browser storage could not be cleared; a reload may restore the prior arrangement. The graph is unchanged.";
+    }
+  }
+
+  const nudgeStep = 24;
+  moveButtons.left.addEventListener("click", function () {
+    nudgeSelected(-nudgeStep, 0, "left");
+  });
+  moveButtons.up.addEventListener("click", function () {
+    nudgeSelected(0, -nudgeStep, "up");
+  });
+  moveButtons.down.addEventListener("click", function () {
+    nudgeSelected(0, nudgeStep, "down");
+  });
+  moveButtons.right.addEventListener("click", function () {
+    nudgeSelected(nudgeStep, 0, "right");
+  });
+  zoomOutButton.addEventListener("click", function () {
+    zoomViewportBy(1 / viewportZoomStep);
+  });
+  zoomResetButton.addEventListener("click", function () {
+    const center = viewportClientCenter();
+    setViewportZoom(1, center.x, center.y);
+  });
+  zoomInButton.addEventListener("click", function () {
+    zoomViewportBy(viewportZoomStep);
+  });
+  viewportFitButton.addEventListener("click", fitViewport);
+  graphScroll.addEventListener("wheel", handleViewportWheel, {passive: false});
+  graphScroll.addEventListener("pointerdown", beginPan);
+  graphScroll.addEventListener("pointermove", continuePan);
+  graphScroll.addEventListener("pointerup", finishPan);
+  graphScroll.addEventListener("pointercancel", cancelPan);
+  graphScroll.addEventListener("lostpointercapture", cancelPan);
+  graphScroll.addEventListener("keydown", handleViewportKeydown);
+  layoutReset.addEventListener("click", resetLayout);
+  window.addEventListener("blur", function () {
+    if (dragState) cancelDrag({pointerId: dragState.pointerId});
+    if (panState) cancelPan({pointerId: panState.pointerId});
+  });
+
   layerSelect.addEventListener("change", updateHighlights);
   focusSelect.addEventListener("change", function () { selectNode(focusSelect.value); });
+  edgeSelect.addEventListener("change", function () { selectEdge(edgeSelect.value); });
   assessmentSelect.addEventListener("change", function () {
     selectedAssessment = assessmentSelect.value;
     updateDetails();
@@ -1968,7 +3428,8 @@ def _render_html(payload):
 def render_view(cfg, output_path):
     """Write a deterministic standalone HTML view and return a compact CLI summary."""
     report = build_report(cfg, strict=False)
-    payload = _build_payload(report)
+    layout_source = os.path.normcase(str(cfg.config_path.resolve())).encode("utf-8")
+    payload = _build_payload(report, hashlib.sha256(layout_source).hexdigest())
     html = _render_html(payload)
     destination = Path(output_path).expanduser().resolve()
     protected = {cfg.config_path.resolve(), cfg.graph_path.resolve()}

@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.0",
+  "concepts": {
+    "dataset_version": {
+      "canonical": "palmerpenguins-v0.1.0",
+      "note": "Pinned release tag and SHA-256 hashes are recorded in results/source_manifest.json."
+    }
+  },
+  "nodes": [
+    {
+      "id": "question:bill-shape",
+      "type": "question",
+      "status": "current",
+      "value": "Does bill depth change with bill length, and does conditioning on species change the observed direction?"
+    },
+    {
+      "id": "hyp:species-composition",
+      "type": "hypothesis",
+      "status": "current",
+      "value": "Species composition can reverse the sign of the pooled bill-depth versus bill-length association."
+    },
+    {
+      "id": "pred:sign-reversal",
+      "type": "prediction",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "value": "The pooled OLS slope is negative while all three species-specific OLS slopes are positive."
+    },
+    {
+      "id": "ref:palmerpenguins",
+      "type": "reference",
+      "status": "current",
+      "value": "Horst AM, Hill AP, Gorman KB (2020), palmerpenguins package v0.1.0, CC0 data: https://allisonhorst.github.io/palmerpenguins/"
+    },
+    {
+      "id": "ref:gorman-2014",
+      "type": "reference",
+      "status": "current",
+      "value": "Gorman KB, Williams TD, Fraser WR (2014), PLOS ONE 9:e90081: https://doi.org/10.1371/journal.pone.0090081"
+    },
+    {
+      "id": "ref:r-journal-2022",
+      "type": "reference",
+      "status": "current",
+      "value": "Horst AM, Hill AP, Gorman KB (2022), Palmer Archipelago Penguins Data in the palmerpenguins R Package: https://journal.r-project.org/articles/RJ-2022-020/"
+    },
+    {
+      "id": "code:fetch",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/00_fetch.py",
+      "value": "Pinned HTTPS fetch with SHA-256 and byte-count gates."
+    },
+    {
+      "id": "data:raw-source",
+      "type": "data",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "data/source/penguins_raw.csv",
+      "value": "Official palmerpenguins v0.1.0 raw 17-column CSV."
+    },
+    {
+      "id": "data:curated-reference",
+      "type": "data",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "data/source/penguins.csv",
+      "value": "Official palmerpenguins v0.1.0 curated 8-column CSV used only as a transformation oracle."
+    },
+    {
+      "id": "art:source-manifest",
+      "type": "artifact",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "results/source_manifest.json",
+      "value": "Pinned URLs, byte counts, SHA-256 hashes, license, and citations."
+    },
+    {
+      "id": "code:prepare",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/01_prepare.py",
+      "value": "Reproduce the package's documented raw-to-curated transformation."
+    },
+    {
+      "id": "data:clean",
+      "type": "data",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "data/penguins_clean.csv",
+      "value": "Locally transformed 8-column data; required to be byte-identical to the official curated CSV."
+    },
+    {
+      "id": "art:preprocess",
+      "type": "artifact",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "results/preprocess.json",
+      "value": "Raw-to-curated row, column, and byte-identity checks."
+    },
+    {
+      "id": "code:analyze",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/02_analyze.py",
+      "value": "Complete-case pooled and species-stratified ordinary least squares."
+    },
+    {
+      "id": "code:figure",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/03_figure.py",
+      "value": "Standalone SVG renderer for pooled and species-stratified fits."
+    },
+    {
+      "id": "fig:bill-slopes",
+      "type": "figure",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "figures/bill_slopes.svg",
+      "value": "Pooled versus within-species bill-length and bill-depth associations."
+    },
+    {
+      "id": "claim:sign-reversal",
+      "type": "claim",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "value": "Among palmerpenguins v0.1.0 records with non-missing bill length and depth, the pooled OLS slope of bill depth on bill length is negative, whereas each species-specific OLS slope is positive.",
+      "logic": {
+        "vocabulary_id": "penguin:vocabulary",
+        "rule_pack_id": "penguin:sign-rules",
+        "target": {
+          "predicate": "penguin:species_conditioned_sign_reversal",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "type": "penguin:study",
+              "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+              "unit": null
+            }
+          }
+        }
+      },
+      "logic_evidence_plan": {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [
+          {
+            "result_id": "art:slopes",
+            "binding_id": "penguin:complete-slope-profile"
+          }
+        ]
+      }
+    },
+    {
+      "id": "claim:estimated-slopes",
+      "type": "claim",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "value": "Among 342 palmerpenguins v0.1.0 records with non-missing bill length and depth, the OLS slope of bill depth on bill length was -0.085021 mm/mm pooled, 0.178834 for Adelie, 0.222212 for Chinstrap, and 0.204844 for Gentoo."
+    },
+    {
+      "id": "conclusion:scope",
+      "type": "conclusion",
+      "status": "current",
+      "backbone": "palmerpenguins-v0.1.0",
+      "value": "The sign reversal is a descriptive association in this dataset, not a causal effect or a general statement about penguin biology."
+    },
+    {
+      "id": "doc:readme",
+      "type": "doc",
+      "status": "current",
+      "path": "README.md",
+      "value": "Reproducible demo instructions, provenance boundary, and interpretation limits."
+    },
+    {
+      "id": "art:slopes",
+      "type": "artifact",
+      "status": "confirmed",
+      "date": "2026-07-14",
+      "script": "analysis/02_analyze.py",
+      "run_ids": [
+        "run:e8a88139-f7f9-4fdd-8441-a73d1103e17f"
+      ],
+      "backbone": "palmerpenguins-v0.1.0",
+      "path": "results/slopes.json",
+      "value": "Complete-case OLS slopes: pooled -0.085021; Adelie 0.178834; Chinstrap 0.222212; Gentoo 0.204844.",
+      "note": "Confirmed only for the descriptive v0.1.0 complete-case analysis; this result does not identify a causal effect or population generalization.",
+      "logic_bindings": [
+        {
+          "id": "penguin:complete-slope-profile",
+          "vocabulary_id": "penguin:vocabulary",
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "kind": "json_pointer",
+              "pointer": "/study_id"
+            },
+            "pooled": {
+              "kind": "json_pointer",
+              "pointer": "/pooled/slope"
+            },
+            "adelie": {
+              "kind": "json_pointer",
+              "pointer": "/by_species/Adelie/slope"
+            },
+            "chinstrap": {
+              "kind": "json_pointer",
+              "pointer": "/by_species/Chinstrap/slope"
+            },
+            "gentoo": {
+              "kind": "json_pointer",
+              "pointer": "/by_species/Gentoo/slope"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "question:bill-shape",
+      "to": "hyp:species-composition",
+      "rel": "motivates"
+    },
+    {
+      "from": "ref:r-journal-2022",
+      "to": "hyp:species-composition",
+      "rel": "motivates"
+    },
+    {
+      "from": "hyp:species-composition",
+      "to": "pred:sign-reversal",
+      "rel": "predicts"
+    },
+    {
+      "from": "pred:sign-reversal",
+      "to": "art:slopes",
+      "rel": "tested_by"
+    },
+    {
+      "from": "ref:palmerpenguins",
+      "to": "data:raw-source",
+      "rel": "derives_from"
+    },
+    {
+      "from": "ref:palmerpenguins",
+      "to": "data:curated-reference",
+      "rel": "derives_from"
+    },
+    {
+      "from": "code:fetch",
+      "to": "data:raw-source",
+      "rel": "produces"
+    },
+    {
+      "from": "code:fetch",
+      "to": "data:curated-reference",
+      "rel": "produces"
+    },
+    {
+      "from": "code:fetch",
+      "to": "art:source-manifest",
+      "rel": "produces"
+    },
+    {
+      "from": "data:raw-source",
+      "to": "data:clean",
+      "rel": "produces"
+    },
+    {
+      "from": "data:curated-reference",
+      "to": "data:clean",
+      "rel": "produces"
+    },
+    {
+      "from": "code:prepare",
+      "to": "data:clean",
+      "rel": "produces"
+    },
+    {
+      "from": "data:raw-source",
+      "to": "art:preprocess",
+      "rel": "produces"
+    },
+    {
+      "from": "data:curated-reference",
+      "to": "art:preprocess",
+      "rel": "produces"
+    },
+    {
+      "from": "code:prepare",
+      "to": "art:preprocess",
+      "rel": "produces"
+    },
+    {
+      "from": "data:clean",
+      "to": "art:slopes",
+      "rel": "produces"
+    },
+    {
+      "from": "code:analyze",
+      "to": "art:slopes",
+      "rel": "produces"
+    },
+    {
+      "from": "art:slopes",
+      "to": "claim:sign-reversal",
+      "rel": "derives_from"
+    },
+    {
+      "from": "art:slopes",
+      "to": "claim:estimated-slopes",
+      "rel": "derives_from"
+    },
+    {
+      "from": "data:clean",
+      "to": "fig:bill-slopes",
+      "rel": "renders"
+    },
+    {
+      "from": "art:slopes",
+      "to": "fig:bill-slopes",
+      "rel": "renders"
+    },
+    {
+      "from": "code:figure",
+      "to": "fig:bill-slopes",
+      "rel": "renders"
+    },
+    {
+      "from": "claim:sign-reversal",
+      "to": "conclusion:scope",
+      "rel": "concludes"
+    },
+    {
+      "from": "claim:estimated-slopes",
+      "to": "conclusion:scope",
+      "rel": "concludes"
+    },
+    {
+      "from": "conclusion:scope",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:palmerpenguins",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:gorman-2014",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:r-journal-2022",
+      "to": "doc:readme",
+      "rel": "cites"
+    }
+  ]
+}

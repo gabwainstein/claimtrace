@@ -28,7 +28,13 @@ from . import engine
 from .config import strict_json_loads
 
 
-SCHEMA_VERSION = "claimtrace.semantic-assessment/1"
+LEGACY_SCHEMA_VERSION = "claimtrace.semantic-assessment/1"
+SCHEMA_VERSION = "claimtrace.semantic-assessment/2"
+SUPPORTED_SCHEMA_VERSIONS = frozenset({LEGACY_SCHEMA_VERSION, SCHEMA_VERSION})
+_ALIGNMENT_POLICY_BY_SCHEMA = {
+    LEGACY_SCHEMA_VERSION: "blanket-incomplete-not-stated",
+    SCHEMA_VERSION: "qualitative-claim-specific-result-magnitude",
+}
 ASSESSMENT_ID_RE = re.compile(r"^assessment:sha256:([0-9a-f]{64})$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RFC3339_UTC_RE = re.compile(
@@ -417,7 +423,8 @@ def _finding(code: str, severity: str, detail: str) -> dict:
     return {"code": code, "severity": severity, "detail": detail}
 
 
-def _semantic_findings(mechanical_snapshot: dict, agent_input: dict) -> list[dict]:
+def _semantic_findings(mechanical_snapshot: dict, agent_input: dict, *,
+                       schema_version: str) -> list[dict]:
     findings = []
     verdict = agent_input["verdict"]
     invalid = [check for check in mechanical_snapshot["anchor_checks"] if not check["valid"]]
@@ -484,9 +491,38 @@ def _semantic_findings(mechanical_snapshot: dict, agent_input: dict) -> list[dic
             "CLAIM_SCOPE_MISMATCH", severity,
             "result mismatches claim dimensions: " + ", ".join(relevant_scope_mismatches),
         ))
+    claim_magnitude = agent_input["claim_frame"]["magnitude"]
+    result_magnitude = agent_input["result_frame"]["magnitude"]
+    claim_direction = agent_input["claim_frame"]["direction"]
+    result_direction = agent_input["result_frame"]["direction"]
+    direction_alignment = agent_input["alignment"]["direction"]
+    directions_are_stated = (
+        isinstance(claim_direction, str) and bool(claim_direction.strip())
+        and isinstance(result_direction, str) and bool(result_direction.strip())
+    )
+    direction_is_eligible = (
+        direction_alignment == "match"
+        or (
+            verdict == "contradicts_as_written"
+            and direction_alignment == "mismatch"
+        )
+    )
+    # A numeric result can be more specific than a qualitative directional claim.
+    # Both directions must be stated and aligned. The only mismatch exception is the
+    # explicit directional contradiction required for a conservative refutation.
+    result_is_more_specific_about_magnitude = (
+        _ALIGNMENT_POLICY_BY_SCHEMA[schema_version]
+        == "qualitative-claim-specific-result-magnitude"
+        and agent_input["alignment"]["magnitude"] == "not_stated"
+        and claim_magnitude is None
+        and result_magnitude is not None
+        and directions_are_stated
+        and direction_is_eligible
+    )
     partial = [
         dimension for dimension in ALIGNMENT_DIMENSIONS
         if agent_input["alignment"][dimension] in {"partial", "not_stated"}
+        and not (dimension == "magnitude" and result_is_more_specific_about_magnitude)
     ]
     if partial:
         severity = "error" if verdict in {
@@ -500,8 +536,13 @@ def _semantic_findings(mechanical_snapshot: dict, agent_input: dict) -> list[dic
 
 
 def _derive(mechanical_snapshot: dict, agent_input: dict, review: dict,
-            extra_findings: list[dict] | None = None) -> dict:
-    findings = _semantic_findings(mechanical_snapshot, agent_input)
+            extra_findings: list[dict] | None = None, *,
+            schema_version: str = SCHEMA_VERSION) -> dict:
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise AssessmentError(f"unsupported assessment schema: {schema_version!r}")
+    findings = _semantic_findings(
+        mechanical_snapshot, agent_input, schema_version=schema_version,
+    )
     findings.extend(extra_findings or [])
     findings.sort(key=lambda item: (item["code"], item["detail"]))
     verdict = agent_input["verdict"]
@@ -558,7 +599,7 @@ def create_assessment(cfg, claim_id: str, result_ids: list[str], agent_input: di
     mechanical = _snapshot_subject(cfg, claim_id, result_ids, agent_input)
     review = {"state": "proposed", "actor": actor, "supersedes_assessment_id": None}
     subject = {"claim_id": claim_id, "result_ids": result_ids}
-    derived = _derive(mechanical, agent_input, review)
+    derived = _derive(mechanical, agent_input, review, schema_version=SCHEMA_VERSION)
     core = {
         "schema_version": SCHEMA_VERSION,
         "recorded_at": timestamp,
@@ -638,7 +679,7 @@ def validate_assessment_document(document: object) -> None:
     }
     if set(document) != expected:
         raise AssessmentError("assessment document has unknown or missing top-level fields")
-    if document["schema_version"] != SCHEMA_VERSION:
+    if document["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
         raise AssessmentError(f"unsupported assessment schema: {document['schema_version']!r}")
     _validate_recorded_at(document["recorded_at"])
     subject = document["subject"]
@@ -668,7 +709,8 @@ def validate_assessment_document(document: object) -> None:
     if review["state"] != "proposed" and supersedes is None:
         raise AssessmentError("a review decision must supersede an earlier assessment")
     expected_derived = _derive(
-        document["mechanical_snapshot"], document["agent_input"], review
+        document["mechanical_snapshot"], document["agent_input"], review,
+        schema_version=document["schema_version"],
     )
     relation_verdicts = {
         "supports_as_written", "supports_narrower_claim", "contradicts_as_written",
@@ -823,6 +865,15 @@ def load_assessments(cfg) -> tuple[list[dict], list[dict]]:
                     "path": ASSESSMENT_ID_RE.fullmatch(document["id"]).group(1) + ".json",
                     "detail": f"review transition changed immutable field: {field}",
                 })
+        if document["schema_version"] != predecessor["schema_version"]:
+            issues.append({
+                "code": "ASSESSMENT_REVIEW_CHAIN",
+                "path": ASSESSMENT_ID_RE.fullmatch(document["id"]).group(1) + ".json",
+                "detail": (
+                    "review transition changed assessment schema: "
+                    f"{predecessor['schema_version']} -> {document['schema_version']}"
+                ),
+            })
         predecessor_time = datetime.fromisoformat(
             predecessor["recorded_at"][:-1] + "+00:00"
         )
@@ -927,7 +978,10 @@ def evaluate_assessment(cfg, document: dict,
             "ASSESSMENT_STORE_INTEGRITY", "error",
             f"assessment store has {len(store_issues)} integrity issue(s)",
         ))
-    return _derive(current, document["agent_input"], document["review"], extra)
+    return _derive(
+        current, document["agent_input"], document["review"], extra,
+        schema_version=document["schema_version"],
+    )
 
 
 def transition_review(cfg, document: dict, state: str, *, actor: str,
@@ -979,9 +1033,12 @@ def transition_review(cfg, document: dict, state: str, *, actor: str,
         "actor": actor,
         "supersedes_assessment_id": document["id"],
     }
-    derived = _derive(document["mechanical_snapshot"], document["agent_input"], review)
+    derived = _derive(
+        document["mechanical_snapshot"], document["agent_input"], review,
+        schema_version=document["schema_version"],
+    )
     core = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": document["schema_version"],
         "recorded_at": timestamp,
         "subject": _json_copy(document["subject"]),
         "mechanical_snapshot": _json_copy(document["mechanical_snapshot"]),

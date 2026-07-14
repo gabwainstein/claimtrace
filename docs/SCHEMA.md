@@ -93,7 +93,7 @@ the historical `reads` representation. For `reads`, use
 The research-trajectory conventions are `question --motivates→ hypothesis`,
 `hypothesis --predicts→ prediction`,
 `prediction --tested_by→ experiment/artifact`, evidence `--supports/refutes→ claim`, and
-`claim --concludes→ conclusion`. These remain attributed semantic declarations; a run wrapper does
+`claim --concludes→ conclusion`. These remain declared semantic dependencies; a run wrapper does
 not create them.
 
 ### annotation relations (lab-notebook; queryable, not dependencies)
@@ -105,14 +105,15 @@ dependents/ancestors, so they never create false staleness.
 ## Semantic assessment documents
 
 Semantic assessments live under the configured `assessments` directory (default
-`claimtrace/assessments`). They are separate from `graph.json`: the graph records attributed
+`claimtrace/assessments`). They are separate from `graph.json`: the graph records declared
 dependencies, while an assessment records one external agent's structured interpretation of exact
-result evidence against one claim-like node. The assessment schema is
-`claimtrace.semantic-assessment/1`.
+result evidence against one claim-like node. New records use
+`claimtrace.semantic-assessment/2`; legacy `claimtrace.semantic-assessment/1` records remain
+readable and retain their original policy semantics.
 
-An assessment subject contains one `claim_id` and, in schema v1, exactly one `result_id`. Multiple
-results require separate assessments; v1 deliberately avoids expanding a joint judgement into
-false per-result edges.
+An assessment subject contains one `claim_id` and exactly one `result_id` in both supported
+versions. Multiple results require separate assessments; the schemas deliberately avoid expanding
+a joint judgement into false per-result edges.
 Claim-like node types are `claim`, `hypothesis`, `prediction`, and `conclusion`; result-like node
 types are `artifact`, `figure`, `experiment`, and `data`.
 
@@ -156,6 +157,15 @@ Predictive claims require predictive result evidence; causal claims require caus
 evidence; mechanistic claims require mechanistic evidence. A declared `match` that contradicts these
 rules is an `ALIGNMENT_INCONSISTENT` hard block.
 
+Schema v2 permits one narrowly directional specificity shape: both frames must state a direction,
+their direction alignment must be `match`, the claim frame may leave `magnitude` null, the result
+frame may state a magnitude, and magnitude alignment may be `not_stated`. The result is then more
+specific than the qualitative claim. An explicit directional `mismatch` remains eligible only for
+`contradicts_as_written`, whose separate contradiction policy requires that mismatch. This does not
+relax `partial` or mismatched magnitudes, a stated claim magnitude with a missing result magnitude,
+both magnitudes missing, or `not_stated` on any other dimension. Schema v1 retains its original
+behavior and treats every `partial` or `not_stated` alignment as incomplete.
+
 Evidence anchors are exact, not fuzzy citations:
 
 ```json
@@ -172,8 +182,11 @@ An unresolved or changed anchor produces `EVIDENCE_ANCHOR_INVALID`.
 Claimtrace snapshots the complete graph-node JSON for the claim and each result as SHA-256 node
 version IDs. For a result with a path, it also records the relative path, file SHA-256, byte size,
 and file version ID. Mechanical fields are structurally validated on load, and stored `derived`
-content is recomputed from the snapshot and compared exactly; an external agent cannot override
-either section.
+content is recomputed from the snapshot under the policy identified by that document's schema and
+compared exactly; an external agent cannot override either section. Review successors preserve the
+predecessor's schema. A mixed v1/v2 store is valid, but a review chain that switches schema is not.
+CLI and report projections retain each item's `schema_version` so the governing policy remains
+visible.
 
 Listing or reporting reevaluates the stored document against the live graph, artifact bytes, and
 other accepted current assessments. A changed claim node, result node, or result artifact produces
@@ -185,7 +198,7 @@ relations until repaired.
 
 ### Review workflow
 
-`claimtrace assess ENTRY --actor ID` always appends a `proposed` document. An independent actor then
+`claimtrace assess ENTRY --actor ID` always appends a `proposed` document. A separate actor then
 uses `claimtrace review ASSESSMENT_ID --state accepted|rejected|contested|superseded --actor ID`.
 The review appends a new content-addressed document with `supersedes_assessment_id`; it never edits
 the proposal. Use `claimtrace assessments` for current leaves and `claimtrace assessments --all`
@@ -217,6 +230,14 @@ assessment it emits `UNASSESSED_CLAIM_LINK`; an accepted but non-matching judgem
 `require_assessments` is true. An accepted opposite-polarity relation emits the hard error
 `DECLARED_CLAIM_LINK_CONFLICT`. A narrower or negative assessment therefore records that the pair
 was reviewed without validating a direct support edge as written.
+
+A structural `derives_from` edge from a result-like node (`artifact`, `figure`, `experiment`, or
+`data`) to a claim-like node is also an explicit semantic-coverage requirement. It emits
+`UNASSESSED_CLAIM_DEPENDENCY` when no current accepted assessment exists and
+`ASSESSED_CLAIM_DEPENDENCY_WITHOUT_RELATION` when review exists but activates no semantic relation.
+Either is informational by default and becomes a strict blocker when `require_assessments` is true.
+Accepted `supports`, `refutes`, and `related` relations cover this structural dependency because
+`derives_from` itself asserts lineage, not evidentiary polarity.
 
 Assessment staleness covers the exact claim node, result node, and result artifact bytes. It does
 not snapshot the entire upstream provenance closure, graph concepts, or surrounding edges; graph
@@ -449,8 +470,9 @@ certify scientific truth, premise validity, semantic support, equivalence betwee
 and claim prose, or equivalence between a binding and the intended scientific construct. Automatic
 extraction validates the configured mapping mechanically; it does not validate that the mapping
 chose the scientifically correct construct. Semantic assessments cover result-to-prose meaning
-only. Prose-to-target and binding-to-predicate mappings remain repository policy that needs
-independent review; Claimtrace does not yet store a dedicated review record for either mapping.
+only. Prose-to-target and binding-to-predicate mappings remain repository policy that needs separate
+review. Describe that review as independent only when the surrounding workflow establishes it;
+Claimtrace does not yet store a dedicated review record for either mapping.
 
 ### Symbolic trust and authorization boundary
 
@@ -619,6 +641,11 @@ Common secret-bearing argv flags are redacted from stored argv; add `--redact-fl
 specific flags and do not place secrets in `--param` or `--seed`. Environment variables are not
 dumped into receipts.
 
+Receipts retain observed executable and working-directory paths, which can disclose usernames or
+workspace layout in a public ledger. Flag redaction does not anonymize those paths. Audit them
+before publication or capture the public ledger in a neutral environment; do not rewrite surviving
+content-addressed event files.
+
 Declared files receive stable SHA-256 snapshots with stat checks before and after hashing. Output
 transitions are `created`, `content_changed`, `unchanged`, `deleted`, `missing`, or `unstable`.
 `unchanged` is a valid successful receipt but is explicitly `not proven produced`. Project-wide
@@ -659,11 +686,12 @@ run receipts under strict checking. `events` (default `claimtrace/events`) selec
 event-ledger directory.
 
 `assessments` (default `claimtrace/assessments`) selects the content-addressed semantic-assessment
-store. `require_assessments` defaults to `false`; when `true`, a direct active `supports` or
-`refutes` graph edge without matching current accepted coverage becomes a strict-check blocker.
-This policy does not
-turn an accepted assessment into scientific truth; it only requires that the attributed semantic
-review exists and remains grounded to the current nodes and artifact bytes.
+store. `require_assessments` defaults to `false`; when `true`, it strict-blocks an uncovered direct
+`supports`/`refutes` declaration and an uncovered structural result-to-claim `derives_from`
+dependency. Direct declarations require matching polarity; structural dependencies require an
+accepted active semantic relation. This policy does not turn an accepted assessment into
+scientific truth; it only requires that the attributed semantic review exists and remains grounded
+to the current nodes and artifact bytes.
 
 The optional `logic` object configures the portable symbolic layer:
 

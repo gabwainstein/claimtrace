@@ -1,0 +1,42 @@
+{
+  "node": "fig:bill-slopes",
+  "output": "figures/bill_slopes.svg",
+  "output_sha1": "b496478fc8729d6cd96b177e3afeb6f8c8eec2a6",
+  "backbone": "palmerpenguins-v0.1.0",
+  "value": "Pooled versus within-species bill-length and bill-depth associations.",
+  "locked_at": "2026-07-14T11:12:54+00:00",
+  "inputs": [
+    {
+      "path": "analysis/00_fetch.py",
+      "sha1": "9539ca2a26797f0897b11acc1a1dbdd483648ebd"
+    },
+    {
+      "path": "analysis/01_prepare.py",
+      "sha1": "13f9723accc714e7aed631f7100a687568a36d33"
+    },
+    {
+      "path": "analysis/02_analyze.py",
+      "sha1": "32300bd83eb43b1d7f4615b10a37ce1ffb88fbcd"
+    },
+    {
+      "path": "analysis/03_figure.py",
+      "sha1": "4a308c0173b22c77caf48aeb4078be49b17cec2d"
+    },
+    {
+      "path": "data/penguins_clean.csv",
+      "sha1": "4f2df5edf9e7cf52ff257aed983fc5f6410bd81a"
+    },
+    {
+      "path": "data/source/penguins.csv",
+      "sha1": "4f2df5edf9e7cf52ff257aed983fc5f6410bd81a"
+    },
+    {
+      "path": "data/source/penguins_raw.csv",
+      "sha1": "ad51d0448bf1410baae87fe7b07b0725272ff102"
+    },
+    {
+      "path": "results/slopes.json",
+      "sha1": "ad31f35261822fbd34b463d61bd2b62f9b3ea6b0"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "claim_id": "claim:sign-reversal",
+  "result_ids": ["art:slopes"],
+  "agent_input": {
+    "verdict": "supports_as_written",
+    "claim_frame": {
+      "population": "palmerpenguins v0.1.0 records with non-missing bill length and depth",
+      "exposure": "bill length in millimetres",
+      "comparator": "pooled OLS fit versus separate OLS fits within Adelie, Chinstrap, and Gentoo species",
+      "outcome": "bill depth in millimetres",
+      "direction": "negative pooled slope and positive slope within each of the three species",
+      "magnitude": null,
+      "time_scope": null,
+      "inference_level": "associational"
+    },
+    "result_frame": {
+      "population": "palmerpenguins v0.1.0 records with non-missing bill length and depth",
+      "exposure": "bill length in millimetres",
+      "comparator": "pooled OLS fit versus separate OLS fits within Adelie, Chinstrap, and Gentoo species",
+      "outcome": "bill depth in millimetres",
+      "direction": "negative pooled slope and positive slope within each of the three species",
+      "magnitude": "pooled -0.085021; Adelie 0.178834; Chinstrap 0.222212; Gentoo 0.204844",
+      "time_scope": null,
+      "inference_level": "associational"
+    },
+    "alignment": {
+      "population": "match",
+      "exposure": "match",
+      "comparator": "match",
+      "outcome": "match",
+      "direction": "match",
+      "magnitude": "not_stated",
+      "time_scope": "not_applicable",
+      "inference_level": "match"
+    },
+    "evidence_anchors": [
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/complete_case_n",
+        "expected_value": 342
+      },
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/pooled/slope",
+        "expected_value": -0.085021
+      },
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/by_species/Adelie/slope",
+        "expected_value": 0.178834
+      },
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/by_species/Chinstrap/slope",
+        "expected_value": 0.222212
+      },
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/by_species/Gentoo/slope",
+        "expected_value": 0.204844
+      },
+      {
+        "result_id": "art:slopes",
+        "kind": "json_pointer",
+        "pointer": "/pattern",
+        "expected_value": "pooled_negative_each_species_positive"
+      }
+    ],
+    "rationale": "The complete-case artifact reports a negative pooled slope and a positive slope for every declared species, matching the narrow associational claim; the exact magnitudes are result details not stated in the claim.",
+    "limitations": [
+      "The analysis is descriptive and does not identify a causal species effect.",
+      "Complete-case exclusion removes two records with missing bill measurements.",
+      "The fitted slopes do not establish generalization beyond these records."
+    ],
+    "provenance": {"agent": "codex:/root/build_penguins"}
+  }
+}

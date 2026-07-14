@@ -7,7 +7,11 @@ import threading
 
 import pytest
 
+import claimtrace.assessment as assessment_module
 from claimtrace.assessment import (
+    LEGACY_SCHEMA_VERSION,
+    SCHEMA_VERSION,
+    SUPPORTED_SCHEMA_VERSIONS,
     AssessmentError,
     append_assessment,
     append_review_transition,
@@ -127,6 +131,26 @@ def _make(cfg, agent_input=None, recorded_at=FIXED_TIME):
     )
 
 
+def _readdress(document):
+    core = {key: value for key, value in document.items() if key != "id"}
+    digest = hashlib.sha256(json.dumps(
+        core, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    document["id"] = f"assessment:sha256:{digest}"
+    return document
+
+
+def _as_legacy_v1(document):
+    legacy = json.loads(json.dumps(document))
+    legacy["schema_version"] = LEGACY_SCHEMA_VERSION
+    legacy["derived"] = assessment_module._derive(
+        legacy["mechanical_snapshot"], legacy["agent_input"], legacy["review"],
+        schema_version=LEGACY_SCHEMA_VERSION,
+    )
+    return _readdress(legacy)
+
+
 def _valid_contradiction_input():
     value = _agent_input("contradicts_as_written")
     value["result_frame"]["inference_level"] = "causal"
@@ -135,6 +159,18 @@ def _valid_contradiction_input():
     value["alignment"]["direction"] = "mismatch"
     value["result_frame"]["magnitude"] = value["claim_frame"]["magnitude"]
     value["alignment"]["magnitude"] = "match"
+    return value
+
+
+def _qualitative_direction_input(verdict="supports_as_written"):
+    """A qualitative directional claim assessed against a numeric result."""
+    value = _agent_input(verdict)
+    value["claim_frame"]["inference_level"] = "associational"
+    value["result_frame"]["inference_level"] = "associational"
+    value["alignment"]["inference_level"] = "match"
+    value["claim_frame"]["magnitude"] = None
+    value["result_frame"]["magnitude"] = "slope 0.41"
+    value["alignment"]["magnitude"] = "not_stated"
     return value
 
 
@@ -193,6 +229,184 @@ def test_support_as_written_requires_complete_alignment(tmp_path):
     assert assessment["derived"]["proposed_relation"] is None
     with pytest.raises(AssessmentError, match="CLAIM_ALIGNMENT_INCOMPLETE"):
         transition_review(cfg, assessment, "accepted", actor="scientist:1")
+
+
+def test_numeric_result_can_support_qualitative_directional_claim(tmp_path):
+    cfg = _project(tmp_path)
+    proposal = _make(cfg, _qualitative_direction_input())
+
+    assert proposal["schema_version"] == SCHEMA_VERSION
+    assert proposal["derived"]["proposed_relation"] == "supports"
+    assert "CLAIM_ALIGNMENT_INCOMPLETE" not in {
+        item["code"] for item in proposal["derived"]["findings"]
+    }
+
+    accepted = transition_review(
+        cfg, proposal, "accepted", actor="scientist:1",
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    assert accepted["derived"]["active_relation"] == "supports"
+
+
+def test_qualitative_magnitude_exception_rejects_inapplicable_direction(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["direction"] = None
+    agent_input["result_frame"]["direction"] = None
+    agent_input["alignment"]["direction"] = "not_applicable"
+    proposal = _make(cfg, agent_input)
+
+    incomplete = next(
+        item for item in proposal["derived"]["findings"]
+        if item["code"] == "CLAIM_ALIGNMENT_INCOMPLETE"
+    )
+    assert "magnitude" in incomplete["detail"]
+    assert proposal["derived"]["proposed_relation"] is None
+    with pytest.raises(AssessmentError, match="CLAIM_ALIGNMENT_INCOMPLETE"):
+        transition_review(cfg, proposal, "accepted", actor="scientist:1")
+
+
+def test_qualitative_magnitude_exception_rejects_unstated_result_direction(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["result_frame"]["direction"] = None
+    agent_input["alignment"]["direction"] = "not_stated"
+    proposal = _make(cfg, agent_input)
+
+    incomplete = next(
+        item for item in proposal["derived"]["findings"]
+        if item["code"] == "CLAIM_ALIGNMENT_INCOMPLETE"
+    )
+    assert "direction" in incomplete["detail"]
+    assert "magnitude" in incomplete["detail"]
+    assert proposal["derived"]["proposed_relation"] is None
+
+
+def test_v1_qualitative_magnitude_policy_remains_valid_immutable_history(tmp_path):
+    cfg = _project(tmp_path)
+    proposal = _as_legacy_v1(_make(cfg, _qualitative_direction_input()))
+
+    validate_assessment_document(proposal)
+    assert proposal["derived"]["proposed_relation"] is None
+    assert "CLAIM_ALIGNMENT_INCOMPLETE" in {
+        item["code"] for item in proposal["derived"]["findings"]
+    }
+    append_assessment(cfg, proposal)
+    loaded, issues = load_assessments(cfg)
+    assert issues == []
+    assert loaded == [proposal]
+
+    evaluation = evaluate_assessment(cfg, proposal, loaded)
+    assert evaluation == proposal["derived"]
+    assert evaluation["proposed_relation"] is None
+
+
+def test_v1_review_successor_preserves_schema_and_policy(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["magnitude"] = "slope 0.41"
+    agent_input["alignment"]["magnitude"] = "match"
+    proposal = _as_legacy_v1(_make(cfg, agent_input))
+    append_assessment(cfg, proposal)
+
+    accepted, _path, evaluation = append_review_transition(
+        cfg, proposal["id"], "accepted", actor="scientist:1",
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    assert accepted["schema_version"] == LEGACY_SCHEMA_VERSION
+    assert accepted["derived"]["active_relation"] == "supports"
+    assert evaluation["active_relation"] == "supports"
+    documents, issues = load_assessments(cfg)
+    assert issues == []
+    assert {item["schema_version"] for item in documents} == {LEGACY_SCHEMA_VERSION}
+
+
+def test_v1_derived_tampering_is_not_accepted_as_policy_history(tmp_path):
+    cfg = _project(tmp_path)
+    proposal = _as_legacy_v1(_make(cfg, _qualitative_direction_input()))
+    proposal["derived"]["proposed_relation"] = "supports"
+    _readdress(proposal)
+
+    with pytest.raises(AssessmentError, match="derived content"):
+        validate_assessment_document(proposal)
+
+
+def test_missing_result_magnitude_cannot_support_stated_claim_magnitude(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["magnitude"] = "slope 0.41"
+    agent_input["result_frame"]["magnitude"] = None
+    proposal = _make(cfg, agent_input)
+
+    incomplete = next(
+        item for item in proposal["derived"]["findings"]
+        if item["code"] == "CLAIM_ALIGNMENT_INCOMPLETE"
+    )
+    assert "magnitude" in incomplete["detail"]
+    assert proposal["derived"]["proposed_relation"] is None
+    with pytest.raises(AssessmentError, match="CLAIM_ALIGNMENT_INCOMPLETE"):
+        transition_review(cfg, proposal, "accepted", actor="scientist:1")
+
+
+def test_missing_claim_and_result_magnitudes_remain_blocked(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["result_frame"]["magnitude"] = None
+    proposal = _make(cfg, agent_input)
+
+    incomplete = next(
+        item for item in proposal["derived"]["findings"]
+        if item["code"] == "CLAIM_ALIGNMENT_INCOMPLETE"
+    )
+    assert "magnitude" in incomplete["detail"]
+    assert proposal["derived"]["proposed_relation"] is None
+
+
+def test_partial_stated_magnitudes_remain_blocked(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["magnitude"] = "positive effect size"
+    agent_input["result_frame"]["magnitude"] = "slope 0.41"
+    agent_input["alignment"]["magnitude"] = "partial"
+    proposal = _make(cfg, agent_input)
+
+    assert "CLAIM_ALIGNMENT_INCOMPLETE" in {
+        item["code"] for item in proposal["derived"]["findings"]
+    }
+    assert proposal["derived"]["proposed_relation"] is None
+
+
+def test_non_magnitude_not_stated_remains_blocking(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["time_scope"] = None
+    agent_input["alignment"]["time_scope"] = "not_stated"
+    proposal = _make(cfg, agent_input)
+
+    incomplete = next(
+        item for item in proposal["derived"]["findings"]
+        if item["code"] == "CLAIM_ALIGNMENT_INCOMPLETE"
+    )
+    assert "time_scope" in incomplete["detail"]
+    assert proposal["derived"]["proposed_relation"] is None
+
+
+def test_numeric_result_can_refute_qualitative_directional_claim(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input("contradicts_as_written")
+    agent_input["result_frame"]["direction"] = "negative"
+    agent_input["alignment"]["direction"] = "mismatch"
+    proposal = _make(cfg, agent_input)
+
+    assert proposal["derived"]["proposed_relation"] == "refutes"
+    assert "CLAIM_ALIGNMENT_INCOMPLETE" not in {
+        item["code"] for item in proposal["derived"]["findings"]
+    }
+    accepted = transition_review(
+        cfg, proposal, "accepted", actor="scientist:1",
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    assert accepted["derived"]["active_relation"] == "refutes"
 
 
 def test_invalid_anchor_fails_closed_and_cannot_be_accepted(tmp_path):
@@ -432,6 +646,35 @@ def test_review_store_detects_a_missing_predecessor(tmp_path):
     assert proposal["id"] in issues[0]["detail"]
 
 
+def test_review_store_rejects_schema_switch_within_chain(tmp_path):
+    cfg = _project(tmp_path)
+    agent_input = _qualitative_direction_input()
+    agent_input["claim_frame"]["magnitude"] = "slope 0.41"
+    agent_input["alignment"]["magnitude"] = "match"
+    proposal = _as_legacy_v1(_make(cfg, agent_input))
+    successor = transition_review(
+        cfg, proposal, "accepted", actor="scientist:1", assessments=[proposal],
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    successor["schema_version"] = SCHEMA_VERSION
+    successor["derived"] = assessment_module._derive(
+        successor["mechanical_snapshot"], successor["agent_input"], successor["review"],
+        schema_version=SCHEMA_VERSION,
+    )
+    _readdress(successor)
+    validate_assessment_document(successor)
+
+    append_assessment(cfg, proposal)
+    append_assessment(cfg, successor)
+    _documents, issues = load_assessments(cfg)
+    schema_issue = next(
+        item for item in issues
+        if item["code"] == "ASSESSMENT_REVIEW_CHAIN"
+        and "changed assessment schema" in item["detail"]
+    )
+    assert f"{LEGACY_SCHEMA_VERSION} -> {SCHEMA_VERSION}" in schema_issue["detail"]
+
+
 def test_review_store_detects_branching_successors(tmp_path):
     cfg = _project(tmp_path)
     proposal = _make(cfg, _agent_input("supports_narrower_claim"))
@@ -523,6 +766,7 @@ def test_cli_assess_list_and_review_round_trip(tmp_path, capsys):
         "--actor", "agent:test", "--json",
     ]) == 0
     proposed = json.loads(capsys.readouterr().out)
+    assert proposed["schema_version"] == SCHEMA_VERSION
     assert proposed["review"]["state"] == "proposed"
     assert proposed["current_derived"]["proposed_relation"] == "related"
 
@@ -531,6 +775,7 @@ def test_cli_assess_list_and_review_round_trip(tmp_path, capsys):
         "--state", "accepted", "--actor", "scientist:1", "--json",
     ]) == 0
     accepted = json.loads(capsys.readouterr().out)
+    assert accepted["schema_version"] == SCHEMA_VERSION
     assert accepted["review"]["state"] == "accepted"
     assert accepted["current_derived"]["active_relation"] == "related"
 
@@ -545,8 +790,61 @@ def test_cli_assess_list_and_review_round_trip(tmp_path, capsys):
     ]) == 0
     listing = json.loads(capsys.readouterr().out)
     assert listing["integrity"] == "ok"
+    assert listing["current_assessment_schema_version"] == SCHEMA_VERSION
+    assert listing["supported_assessment_schema_versions"] == sorted(
+        SUPPORTED_SCHEMA_VERSIONS
+    )
     assert [item["id"] for item in listing["items"]] == [accepted["id"]]
+    assert listing["items"][0]["schema_version"] == SCHEMA_VERSION
     assert listing["items"][0]["is_current"] is True
+
+
+def test_cli_writes_v2_and_lists_mixed_schema_store_deterministically(tmp_path, capsys):
+    cfg = _project(tmp_path)
+    legacy = _as_legacy_v1(
+        _make(cfg, _agent_input("supports_narrower_claim"), recorded_at=FIXED_TIME)
+    )
+    append_assessment(cfg, legacy)
+    proposal_path = tmp_path / "qualitative-proposal.json"
+    proposal_path.write_text(json.dumps({
+        "claim_id": "claim:causal",
+        "result_ids": ["art:fit"],
+        "agent_input": _qualitative_direction_input(),
+    }), encoding="utf-8")
+
+    assert main([
+        "--config", str(cfg.config_path), "assess", str(proposal_path),
+        "--actor", "agent:v2", "--json",
+    ]) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert created["schema_version"] == SCHEMA_VERSION
+    assert created["current_derived"]["proposed_relation"] == "supports"
+
+    assert main([
+        "--config", str(cfg.config_path), "review", created["id"],
+        "--state", "accepted", "--actor", "scientist:1", "--json",
+    ]) == 0
+    accepted = json.loads(capsys.readouterr().out)
+    assert accepted["schema_version"] == SCHEMA_VERSION
+    assert accepted["current_derived"]["active_relation"] == "supports"
+
+    command = [
+        "--config", str(cfg.config_path), "assessments", "--all", "--json",
+    ]
+    assert main(command) == 0
+    first_output = capsys.readouterr().out
+    assert main(command) == 0
+    second_output = capsys.readouterr().out
+    assert second_output == first_output
+    listing = json.loads(first_output)
+    assert listing["integrity"] == "ok"
+    assert listing["current_assessment_schema_version"] == SCHEMA_VERSION
+    assert listing["supported_assessment_schema_versions"] == sorted(
+        SUPPORTED_SCHEMA_VERSIONS
+    )
+    assert {item["schema_version"] for item in listing["items"]} == {
+        LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
+    }
 
 
 def test_cli_listing_suppresses_current_relation_when_store_integrity_fails(

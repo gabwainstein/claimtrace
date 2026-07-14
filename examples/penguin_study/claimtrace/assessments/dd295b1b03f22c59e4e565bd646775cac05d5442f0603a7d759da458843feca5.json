@@ -1,0 +1,168 @@
+{
+  "id": "assessment:sha256:dd295b1b03f22c59e4e565bd646775cac05d5442f0603a7d759da458843feca5",
+  "schema_version": "claimtrace.semantic-assessment/1",
+  "recorded_at": "2026-07-14T11:13:02.797Z",
+  "subject": {
+    "claim_id": "claim:sign-reversal",
+    "result_ids": [
+      "art:slopes"
+    ]
+  },
+  "mechanical_snapshot": {
+    "anchor_checks": [
+      {
+        "anchor_index": 0,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "023849c38925e2af028a2eb4e1dc41afd7dc7a238195c1c2ae00438d1dae00e1",
+        "result_id": "art:slopes",
+        "valid": true
+      },
+      {
+        "anchor_index": 1,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "179488f4705133ae6f004dd2f1cab1a33850f08971e28ad522b29bde55995d50",
+        "result_id": "art:slopes",
+        "valid": true
+      },
+      {
+        "anchor_index": 2,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "4ef7e6270f3843cc3837caf1ef2c8b198738924e5ee16bffc310cdf74a254696",
+        "result_id": "art:slopes",
+        "valid": true
+      },
+      {
+        "anchor_index": 3,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "e59e4bea9a7d343b2bcbcd7015c9519052969abd826305f923af40460f32ba3d",
+        "result_id": "art:slopes",
+        "valid": true
+      },
+      {
+        "anchor_index": 4,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "505c3fe733e6e80ec0e2fd1f2639bb160b94a8594f832a9e55b202229e10930d",
+        "result_id": "art:slopes",
+        "valid": true
+      },
+      {
+        "anchor_index": 5,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "0f0e0442ac50d54d3aae8d5c765d618434837f778ffb9400713117f582c8bc4b",
+        "result_id": "art:slopes",
+        "valid": true
+      }
+    ],
+    "claim": {
+      "node_id": "claim:sign-reversal",
+      "node_sha256": "87d94ab08c580e4fb1bfe3ff0dc4326a915728e5c7b1ad57329b816edaf2f487",
+      "node_version_id": "node:sha256:87d94ab08c580e4fb1bfe3ff0dc4326a915728e5c7b1ad57329b816edaf2f487"
+    },
+    "results": [
+      {
+        "artifact": {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        },
+        "node_id": "art:slopes",
+        "node_sha256": "f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+        "node_version_id": "node:sha256:f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a"
+      }
+    ]
+  },
+  "agent_input": {
+    "alignment": {
+      "comparator": "match",
+      "direction": "match",
+      "exposure": "match",
+      "inference_level": "match",
+      "magnitude": "match",
+      "outcome": "match",
+      "population": "match",
+      "time_scope": "not_applicable"
+    },
+    "claim_frame": {
+      "comparator": "pooled OLS fit versus separate OLS fits within Adelie, Chinstrap, and Gentoo species",
+      "direction": "negative pooled slope and positive slope within each of the three species",
+      "exposure": "bill length in millimetres",
+      "inference_level": "associational",
+      "magnitude": "pooled -0.085021; Adelie 0.178834; Chinstrap 0.222212; Gentoo 0.204844",
+      "outcome": "bill depth in millimetres",
+      "population": "palmerpenguins v0.1.0 records with non-missing bill length and depth",
+      "time_scope": null
+    },
+    "evidence_anchors": [
+      {
+        "expected_value": 342,
+        "kind": "json_pointer",
+        "pointer": "/complete_case_n",
+        "result_id": "art:slopes"
+      },
+      {
+        "expected_value": -0.085021,
+        "kind": "json_pointer",
+        "pointer": "/pooled/slope",
+        "result_id": "art:slopes"
+      },
+      {
+        "expected_value": 0.178834,
+        "kind": "json_pointer",
+        "pointer": "/by_species/Adelie/slope",
+        "result_id": "art:slopes"
+      },
+      {
+        "expected_value": 0.222212,
+        "kind": "json_pointer",
+        "pointer": "/by_species/Chinstrap/slope",
+        "result_id": "art:slopes"
+      },
+      {
+        "expected_value": 0.204844,
+        "kind": "json_pointer",
+        "pointer": "/by_species/Gentoo/slope",
+        "result_id": "art:slopes"
+      },
+      {
+        "expected_value": "pooled_negative_each_species_positive",
+        "kind": "json_pointer",
+        "pointer": "/pattern",
+        "result_id": "art:slopes"
+      }
+    ],
+    "limitations": [
+      "The analysis is descriptive and does not identify a causal species effect.",
+      "Complete-case exclusion removes two records with missing bill measurements.",
+      "The fitted slopes do not establish generalization beyond these records."
+    ],
+    "provenance": {
+      "agent": "codex:/root/build_penguins"
+    },
+    "rationale": "The complete-case artifact reports a negative pooled slope and a positive slope for every declared species, exactly matching the narrow associational claim.",
+    "result_frame": {
+      "comparator": "pooled OLS fit versus separate OLS fits within Adelie, Chinstrap, and Gentoo species",
+      "direction": "negative pooled slope and positive slope within each of the three species",
+      "exposure": "bill length in millimetres",
+      "inference_level": "associational",
+      "magnitude": "pooled -0.085021; Adelie 0.178834; Chinstrap 0.222212; Gentoo 0.204844",
+      "outcome": "bill depth in millimetres",
+      "population": "palmerpenguins v0.1.0 records with non-missing bill length and depth",
+      "time_scope": null
+    },
+    "verdict": "supports_as_written"
+  },
+  "review": {
+    "state": "accepted",
+    "actor": "codex:/root/audit_examples",
+    "supersedes_assessment_id": "assessment:sha256:bc47d2af28944f0e5e96928c66b613bac9f80b80a6cd5ce77a84c8720fc2ba6a"
+  },
+  "derived": {
+    "effective_review_state": "accepted",
+    "proposed_relation": "supports",
+    "active_relation": "supports",
+    "stale": false,
+    "findings": []
+  }
+}

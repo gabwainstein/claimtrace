@@ -1,0 +1,168 @@
+{
+  "id": "event:sha256:dc372d736da871e44ba9433a6abfc37116249b3e914646b05b963c16523de7a0",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 20,
+          "event_ids_sha256": "223f23ec78658cd6345ba0e29cc2e540499fd89dff794b0d4fce1d2dae542e91",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "path": "claimtrace.config.json",
+            "sha256": "45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "size": 555,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:0c27f3e8e96189595e620cca349133a258952b48b08dc9fa3ee7a95c48ab2305",
+            "path": "claimtrace/graph.json",
+            "sha256": "0c27f3e8e96189595e620cca349133a258952b48b08dc9fa3ee7a95c48ab2305",
+            "size": 11786,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 20,
+          "event_ids_sha256": "223f23ec78658cd6345ba0e29cc2e540499fd89dff794b0d4fce1d2dae542e91",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "path": "claimtrace.config.json",
+            "sha256": "45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "size": 555,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:0c27f3e8e96189595e620cca349133a258952b48b08dc9fa3ee7a95c48ab2305",
+            "path": "claimtrace/graph.json",
+            "sha256": "0c27f3e8e96189595e620cca349133a258952b48b08dc9fa3ee7a95c48ab2305",
+            "size": 11786,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 241915100,
+    "git_after": {
+      "branch": "codex/symbolic-claim-kernel",
+      "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+      "state": "captured",
+      "tracked_dirty": false,
+      "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027581640642900,
+          "path": "results/decoding.json",
+          "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "size": 6303,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027581640642900,
+          "path": "results/decoding.json",
+          "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "size": 6303,
+          "state": "stable"
+        },
+        "path": "results/decoding.json",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784030273732011600,
+          "path": "analysis/03_figure.py",
+          "sha256": "8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "size": 4202,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784030273732011600,
+          "path": "analysis/03_figure.py",
+          "sha256": "8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "size": 4202,
+          "state": "stable"
+        },
+        "path": "analysis/03_figure.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:080dc5f363de2e6331b94219d3a62f59d45851dcb36d405c5a241160aa1361e5",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784030284976727200,
+          "path": "figures/decoding.svg",
+          "sha256": "080dc5f363de2e6331b94219d3a62f59d45851dcb36d405c5a241160aa1361e5",
+          "size": 3404,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:4d8db5b7e6f10174ce26213d75e4284a45ca823cbaabef1f4910495d6ca9156d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027594373409400,
+          "path": "figures/decoding.svg",
+          "sha256": "4d8db5b7e6f10174ce26213d75e4284a45ca823cbaabef1f4910495d6ca9156d",
+          "size": 2830,
+          "state": "stable"
+        },
+        "path": "figures/decoding.svg",
+        "produced": true,
+        "transition": "content_changed"
+      }
+    ],
+    "plan_id": "recipe:sha256:a6c39829cd4c2d65423131f204dd277f0677255d7ef97b68a068f238177cb2f7",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:9edf38c5f4aa0f3d982a0613092ea474234e2e33767b8c39795d1478219edce6",
+    "start_event_id": "event:sha256:3dd52c3078b97b2c39f24eec5319b2df94249eee3a1c72ff7232a52241fd05c2",
+    "window_deltas": [
+      {
+        "after_sha256": "080dc5f363de2e6331b94219d3a62f59d45851dcb36d405c5a241160aa1361e5",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "figures/decoding.svg",
+        "transition": "content_changed"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-14T11:58:05.177Z",
+  "run_id": "run:f23ed17c-a4fc-4a9e-bbc1-0a53846a5678",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}

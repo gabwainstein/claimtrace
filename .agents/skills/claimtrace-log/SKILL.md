@@ -134,10 +134,16 @@ successful ones so another scientist or agent can see what happened and avoid si
 
    Use one verdict: `supports_as_written`, `supports_narrower_claim`,
    `contradicts_as_written`, `insufficient`, `ambiguous`, or `unrelated`. Use every fixed alignment
-   Assessment v1 accepts exactly one result ID and requires every one of the eight keys in both
-   frames and in `alignment`. Use JSON `null` for a frame value that is not stated or not applicable;
+   New assessments use schema v2; legacy v1 records remain readable under v1 policy. Both supported
+   versions accept exactly one result ID and require every one of the eight keys in both frames and
+   in `alignment`. Use JSON `null` for a frame value that is not stated or not applicable;
    never use the literal string `"not stated"`. `not_stated` requires at least one corresponding
    frame value to be `null`, while `not_applicable` requires both to be `null`.
+   In v2, a qualitative directional claim may leave `magnitude` null while the result states a
+   magnitude and the alignment records `not_stated`, but both frames must state a direction and
+   direction must align (`match`, or the explicit `mismatch` required by
+   `contradicts_as_written`). Do not extend that exception to missing result magnitude, partial
+   alignment, or any other dimension.
    Do not call inference levels a match when the result modality is inadequate: descriptive evidence
    is not predictive, associational evidence is not causal, and only mechanistic evidence can match
    a mechanistic claim.

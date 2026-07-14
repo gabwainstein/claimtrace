@@ -1,0 +1,444 @@
+{
+  "schema_version": "1.0",
+  "concepts": {
+    "dataset_version": {
+      "canonical": "PhysioNet EEGMMIDB 1.0.0",
+      "note": "The selected EDF URLs and hashes are pinned to dataset version 1.0.0."
+    },
+    "analysis_plan": {
+      "canonical": "s001-mi-logo-csp-lda-v1",
+      "note": "Bump when channels, preprocessing, validation, null, or decision criterion changes."
+    }
+  },
+  "nodes": [
+    {
+      "id": "question:within-recording-decoding",
+      "type": "question",
+      "status": "current",
+      "value": "Can a fixed sensor-space pipeline distinguish imagined movement of both hands from both feet across S001 runs 06, 10, and 14?"
+    },
+    {
+      "id": "hyp:discriminative-pattern",
+      "type": "hypothesis",
+      "status": "current",
+      "value": "These selected S001 motor-imagery recordings contain a run-generalizable sensor-space pattern that differs between both-hands and both-feet labels."
+    },
+    {
+      "id": "pred:above-null",
+      "type": "prediction",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "value": "For S001 runs 06, 10, and 14, the fixed final 7-30 Hz CSP plus LDA pipeline's mean leave-one-run-out balanced accuracy will exceed the higher-method 95th percentile of 199 label permutations constrained within run."
+    },
+    {
+      "id": "claim:above-null",
+      "type": "claim",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "value": "For participant S001 in PhysioNet EEGMMIDB v1.0.0 runs 06, 10, and 14, the fixed final 7-30 Hz four-component regularized CSP plus shrinkage-LDA pipeline achieved mean leave-one-run-out balanced accuracy 0.842262, exceeding the higher-method 95th percentile 0.657738 of 199 label permutations constrained within run.",
+      "logic": {
+        "vocabulary_id": "eegbci:vocabulary",
+        "rule_pack_id": "eegbci:decoding-rules",
+        "target": {
+          "predicate": "eegbci:exceeds_run_constrained_null",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "type": "eegbci:study",
+              "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+              "unit": null
+            }
+          }
+        }
+      },
+      "logic_evidence_plan": {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [
+          {
+            "result_id": "art:decoding",
+            "binding_id": "eegbci:decoding-summary"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ref:eegbci-dataset",
+      "type": "reference",
+      "status": "current",
+      "value": "Schalk G. EEG Motor Movement/Imagery Dataset, version 1.0.0. PhysioNet. DOI:10.13026/C28G6P"
+    },
+    {
+      "id": "ref:mne-csp-example",
+      "type": "reference",
+      "status": "current",
+      "value": "MNE-Python motor imagery decoding from EEG data using Common Spatial Pattern documentation: https://mne.tools/stable/auto_examples/decoding/decoding_csp_eeg.html"
+    },
+    {
+      "id": "ref:bci2000",
+      "type": "reference",
+      "status": "current",
+      "value": "Schalk G, McFarland DJ, Hinterberger T, Birbaumer N, Wolpaw JR (2004). BCI2000: A General-Purpose Brain-Computer Interface (BCI) System. DOI:10.1109/TBME.2004.827072"
+    },
+    {
+      "id": "ref:physionet-2000",
+      "type": "reference",
+      "status": "current",
+      "value": "Goldberger AL et al. (2000). PhysioBank, PhysioToolkit, and PhysioNet. DOI:10.1161/01.CIR.101.23.E215"
+    },
+    {
+      "id": "code:fetch",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/00_fetch.py"
+    },
+    {
+      "id": "data:r06",
+      "type": "data",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0"
+      },
+      "path": "data/S001R06.edf",
+      "value": "S001 run 06: imagined movement of both fists/hands versus both feet"
+    },
+    {
+      "id": "data:r10",
+      "type": "data",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0"
+      },
+      "path": "data/S001R10.edf",
+      "value": "S001 run 10: imagined movement of both fists/hands versus both feet"
+    },
+    {
+      "id": "data:r14",
+      "type": "data",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0"
+      },
+      "path": "data/S001R14.edf",
+      "value": "S001 run 14: imagined movement of both fists/hands versus both feet"
+    },
+    {
+      "id": "art:source-manifest",
+      "type": "artifact",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0"
+      },
+      "path": "data/source_manifest.json",
+      "value": "Pinned source URLs, official hashes, sizes, DOI, and license"
+    },
+    {
+      "id": "code:prepare",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/01_prepare.py"
+    },
+    {
+      "id": "art:epochs",
+      "type": "artifact",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "path": "data/prepared_epochs.npz",
+      "value": "Fixed 7-30 Hz, 1-2 s, nine-channel epochs with labels and run groups"
+    },
+    {
+      "id": "art:preprocessing",
+      "type": "artifact",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "path": "results/preprocessing.json",
+      "value": "Preprocessing parameters, per-run counts, source hashes, and limitations"
+    },
+    {
+      "id": "code:analyze",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/02_analyze.py"
+    },
+    {
+      "id": "art:decoding",
+      "type": "artifact",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "path": "results/decoding.json",
+      "value": "Leave-one-run-out fold scores and run-constrained permutation null",
+      "logic_bindings": [
+        {
+          "id": "eegbci:decoding-summary",
+          "vocabulary_id": "eegbci:vocabulary",
+          "predicate": "eegbci:decoding_summary",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "kind": "json_pointer",
+              "pointer": "/study_id"
+            },
+            "folds_valid": {
+              "kind": "json_pointer",
+              "pointer": "/all_folds_valid"
+            },
+            "observed": {
+              "kind": "json_pointer",
+              "pointer": "/observed_mean_balanced_accuracy"
+            },
+            "null95": {
+              "kind": "json_pointer",
+              "pointer": "/permutation/null_95th_percentile"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "code:figure",
+      "type": "code",
+      "status": "current",
+      "path": "analysis/03_figure.py"
+    },
+    {
+      "id": "fig:decoding",
+      "type": "figure",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "path": "figures/decoding.svg",
+      "value": "Observed fold scores, null distribution, observed mean, and null threshold"
+    },
+    {
+      "id": "conclusion:scope",
+      "type": "conclusion",
+      "status": "current",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      },
+      "value": "This one-participant analysis is a reproducible within-participant, across-run decoding demonstration and cannot establish population performance, neural mechanism, source localization, or clinical utility."
+    },
+    {
+      "id": "doc:readme",
+      "type": "doc",
+      "status": "current",
+      "path": "README.md",
+      "value": "Data attribution, fixed final analysis, execution instructions, and limitations"
+    },
+    {
+      "id": "exp:within-recording-decoding",
+      "type": "experiment",
+      "status": "confirmed",
+      "date": "2026-07-14",
+      "script": "analysis/02_analyze.py",
+      "run_ids": [
+        "run:e920d857-cb51-4971-abb0-4f932b04ad5a"
+      ],
+      "value": "S001 runs 06/10/14 produced mean leave-one-run-out balanced accuracy 0.842262 versus run-constrained permutation null95 0.657738; one-sided p=0.005 with 199 permutations.",
+      "note": "Confirmed only for this fixed one-participant, three-run pipeline; no population, mechanistic, source-localization, or clinical inference.",
+      "backbone": {
+        "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+        "analysis_plan": "s001-mi-logo-csp-lda-v1"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "question:within-recording-decoding",
+      "to": "hyp:discriminative-pattern",
+      "rel": "motivates"
+    },
+    {
+      "from": "hyp:discriminative-pattern",
+      "to": "pred:above-null",
+      "rel": "predicts"
+    },
+    {
+      "from": "pred:above-null",
+      "to": "art:decoding",
+      "rel": "tested_by"
+    },
+    {
+      "from": "ref:eegbci-dataset",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:eegbci-dataset",
+      "to": "data:r06",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:eegbci-dataset",
+      "to": "data:r10",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:eegbci-dataset",
+      "to": "data:r14",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:eegbci-dataset",
+      "to": "art:source-manifest",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:mne-csp-example",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:mne-csp-example",
+      "to": "code:prepare",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:mne-csp-example",
+      "to": "code:analyze",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:bci2000",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "ref:physionet-2000",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "code:fetch",
+      "to": "data:r06",
+      "rel": "produces"
+    },
+    {
+      "from": "code:fetch",
+      "to": "data:r10",
+      "rel": "produces"
+    },
+    {
+      "from": "code:fetch",
+      "to": "data:r14",
+      "rel": "produces"
+    },
+    {
+      "from": "code:fetch",
+      "to": "art:source-manifest",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r06",
+      "to": "art:epochs",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r10",
+      "to": "art:epochs",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r14",
+      "to": "art:epochs",
+      "rel": "produces"
+    },
+    {
+      "from": "art:source-manifest",
+      "to": "art:epochs",
+      "rel": "produces"
+    },
+    {
+      "from": "code:prepare",
+      "to": "art:epochs",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r06",
+      "to": "art:preprocessing",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r10",
+      "to": "art:preprocessing",
+      "rel": "produces"
+    },
+    {
+      "from": "data:r14",
+      "to": "art:preprocessing",
+      "rel": "produces"
+    },
+    {
+      "from": "art:source-manifest",
+      "to": "art:preprocessing",
+      "rel": "produces"
+    },
+    {
+      "from": "code:prepare",
+      "to": "art:preprocessing",
+      "rel": "produces"
+    },
+    {
+      "from": "art:epochs",
+      "to": "art:decoding",
+      "rel": "produces"
+    },
+    {
+      "from": "art:preprocessing",
+      "to": "art:decoding",
+      "rel": "produces"
+    },
+    {
+      "from": "code:analyze",
+      "to": "art:decoding",
+      "rel": "produces"
+    },
+    {
+      "from": "art:decoding",
+      "to": "fig:decoding",
+      "rel": "renders"
+    },
+    {
+      "from": "code:figure",
+      "to": "fig:decoding",
+      "rel": "renders"
+    },
+    {
+      "from": "art:decoding",
+      "to": "claim:above-null",
+      "rel": "derives_from"
+    },
+    {
+      "from": "claim:above-null",
+      "to": "conclusion:scope",
+      "rel": "concludes"
+    },
+    {
+      "from": "conclusion:scope",
+      "to": "doc:readme",
+      "rel": "cites"
+    },
+    {
+      "from": "fig:decoding",
+      "to": "doc:readme",
+      "rel": "cites"
+    }
+  ]
+}

@@ -6,6 +6,12 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 ## Unreleased
 
 ### Added
+- Add a stdlib-only Palmer Penguins public demo with pinned CC0 sources, byte-identical
+  raw-to-curated verification, pooled and species-conditioned slope claims, semantic review, and a
+  project-owned symbolic sign rule.
+- Add a compact PhysioNet EEGBCI neuroscience demo with hash-pinned source acquisition,
+  leakage-aware leave-one-run-out CSP + LDA, a deterministic within-run permutation null, narrow
+  claims, and explicit upstream data-license attribution.
 - Add `claimtrace run` with explicit input/output roles, shell-free direct-child execution, stable
   pre/post SHA-256 snapshots, failed-run receipts, secret-flag redaction, best-effort Git/lockfile
   context, and an unattributed project-wide change window.
@@ -26,7 +32,7 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   input, exact JSON/text evidence anchors, claimtrace-computed node and artifact snapshots, and
   deterministic staleness, modality, alignment, and conflict findings.
 - Add `claimtrace assess`, `claimtrace assessments`, and `claimtrace review` for a proposal-to-
-  independent-review workflow, with accepted relations projected into strict reports and the
+  separate-actor review workflow, with accepted relations projected into strict reports and the
   standalone trajectory view.
 - Add checked-in widget-study assessments showing accepted support for an associational claim and
   an accepted `supports_narrower_claim` judgement that keeps causal language at `related` rather
@@ -49,6 +55,25 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   and detect opposing active proofs for the same formal target as a hard claim-level conflict.
 
 ### Fixed
+- Use the distinct PyPI distribution name `claimtrace-provenance` while retaining the `claimtrace`
+  import and CLI, and document the remaining namespace/command collision: it must not share an
+  environment with the unrelated PyPI distribution named `claimtrace`.
+- Make `require_assessments` cover structural result-to-claim `derives_from` dependencies as well
+  as direct `supports`/`refutes` declarations, so removing a demo's semantic ledger fails strict
+  checking instead of silently leaving the policy inert.
+- Advance the strict report schema to 1.3 for structural assessment coverage and preserve stale
+  derivation submissions as visible history without blocking when an active equivalent proof exists.
+- Make the EEG demo verifier independently refit every observed CSP + LDA fold and all 199 seeded
+  within-run permutations from the prepared epochs, comparing every ordered score with the result
+  artifact.
+- Preserve each semantic assessment's policy schema in the standalone visualization and display it
+  in the review status and provenance details.
+- Version semantic-assessment policy explicitly: new records use schema v2, legacy v1 records keep
+  v1 evaluation semantics, review successors preserve their predecessor's schema, and mixed stores
+  expose each item's version without rewriting immutable history.
+- Allow v2 quantitative results to support or refute a qualitative directional claim when only the
+  claim magnitude is unstated; continue to fail closed for missing result magnitude, partial or
+  mismatched magnitudes, and unstated non-magnitude dimensions.
 - Scope node backbones to named concepts when a graph has multiple independent canonical choices;
   retain scalar backbones for single-concept graphs and fail closed on ambiguous mappings.
 - Return `impact` results in a stable topological order rather than a type-only order.
@@ -69,7 +94,7 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   producing receipt, satisfy `NO_RUN_RECEIPT`, or hide drift in an earlier producing run's inputs.
 - Require strict RFC 3339 UTC event timestamps and serialize capture/finalization per output path
   across threads and processes while allowing runs with disjoint outputs to proceed concurrently.
-- Revalidate single-result and independent-first-reviewer invariants from stored assessment chains,
+- Revalidate single-result and different-first-reviewer-actor invariants from stored assessment chains,
   suppress every active-looking semantic relation when store integrity fails, and serialize the
   review leaf check with its append across threads and processes.
 - Reevaluate symbolic records against current claim/result nodes, complete artifact anchors,
@@ -82,6 +107,9 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   drift, and provenance hashing so adversarial or accidentally oversized inputs fail closed.
 
 ### Tests
+- Add real-example trajectory coverage plus adversarial v1/v2 semantic-policy tests for mixed
+  stores, schema-preserving reviews, qualitative-claim specificity, legacy policy stability, and
+  derived-field tampering.
 - Add regression coverage for multiple concepts, topological impact order, manifest completeness,
   missing manifests, output tampering, canonical relabeling, downstream stale propagation, rejected
   dangling log edges, and concurrent thread/process writers.
@@ -101,15 +129,19 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   projection.
 
 ### Migration
+- Semantic assessment schema v2 is now emitted for new proposals. Existing v1 documents remain
+  valid and are evaluated under the original complete-alignment policy; they are never silently
+  reinterpreted. A review transition stays on its predecessor's schema, while a changed scientific
+  judgement should be submitted as a new v2 proposal.
 - Render manifests are now required for a green `claimtrace check`. Existing projects must re-render
   if needed and run `claimtrace snapshot` once after upgrading. This fail-closed change is queued for
   the next release; the checked-in package version remains `0.2.0` until that release is cut.
 - Strict checking now expects successful finalized receipts for current `render_types` and
   `run_output_types`. Existing projects remain compatible with bare `claimtrace check`; adopt
   `claimtrace run` before enabling the strict gate.
-- Semantic assessments are advisory by default. Projects that want strict coverage of direct
-  `supports` and `refutes` edges can add an `assessments` path and set `require_assessments` to `true` after their
-  existing links have been reviewed.
+- Semantic assessments are advisory by default. Projects that want strict coverage can add an
+  `assessments` path and set `require_assessments` to `true` after reviewing both direct
+  `supports`/`refutes` links and structural result-to-claim `derives_from` dependencies.
 - Symbolic derivations are optional and advisory by default. Projects adopting them should first
   review and protect their graph bindings, vocabularies, rules, and prose-to-target mappings, then
   add a `logic` config object. Enable `require_derivations` only after active formal targets have
