@@ -1,10 +1,14 @@
 """Report integration tests for portable symbolic derivations."""
 import json
 
+import pytest
+
 from claimtrace.config import Config
 from claimtrace.logic import (
+    EVIDENCE_PLAN_SCHEMA,
     append_derivation,
     create_derivation,
+    create_derivation_from_evidence_plan,
     load_rule_pack,
     load_vocabulary,
 )
@@ -217,6 +221,99 @@ def _append_proof(cfg, vocabulary_path, rules_path):
     )
     append_derivation(cfg, document)
     return document
+
+
+def _set_plan(cfg, required=None):
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:gate")
+    claim["logic_evidence_plan"] = {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "required_bindings": required if required is not None else [
+            {"result_id": "result:a", "binding_id": "gate:a-release"},
+            {"result_id": "result:b", "binding_id": "gate:b-passed"},
+        ],
+    }
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+
+
+def test_valid_evidence_plan_is_checked_and_satisfies_strict_derivation_policy(tmp_path):
+    cfg, _vocabulary_path, _rules_path = _project(
+        tmp_path, require_derivations=True,
+    )
+    _set_plan(cfg)
+    document = create_derivation_from_evidence_plan(
+        cfg, "claim:gate", actor="agent:plan",
+        provenance={"agent": "agent:plan"}, recorded_at=FIXED_TIME,
+    )
+    append_derivation(cfg, document)
+
+    report = build_report(cfg, strict=True)
+
+    assert document["derived"]["active"] is True
+    assert report["derivations"]["integrity"] == "ok"
+    assert not any(
+        item["code"] in {"LOGIC_DECLARATION_INVALID", "MISSING_CLAIM_DERIVATION"}
+        for item in report["findings"]
+    )
+
+
+@pytest.mark.parametrize(("required", "message"), [
+    ([], "non-empty bounded list"),
+    ([
+        {"result_id": "result:a", "binding_id": "gate:a-release"},
+        {"result_id": "result:a", "binding_id": "gate:a-release"},
+    ], "must not contain duplicates"),
+    ([{"result_id": "result:missing", "binding_id": "gate:a-release"}],
+     "unknown result node"),
+    ([{"result_id": "result:a", "binding_id": "gate:not-declared"}],
+     "does not declare compatible binding"),
+])
+def test_report_rejects_invalid_claim_owned_evidence_plans(tmp_path, required, message):
+    cfg, _vocabulary_path, _rules_path = _project(tmp_path)
+    _set_plan(cfg, required)
+
+    report = build_report(cfg)
+
+    findings = [
+        item for item in report["findings"]
+        if item["code"] == "LOGIC_DECLARATION_INVALID"
+        and item["node_id"] == "claim:gate"
+    ]
+    assert len(findings) == 1
+    assert "logic_evidence_plan" in findings[0]["detail"]
+    assert message in findings[0]["detail"]
+    assert findings[0]["blocking"] is True
+    assert report["derivations"]["integrity"] == "error"
+
+
+def test_low_level_plan_subset_never_becomes_an_active_report_proof(tmp_path):
+    cfg, vocabulary_path, rules_path = _project(
+        tmp_path, require_derivations=True,
+    )
+    _set_plan(cfg)
+    proposal = _agent_input()
+    proposal["facts"] = proposal["facts"][:1]
+    vocabulary = load_vocabulary(vocabulary_path)
+    rules = load_rule_pack(rules_path, vocabulary)
+    document = create_derivation(
+        cfg, "claim:gate", ["result:a"], proposal,
+        vocabulary=vocabulary, rule_pack=rules, actor="agent:bypass",
+        recorded_at=FIXED_TIME,
+    )
+    append_derivation(cfg, document)
+
+    report = build_report(cfg, strict=True)
+
+    assert document["derived"]["active"] is False
+    assert report["derivations"]["active_proofs"] == []
+    assert any(
+        item["code"] == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+        for item in report["findings"]
+    )
+    assert any(
+        item["code"] == "MISSING_CLAIM_DERIVATION"
+        for item in report["findings"]
+    )
 
 
 def test_report_projects_one_composite_active_proof_for_all_results(tmp_path):

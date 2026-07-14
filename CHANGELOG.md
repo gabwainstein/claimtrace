@@ -34,10 +34,14 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Add an optional data-only symbolic claim layer with typed project vocabularies, explicit-polarity
   function-free rules, complete result-to-fact bindings, graph-pinned formal targets, finite
   open-world/paraconsistent evaluation, and composite content-addressed proof certificates.
-- Add the preferred `claimtrace.symbolic-selection/1` integration format: users and agents select
-  only existing result/binding IDs while Claimtrace materializes typed artifact values plus the
-  claim-pinned target and policy. Retain the explicit atom format as a low-level import, debugging,
-  and assumption interface.
+- Add `claimtrace.symbolic-selection/1` as the high-level fallback for claims without an evidence
+  plan: users and agents select only existing result/binding IDs while Claimtrace materializes typed
+  artifact values plus the claim-pinned target and policy. Retain the explicit atom format as a
+  low-level import, debugging, and assumption interface.
+- Add claim-owned exact all-of `claimtrace.symbolic-evidence-plan/1` declarations,
+  claim-only `claimtrace.symbolic-plan-request/1` proposals, and `claimtrace evidence-plan` preview.
+  Planned claims fail closed when grounded premises omit, add, or replace a required binding or add
+  an assumption.
 - Add `claimtrace derive`, `claimtrace derivations`, and `claimtrace explain`, structured live drift
   records, configurable streamed provenance hashing, strict optional derivation coverage, and
   symbolic proof/conflict nodes in the standalone trajectory view.

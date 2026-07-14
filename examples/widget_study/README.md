@@ -20,6 +20,7 @@ claimtrace check --strict --json  # also audits whether these runs genuinely pro
 claimtrace verify       # PASS — slope ≈ 2.0 and R2 > 0.9, read live from results/fit.json
 claimtrace assessments  # accepted support plus an explicit causal-language narrowing
 claimtrace snapshot     # lock figures/fit.svg's input hashes into a manifest
+claimtrace evidence-plan pred:slope --json
 claimtrace derive symbolic-positive-slope.proposal.json --actor widget-demo-agent --json
 claimtrace derivations --json
 claimtrace view --output research-map.html
@@ -35,18 +36,21 @@ demo as supplied.
 
 ## See the symbolic claim check
 
-`pred:slope` pins a project-local formal target, while `fig:fit` exposes one reviewed complete
-binding profile through stable SVG metadata. The checked-in selection proposal contains only the
-claim ID and approved `{result_id, binding_id}` pair. Claimtrace obtains the vocabulary, rule pack,
-target, predicate, polarity, extractors, and exact slope value from project-owned files:
+`pred:slope` pins a project-local formal target and owns an exact all-of evidence plan, while
+`fig:fit` exposes its required reviewed complete binding through stable SVG metadata. The checked-in
+plan request contains only the claim ID, public note, and provenance; it cannot choose or omit a
+binding. Claimtrace obtains the required binding, vocabulary, rule pack, target, predicate,
+polarity, extractors, and exact slope value from project-owned files:
 
 ```bash
+claimtrace evidence-plan pred:slope --json
 claimtrace derive symbolic-positive-slope.proposal.json --actor widget-demo-agent --json
 claimtrace explain proof:sha256:<digest> --json
 ```
 
 `widget-demo-agent` is a synthetic fixture actor. In a real project, pass the truthful identity of
-the user or agent making the selection; Claimtrace records the value but does not authenticate it.
+the user or agent requesting plan materialization; Claimtrace records the value but does not
+authenticate it.
 
 With the current figure this is conditionally `derivable` under `widget:slope-rules`. A non-positive
 metadata value would make the same target `refutable`; it would not make the prose prediction true
@@ -54,6 +58,10 @@ or false outside that declared formalization. The proposal is a reviewed demo fi
 temporary file to delete. `logic.require_derivations` remains `false`, so a clean checkout is valid
 before anyone records a local derivation; projects can enable it when they want formalized claims to
 require a current active certificate.
+
+The plan is complete only relative to its repository-reviewed binding list. It prevents the
+requesting actor from cherry-picking within that list; it does not prove that the plan author found
+every scientifically relevant result.
 
 ## See the meaning check
 

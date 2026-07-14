@@ -186,6 +186,7 @@ def _derivation_view_record(item, raw_nodes, *, allow_active_proofs=True):
     claim_id = subject.get("claim_id")
     result_ids = list(subject.get("result_ids") or [])
     claim_snapshot = mechanical.get("claim") or {}
+    evidence_plan = claim_snapshot.get("evidence_plan")
     result_snapshots = {
         snapshot.get("node_id"): snapshot
         for snapshot in mechanical.get("results") or []
@@ -207,6 +208,12 @@ def _derivation_view_record(item, raw_nodes, *, allow_active_proofs=True):
             "text": (raw_nodes.get(claim_id) or {}).get("value") or claim_id,
             "node_version_id": claim_snapshot.get("node_version_id"),
         },
+        # This is the plan captured in the proof certificate, not a fresh projection
+        # from the current graph.  Keeping that distinction visible is important when
+        # a later claim edit makes the proof stale.
+        "evidence_plan": (
+            copy.deepcopy(evidence_plan) if isinstance(evidence_plan, dict) else None
+        ),
         "results": [
             {
                 "id": result_id,
@@ -512,6 +519,10 @@ def _build_payload(report):
             "date": node.get("date"),
             "script": node.get("script"),
             "backbone": node.get("backbone"),
+            "evidence_plan": (
+                copy.deepcopy(node.get("logic_evidence_plan"))
+                if isinstance(node.get("logic_evidence_plan"), dict) else None
+            ),
             "findings": sorted(
                 findings_by_node[node_id],
                 key=lambda item: (
@@ -1570,6 +1581,20 @@ _HTML_SCRIPT = """
       .replace(/_/g, " ");
   }
 
+  function evidencePlanMode(plan) {
+    return plan && typeof plan === "object" ? "claim-owned exact all-of" : null;
+  }
+
+  function evidencePlanBindings(plan) {
+    if (!plan || !Array.isArray(plan.required_bindings)) return [];
+    return plan.required_bindings.filter(function (item) {
+      return item && typeof item.result_id === "string" &&
+        typeof item.binding_id === "string";
+    }).map(function (item) {
+      return item.result_id + " / " + item.binding_id;
+    }).sort();
+  }
+
   function displayValue(value) {
     if (value === null || value === undefined || value === "") return "not stated";
     if (typeof value === "object") return JSON.stringify(value);
@@ -1842,6 +1867,9 @@ _HTML_SCRIPT = """
     appendDetail(list, "Backbone", typeof node.backbone === "object" ? JSON.stringify(node.backbone) : node.backbone);
     appendDetail(list, "Date", node.date);
     if (node.kind === "semantic" || node.kind === "assessment") {
+      appendDetail(list, "Evidence plan", evidencePlanMode(node.evidence_plan));
+      appendDetail(list, "Plan schema", (node.evidence_plan || {}).schema_version);
+      appendDetail(list, "Required bindings", evidencePlanBindings(node.evidence_plan));
       appendDetail(list, "Bound runs", node.run_ids);
       appendDetail(list, "Findings", (node.findings || []).map(function (item) {
         return item.severity + ": " + item.code + " — " + item.detail;
@@ -1861,6 +1889,9 @@ _HTML_SCRIPT = """
           (item.current_version || item.current_sha256 || "absent") + ")";
       }));
       appendDetail(list, "Used premise results", proof.used_result_ids || []);
+      appendDetail(list, "Stored evidence plan", evidencePlanMode(proof.evidence_plan));
+      appendDetail(list, "Stored plan schema", (proof.evidence_plan || {}).schema_version);
+      appendDetail(list, "Stored required bindings", evidencePlanBindings(proof.evidence_plan));
       appendDetail(list, "Submitted result scope", (proof.results || []).map(function (item) {
         return item.id;
       }));

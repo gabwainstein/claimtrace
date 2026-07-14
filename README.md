@@ -78,7 +78,8 @@ claimtrace downstream art:clean_data  # what depends on this artifact?
 claimtrace verify                     # do my headline numbers still reproduce from disk?
 claimtrace assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
 claimtrace assessments --json        # inspect proposals, reviews, findings, and staleness
-claimtrace derive selection.json --actor analysis-agent   # select approved bindings; Claimtrace grounds them
+claimtrace evidence-plan claim:gate --json  # inspect the claim-owned exact required bindings
+claimtrace derive plan-request.json --actor analysis-agent  # request automatic all-of materialization
 claimtrace derivations --json        # inspect conditional proof states and current validity
 claimtrace explain <derivation-or-proof-id> --json  # inspect one composite proof certificate
 claimtrace journal --status dead_end  # show me everything I already tried that didn't work
@@ -162,7 +163,8 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace assess ENTRY --actor ID` | append an external-agent semantic proposal; claimtrace computes evidence snapshots and policy output |
 | `claimtrace assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
 | `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append an independent acceptance, rejection, contest, or supersession decision |
-| `claimtrace derive ENTRY --actor ID` | select approved result bindings (preferred) or import explicit typed facts, then append a deterministic symbolic derivation |
+| `claimtrace evidence-plan CLAIM_ID [--json]` | show the claim-owned exact all-of binding plan and its pinned vocabulary/rule pack |
+| `claimtrace derive ENTRY --actor ID` | materialize a claim-owned evidence plan (preferred), select bindings for an unplanned claim, or import explicit typed facts |
 | `claimtrace derivations [--state ...] [--json]` | list derivations reevaluated against the current graph, artifacts, vocabulary, and rules |
 | `claimtrace explain DERIVATION_OR_PROOF_ID [--json]` | show one composite proof certificate, premises, assumptions, equivalent submissions, and effective state |
 | `claimtrace snapshot` | lock each render's input content-hashes into a manifest |
@@ -227,15 +229,16 @@ project without writing a Claimtrace plugin or allowing executable rule code.
 The project owns the meaning-bearing policy. Each result node's `logic_bindings` contains a
 **complete fact-binding profile** that pins one input predicate, its polarity, and an extractor for
 every argument. Each claim-like node's `logic` declaration pins its exact target plus both the
-`vocabulary_id` and `rule_pack_id`. In the preferred interface, a user or agent selects only
-project-declared result/binding IDs. Claimtrace reads the target and policy IDs from the claim,
-extracts and canonicalizes every typed argument from the result artifacts, and computes the proof.
-The proposal cannot supply a pointer, atom, target, polarity, rule, or proof step. One grounded fact
-has exactly one evidence binding. This keeps the adaptable part declarative while making extraction
-and inference deterministic. One result may expose profiles for multiple configured vocabularies;
-each proof still uses the single vocabulary pinned by its claim. `claimtrace check` validates every
-declared target and binding, including extraction against the current artifact, before an agent can
-select it.
+`vocabulary_id` and `rule_pack_id`. A claim can additionally own an exact all-of
+`logic_evidence_plan`: the requester then names only the claim, and Claimtrace materializes every
+required project-declared binding. For a claim without a plan, the binding-selection interface
+remains available as a fallback. Claimtrace reads the target and policy IDs from the claim, extracts
+and canonicalizes every typed argument from the result artifacts, and computes the proof. The
+request cannot supply a pointer, atom, target, polarity, rule, or proof step. One grounded fact has
+exactly one evidence binding. This keeps the adaptable part declarative while making extraction and
+inference deterministic. One result may expose profiles for multiple configured vocabularies; each
+proof still uses the single vocabulary pinned by its claim. `claimtrace check` validates every
+declared target, binding, and evidence plan, including extraction against the current artifact.
 
 ```json
 {
@@ -258,22 +261,41 @@ positive 64-bit byte budget for stream-hashing the scoped upstream provenance fi
 
 ```json
 {
-  "schema_version": "claimtrace.symbolic-selection/1",
+  "logic_evidence_plan": {
+    "schema_version": "claimtrace.symbolic-evidence-plan/1",
+    "required_bindings": [
+      {"result_id": "art:test", "binding_id": "gate:test-completed"}
+    ]
+  }
+}
+```
+
+The plan is a top-level field on the claim, hypothesis, prediction, or conclusion node. Its
+`required_bindings` is a non-empty, duplicate-free list that Claimtrace canonicalizes by result and
+binding ID. Inspect the resolved plan with `claimtrace evidence-plan claim:gate --json`, then submit
+the claim-only request:
+
+```json
+{
+  "schema_version": "claimtrace.symbolic-plan-request/1",
   "claim_id": "claim:gate",
-  "bindings": [
-    {"result_id": "art:test", "binding_id": "gate:test-completed"}
-  ],
-  "note": "Use the project-reviewed test-gate profile.",
+  "note": "Materialize the project-reviewed test-gate plan.",
   "provenance": {"agent": "analysis-agent"}
 }
 ```
 
-This `claimtrace.symbolic-selection/1` form is the normal integration surface for agents and other
-tools. The explicit `claim_id`/`result_ids`/`vocabulary_id`/`rule_pack_id`/`agent_input` form remains
-available as a low-level import, debugging, and explicit-assumption interface. It requires the
-caller to transcribe canonical typed atoms, but still cannot submit computed snapshots or proof
-fields. Prefer selections for grounded facts; use the low-level form only when that extra control is
-intentional.
+`claimtrace.symbolic-plan-request/1` contains exactly the schema, claim ID, public note, and
+attribution. It cannot add, remove, or replace a required binding. On a plan-governed claim, a
+`claimtrace.symbolic-selection/1` proposal is accepted only when its canonical binding set exactly
+matches the plan. A low-level proposal that omits or adds premises, or adds an assumption, cannot
+produce an active plan-compliant proof.
+
+For a claim with no `logic_evidence_plan`, `claimtrace.symbolic-selection/1` is the fallback: it
+contains exactly `schema_version`, `claim_id`, a non-empty list of existing `{result_id,
+binding_id}` objects, `note`, and `provenance`. The explicit
+`claim_id`/`result_ids`/`vocabulary_id`/`rule_pack_id`/`agent_input` form remains available as a
+low-level import, debugging, and explicit-assumption interface. It requires the caller to transcribe
+canonical typed atoms, but still cannot submit computed snapshots or proof fields.
 
 Evaluation is open-world and paraconsistent. The target state is `derivable` when its requested
 polarity follows, `refutable` when only the opposite follows, `conflict` when both follow, and
@@ -328,18 +350,18 @@ dead-ends, retractions, and superseded work as first-class outcomes. It never fa
 for historical work or infers a dependency from a filename. When asked to compare a result with a
 claim, the skill prepares only the external semantic `agent_input` proposal with exact anchors; it
 does not self-accept its judgement or inject computed fields. Where a project configures symbolic
-policy, the same skill submits a `claimtrace.symbolic-selection/1` document containing only existing
-result/binding IDs plus public note and provenance. Claimtrace materializes the typed facts and
-pinned target. The skill never creates pointers, atoms, rules, proof steps, or proof states.
+policy and a claim-owned plan, the same skill submits a `claimtrace.symbolic-plan-request/1`
+document containing only the claim ID, public note, and provenance. Claimtrace materializes every
+required binding, the typed facts, and the pinned target. For an unplanned claim, the skill can fall
+back to `claimtrace.symbolic-selection/1` with existing result/binding IDs. The skill never creates
+pointers, atoms, rules, proof steps, or proof states.
 Agents still need the user or an independent reviewer to judge scientific meaning; Claimtrace
 automates integrity, grounding, conditional inference, reconciliation, propagation, policy checks,
 and display.
 
-The selection interface prevents callers from inventing a mapping, but it does not yet prevent
-cherry-picking among valid mappings. A caller can omit an approved binding unless the repository's
-own workflow requires it. The next policy layer should let each formal claim declare an exhaustive
-evidence plan (required binding IDs or a deterministic graph query plus inclusion/exclusion rules)
-that Claimtrace materializes without caller choice.
+An exact plan prevents the requesting agent from cherry-picking within that reviewed list. It does
+not establish that the list includes every scientifically relevant result; that remains repository
+policy and review.
 
 ## Optional: a git pre-commit hook
 
@@ -391,6 +413,14 @@ pinned bytes. The choice of predicate, polarity, extractor, rules, and formal ta
 human-reviewed semantic mapping. It can be internally exact and still represent the wrong
 scientific construct. Semantic assessments and independent review cover that different question;
 neither layer should be described as proof of scientific truth.
+
+A claim-owned evidence plan provides completeness only relative to its reviewed exact list. It
+prevents a requester from omitting, adding, or replacing bindings in that list, but an authorized
+editor can still omit relevant evidence from the plan itself. Exact schema v1 also does not
+automatically discover a newly added result. Graph-query plans are deliberately deferred until the
+schema can represent corroborating bindings that yield duplicate logical atoms, keep unused matched
+evidence from spuriously deactivating a proof, and record a deterministic query-resolution
+certificate with explicit inclusion and exclusion decisions.
 
 A semantic node can explicitly cite the receipt for its tested verdict with
 `"run_ids": ["run:<uuid>"]`. This is how pathless, null, and dead-end results stay visibly linked to

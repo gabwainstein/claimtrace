@@ -163,11 +163,11 @@ successful ones so another scientist or agent can see what happened and avoid si
     supports the original wording; create a new narrowed claim only after review.
 11. If the project config declares `logic.vocabularies` and `logic.rule_packs`, inspect those exact
     JSON files, the claim node's complete `logic` declaration, and each selected result node's
-    complete fact profile. Do not add predicates, edit a vocabulary or rule pack, change the claim
-    target, or select an unconfigured external pack during routine logging. These files are trusted
-    project declarations that require separate review; they are not semantically certified by
-    Claimtrace. A valid result profile pins the vocabulary, input predicate, polarity, and extractor
-    for every predicate argument, for example:
+    complete fact profile. Do not add or edit predicates, a vocabulary, a rule pack, the claim
+    target, a claim-owned evidence plan, or a result binding during routine logging. Changing any of
+    those trusted project declarations requires explicit user or project-policy authority and
+    separate review; Claimtrace does not semantically certify them. A valid result profile pins the
+    vocabulary, input predicate, polarity, and extractor for every predicate argument, for example:
 
     ```json
     {
@@ -185,7 +185,36 @@ successful ones so another scientist or agent can see what happened and avoid si
     ```
 
     Treat the whole profile as one reviewed meaning-bearing binding. Do not combine individual
-    arguments from separate profiles, rows, or results. Prefer a
+    arguments from separate profiles, rows, or results.
+
+    If the claim declares `logic_evidence_plan`, treat that plan as exact all-of premise policy.
+    Inspect the resolved plan before deriving:
+
+    ```bash
+    claimtrace --config /absolute/project/claimtrace.config.json \
+      evidence-plan claim:<existing-id> --json
+    ```
+
+    Then submit exactly a `claimtrace.symbolic-plan-request/1` with the claim, a concise public note,
+    and reported provenance:
+
+    ```json
+    {
+      "schema_version": "claimtrace.symbolic-plan-request/1",
+      "claim_id": "claim:<existing-id>",
+      "note": "Materialize every premise in the reviewed claim-owned evidence plan.",
+      "provenance": {"agent": "<reported-agent-id>"}
+    }
+    ```
+
+    A plan request deliberately contains no binding choices: Claimtrace resolves and materializes
+    every required binding. Never choose, add, omit, or substitute a binding for a plan-governed
+    claim, and never use a selection or verbose proposal to bypass its plan. If plan resolution
+    fails, stop and report the exact error. This is complete only relative to the reviewed plan; it
+    does not establish that the plan includes all scientifically relevant evidence or that its
+    meaning is correct.
+
+    Only when the claim has no `logic_evidence_plan`, use a
     `claimtrace.symbolic-selection/1` proposal. Supply only the schema, claim, approved complete
     binding identities, a concise public note, and reported provenance:
 
@@ -209,11 +238,12 @@ successful ones so another scientist or agent can see what happened and avoid si
     extractors, types, units, and values from the selected result binding. It rejects incomplete,
     duplicate, unknown, or unused selections.
 
-    Use the verbose typed-fact proposal only for an explicit bounded assumption or a deliberate
-    low-level import. In that form, every predicate, type, unit, argument, polarity, and target must
-    exactly match the configured vocabulary and claim policy; integers and decimals are canonical
-    JSON strings. Never use the verbose form to override a project binding. Assumption-dependent
-    conclusions remain visible but inactive.
+    For an unplanned claim, use the verbose typed-fact proposal only for an explicit bounded
+    assumption or a deliberate low-level import. In that form, every predicate, type, unit,
+    argument, polarity, and target must exactly match the configured vocabulary and claim policy;
+    integers and decimals are canonical JSON strings. Never use the verbose form to override a
+    project binding or claim-owned evidence plan. Assumption-dependent conclusions remain visible
+    but inactive.
 
     Submit with `claimtrace --config <absolute-config> derive <proposal.json> --actor <agent-id>
     --json`. Never provide a closure, proof state, proof steps, proof ID, mechanical snapshot, or
@@ -264,9 +294,11 @@ successful ones so another scientist or agent can see what happened and avoid si
   agent with workspace write access could edit those files, and actor/provenance strings are
   self-asserted rather than authenticated. Protect policy files through the project's own review,
   ownership, signature, or CI controls and report which controls were actually verified.
-- Prefer approved binding selections. Never provide computed proof fields or silently modify the
-  policy that decides what follows. Keep the separate semantic assessment even when formal
-  derivation succeeds; symbolic consistency does not establish meaning, truth, or scientific support.
+- For a plan-governed claim, use only a plan request; for an unplanned claim, prefer approved binding
+  selections. Never provide computed proof fields or silently modify the evidence plan, rules,
+  bindings, or other policy that decides what follows. Keep the separate semantic assessment even
+  when formal derivation succeeds; symbolic consistency does not establish meaning, truth, or
+  scientific support.
 - Keep symbolic derivations composite. Multiple result IDs are premises of one proof; never flatten
   that proof into separate per-result `supports` edges. Missing premises produce `unknown`; explicit
   positive and negative conclusions produce `conflict` rather than arbitrary explosion. Treat
