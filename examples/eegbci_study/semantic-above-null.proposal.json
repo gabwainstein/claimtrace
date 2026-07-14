@@ -59,6 +59,6 @@
       "It does not establish population generalization, neural mechanism, source localization, or clinical utility.",
       "The permutation null does not address every possible temporal or recording confound."
     ],
-    "provenance": {"agent": "codex:/root/release_hardening"}
+    "provenance": {"agent": "codex:/root/lf_release_hardening"}
   }
 }

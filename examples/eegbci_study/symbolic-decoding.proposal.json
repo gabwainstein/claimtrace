@@ -2,5 +2,5 @@
   "schema_version": "claimtrace.symbolic-plan-request/1",
   "claim_id": "claim:above-null",
   "note": "Materialize every premise in the reviewed decoding evidence plan.",
-  "provenance": {"agent": "codex:/root/release_hardening"}
+  "provenance": {"agent": "codex:/root/lf_release_hardening"}
 }

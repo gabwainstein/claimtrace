@@ -55,6 +55,8 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   and detect opposing active proofs for the same formal target as a hard claim-level conflict.
 
 ### Fixed
+- Write the EEG demo's tracked JSON artifacts with explicit LF newlines so Git line-ending
+  normalization on Windows cannot invalidate the checked-in receipt hashes after a clean checkout.
 - Use the distinct PyPI distribution name `claimtrace-provenance` while retaining the `claimtrace`
   import and CLI, and document the remaining namespace/command collision: it must not share an
   environment with the unrelated PyPI distribution named `claimtrace`.

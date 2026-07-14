@@ -171,7 +171,11 @@ def main() -> None:
     }
     output = Path("results/decoding.json")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     verdict = "met" if criterion_met else "not met"
     print(
         f"observed mean balanced accuracy={observed:.4f}; null95={null_95:.4f}; "

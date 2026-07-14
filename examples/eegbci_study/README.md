@@ -52,6 +52,10 @@ result records MNE, NumPy, and scikit-learn versions plus those thread variables
 requirements also include SciPy. It does not capture the full OS, BLAS, wheel, or transitive-package
 environment, so cross-platform byte identity is not claimed.
 
+The scripts write tracked JSON artifacts with explicit LF newlines. This keeps their checked-out
+bytes identical to the bytes hashed in Claimtrace receipts even when Git is configured to normalize
+line endings on Windows.
+
 The fixed final criterion is intentionally simple: all three folds must be valid and the observed
 mean balanced accuracy must exceed the null distribution's higher-method 95th percentile. Whether
 that criterion is met is a result, not an assumption.
@@ -165,13 +169,14 @@ root="$PWD"
 ```
 
 `semantic-above-null.proposal.json` records the current agent input authored by
-`codex:/root/release_hardening`. A separate same-session audit task,
-`codex:/root/eeg_release_review`, accepted the narrow result-to-claim alignment after independently
-running the live verifier. That is task separation, not an external independent review. The older
-`build_eegbci` → `audit_examples` chain remains in the immutable ledger and is explicitly
-superseded after its claim wording became stale. The live verifier provides the reproducible check
-that matters here: it independently refits all three CSP + LDA folds and all 199 seeded within-run
-permutations from `prepared_epochs.npz` and compares every ordered score with `decoding.json`.
+`codex:/root/lf_release_hardening`. A separate same-session audit task,
+`codex:/root/eeg_lf_review`, accepted the narrow result-to-claim alignment only after independently
+running the live verifier. That is task separation, not an external independent review. The earlier
+`release_hardening` → `eeg_release_review` and `build_eegbci` → `audit_examples` chains remain in the
+immutable ledger and are explicitly superseded after their underlying tracked bytes or claim
+wording became stale. The live verifier provides the reproducible check that matters here: it
+independently refits all three CSP + LDA folds and all 199 seeded within-run permutations from
+`prepared_epochs.npz` and compares every ordered score with `decoding.json`.
 Actor strings are self-asserted metadata, not authenticated identities, and acceptance remains an
 attributed judgement rather than certification of scientific truth.
 
@@ -185,10 +190,11 @@ binding from `results/decoding.json`. A `derivable` result means derivable under
 `eegbci:decoding-rules`; it does not make the scientific claim true or validate that the rule and
 binding capture the intended meaning.
 
-The checked-in plan request records the current wording-refresh task; the earlier derivation remains
-inspectable as stale history. A new actor who wants to record another derivation must copy the
-request, replace `provenance.agent`, and pass that same truthful identity to `claimtrace derive`;
-the README intentionally does not provide a command that impersonates a recorded actor.
+The checked-in plan request records the current LF-stable release-hardening task; earlier
+derivations remain inspectable as stale history. A new actor who wants to record another derivation
+must copy the request, replace `provenance.agent`, and pass that same truthful identity to
+`claimtrace derive`; the README intentionally does not provide a command that impersonates a
+recorded actor.
 
 The checked-in mechanical receipts retain the executable and working-directory paths observed on
 the machine that produced them. That is authentic environment provenance but may disclose local

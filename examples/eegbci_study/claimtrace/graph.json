@@ -246,10 +246,10 @@
       "id": "exp:within-recording-decoding",
       "type": "experiment",
       "status": "confirmed",
-      "date": "2026-07-14",
+      "date": "2026-07-15",
       "script": "analysis/02_analyze.py",
       "run_ids": [
-        "run:e920d857-cb51-4971-abb0-4f932b04ad5a"
+        "run:7751c45c-4bb9-461b-a8eb-0ff95e4b9645"
       ],
       "value": "S001 runs 06/10/14 produced mean leave-one-run-out balanced accuracy 0.842262 versus run-constrained permutation null95 0.657738; one-sided p=0.005 with 199 permutations.",
       "note": "Confirmed only for this fixed one-participant, three-run pipeline; no population, mechanistic, source-localization, or clinical inference.",

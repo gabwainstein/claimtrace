@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+import claimtrace.report as report_module
 from claimtrace.config import Config
 from claimtrace.logic import (
     EVIDENCE_PLAN_SCHEMA,
@@ -206,7 +207,7 @@ def _project(tmp_path, *, require_derivations=False):
     return Config(config_path), vocabulary_path, rules_path
 
 
-def _append_proof(cfg, vocabulary_path, rules_path):
+def _append_proof(cfg, vocabulary_path, rules_path, *, recorded_at=FIXED_TIME):
     vocabulary = load_vocabulary(vocabulary_path)
     rules = load_rule_pack(rules_path, vocabulary)
     document = create_derivation(
@@ -217,7 +218,7 @@ def _append_proof(cfg, vocabulary_path, rules_path):
         vocabulary=vocabulary,
         rule_pack=rules,
         actor="agent:test",
-        recorded_at=FIXED_TIME,
+        recorded_at=recorded_at,
     )
     append_derivation(cfg, document)
     return document
@@ -643,13 +644,31 @@ def test_stale_derivation_is_inactive_without_marking_store_integrity_bad(tmp_pa
     assert report["ok"] is False
 
 
-def test_active_equivalent_proof_makes_stale_history_non_blocking(tmp_path):
+def test_newer_logically_equivalent_proof_with_new_proof_id_suppresses_stale_finding(
+        tmp_path, monkeypatch):
     cfg, vocabulary_path, rules_path = _project(
         tmp_path, require_derivations=True,
     )
     old = _append_proof(cfg, vocabulary_path, rules_path)
     _revise_claim_wording(cfg)
-    replacement = _append_proof(cfg, vocabulary_path, rules_path)
+    replacement = _append_proof(
+        cfg, vocabulary_path, rules_path,
+        recorded_at="2026-07-14T02:00:01.000Z",
+    )
+
+    original_evaluate = report_module.evaluate_derivation
+
+    def evaluate_with_mechanical_proof_id_drift(cfg, document, **kwargs):
+        effective = original_evaluate(cfg, document, **kwargs)
+        if document["id"] == old["id"]:
+            effective["proof_id"] = "proof:sha256:" + "f" * 64
+        return effective
+
+    # A proof id includes byte-sensitive mechanical provenance.  Simulate the real
+    # clean-checkout normalization case while leaving all logical fields untouched.
+    monkeypatch.setattr(
+        report_module, "evaluate_derivation", evaluate_with_mechanical_proof_id_drift,
+    )
 
     report = build_report(cfg)
 
@@ -663,11 +682,35 @@ def test_active_equivalent_proof_makes_stale_history_non_blocking(tmp_path):
         for finding in old_item["effective"]["findings"]
     )
     assert replacement_item["effective"]["active"] is True
-    assert old_item["effective"]["proof_id"] == replacement_item["effective"]["proof_id"]
+    assert old_item["effective"]["proof_id"] != replacement_item["effective"]["proof_id"]
     assert not any(
         finding["code"] == "DERIVATION_STALE" for finding in report["findings"]
     )
     assert report["ok"] is True
+
+
+def test_active_equivalent_proof_must_be_strictly_newer_to_suppress_stale_finding(
+        tmp_path):
+    cfg, vocabulary_path, rules_path = _project(
+        tmp_path, require_derivations=True,
+    )
+    old = _append_proof(cfg, vocabulary_path, rules_path)
+    _revise_claim_wording(cfg)
+    replacement = _append_proof(
+        cfg, vocabulary_path, rules_path,
+        recorded_at="2026-07-14T01:59:59.000Z",
+    )
+
+    report = build_report(cfg)
+
+    history = {item["id"]: item for item in report["derivations"]["items"]}
+    assert history[replacement["id"]]["effective"]["active"] is True
+    assert history[old["id"]]["effective"]["active"] is False
+    stale = next(
+        item for item in report["findings"] if item["code"] == "DERIVATION_STALE"
+    )
+    assert stale["blocking"] is True
+    assert report["ok"] is False
 
 
 def test_different_active_proof_does_not_suppress_stale_finding(tmp_path):
@@ -688,6 +731,93 @@ def test_different_active_proof_does_not_suppress_stale_finding(tmp_path):
         item for item in report["findings"] if item["code"] == "DERIVATION_STALE"
     )
     assert stale["blocking"] is True
+    assert report["ok"] is False
+
+
+def test_different_evidence_binding_does_not_suppress_stale_finding(tmp_path):
+    cfg, vocabulary_path, rules_path = _project(
+        tmp_path, require_derivations=True,
+    )
+    old = _append_proof(cfg, vocabulary_path, rules_path)
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:gate")
+    claim["value"] += " (wording revised)"
+    result_b = next(item for item in graph["nodes"] if item["id"] == "result:b")
+    alternate_binding = dict(result_b["logic_bindings"][0])
+    alternate_binding["id"] = "gate:b-passed-alternate"
+    result_b["logic_bindings"].append(alternate_binding)
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    proposal = _agent_input()
+    proposal["facts"][1]["evidence"][0]["binding_id"] = alternate_binding["id"]
+    replacement = create_derivation(
+        cfg, "claim:gate", ["result:a", "result:b"], proposal,
+        vocabulary=load_vocabulary(vocabulary_path),
+        rule_pack=load_rule_pack(rules_path, load_vocabulary(vocabulary_path)),
+        actor="agent:alternate-binding",
+        recorded_at="2026-07-14T02:00:01.000Z",
+    )
+    append_derivation(cfg, replacement)
+
+    report = build_report(cfg)
+
+    history = {item["id"]: item for item in report["derivations"]["items"]}
+    assert history[old["id"]]["effective"]["active"] is False
+    assert history[replacement["id"]]["effective"]["active"] is True
+    assert history[old["id"]]["subject"]["result_ids"] == (
+        history[replacement["id"]]["subject"]["result_ids"]
+    )
+    assert any(item["code"] == "DERIVATION_STALE" for item in report["findings"])
+    assert report["ok"] is False
+
+
+def test_changed_logical_outcome_does_not_suppress_stale_finding(tmp_path):
+    cfg, vocabulary_path, rules_path = _project(
+        tmp_path, require_derivations=True,
+    )
+    old = _append_proof(cfg, vocabulary_path, rules_path)
+    rule_pack = _rules()
+    rule_pack["rules"].append({
+        "id": "gate:reject",
+        "when": [
+            {
+                "predicate": "gate:release_observed", "polarity": "positive",
+                "arguments": {"release": {"var": "release"}},
+            },
+            {
+                "predicate": "gate:pass_observed", "polarity": "positive",
+                "arguments": {
+                    "passed": {"const": _term("ct:boolean", False)},
+                },
+            },
+        ],
+        "where": [],
+        "then": {
+            "predicate": "gate:accepted", "polarity": "negative",
+            "arguments": {"release": {"var": "release"}},
+        },
+    })
+    rules_path.write_text(json.dumps(rule_pack), encoding="utf-8")
+    (tmp_path / "b.json").write_text(json.dumps({"passed": False}), encoding="utf-8")
+    proposal = _agent_input()
+    proposal["facts"][1]["atom"]["arguments"]["passed"] = _term(
+        "ct:boolean", False,
+    )
+    vocabulary = load_vocabulary(vocabulary_path)
+    replacement = create_derivation(
+        cfg, "claim:gate", ["result:a", "result:b"], proposal,
+        vocabulary=vocabulary, rule_pack=load_rule_pack(rules_path, vocabulary),
+        actor="agent:changed-outcome",
+        recorded_at="2026-07-14T02:00:01.000Z",
+    )
+    append_derivation(cfg, replacement)
+
+    report = build_report(cfg)
+
+    history = {item["id"]: item for item in report["derivations"]["items"]}
+    assert history[old["id"]]["effective"]["proof_state"] == "unknown"
+    assert history[replacement["id"]]["effective"]["proof_state"] == "refutable"
+    assert history[replacement["id"]]["effective"]["active"] is True
+    assert any(item["code"] == "DERIVATION_STALE" for item in report["findings"])
     assert report["ok"] is False
 
 

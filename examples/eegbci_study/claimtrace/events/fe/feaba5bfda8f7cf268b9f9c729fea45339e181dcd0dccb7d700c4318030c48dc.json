@@ -1,0 +1,99 @@
+{
+  "id": "event:sha256:feaba5bfda8f7cf268b9f9c729fea45339e181dcd0dccb7d700c4318030c48dc",
+  "payload": {
+    "capture_scope": {
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "writes": "declared_snapshots_plus_unattributed_project_window"
+    },
+    "name": null,
+    "plan": {
+      "argv": [
+        "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+        "analysis/03_figure.py"
+      ],
+      "argv_capture": "redacted_best_effort",
+      "control_plane_before": {
+        "event_ledger": {
+          "event_count": 28,
+          "event_ids_sha256": "a331c38b3c0bc023d325da0f2db1def148e71b90b64fab5776e5977e43ea70ae",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "path": "claimtrace.config.json",
+            "sha256": "45f6d6514215f326401a4be76c747958912483601e623ea0b17762df993ac3fd",
+            "size": 555,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:b88f66c91ccad72ce904af8f3affe97c9612e4cde168f524747a3c9c204c174a",
+            "path": "claimtrace/graph.json",
+            "sha256": "b88f66c91ccad72ce904af8f3affe97c9612e4cde168f524747a3c9c204c174a",
+            "size": 12483,
+            "state": "stable"
+          }
+        ]
+      },
+      "cwd": ".",
+      "declared_inputs": [
+        {
+          "file_version_id": "file:sha256:18e535f94c14f04af2445171f253ff1cc3922158de9645e8fbc2ea69757a3903",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784068139161465700,
+          "path": "results/decoding.json",
+          "sha256": "18e535f94c14f04af2445171f253ff1cc3922158de9645e8fbc2ea69757a3903",
+          "size": 5991,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851317142800,
+          "path": "analysis/03_figure.py",
+          "sha256": "8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946",
+          "size": 4202,
+          "state": "stable"
+        }
+      ],
+      "declared_outputs": [
+        "figures/decoding.svg"
+      ],
+      "environment": {
+        "capture": "partial_no_environment_variables",
+        "controller_implementation": "CPython",
+        "controller_python": "3.13.9",
+        "executable": {
+          "requested": "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+          "resolved": "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+          "sha256": "0e818a1f9a0b8fbd4e7cc458a07cb7de2ea02ea326e387699a33b92f151242cd",
+          "state": "stable"
+        },
+        "platform": "Windows-11-10.0.26200-SP0",
+        "root_lockfiles": [
+          {
+            "path": "requirements.txt",
+            "sha256": "206b0bb79d9d0f73f12399cbb31aa075cd432efe8589f5efbf84cd07f72ce9e0"
+          }
+        ]
+      },
+      "git": {
+        "branch": "main",
+        "head": "182688fbbc65216e144a0b0663648268fbbd7c84",
+        "state": "captured",
+        "tracked_dirty": true,
+        "tracked_patch_sha256": "00bf5b48dbf85236792043ccc442f5f2d2e27ef782076324e86401c9da15793d",
+        "untracked_files": "not_captured"
+      },
+      "parameters": {},
+      "seeds": {}
+    },
+    "plan_id": "recipe:sha256:f1be3756f3ae739fd516f1da4e7feef81acd24c3c6014f4332bba7a9f45f5c18"
+  },
+  "recorded_at": "2026-07-14T22:29:11.376Z",
+  "run_id": "run:1d46faea-7b9f-45f7-9654-db7b60824a2c",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.started"
+}

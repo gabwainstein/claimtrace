@@ -116,7 +116,7 @@ def test_eeg_demo_clean_checkout_boundary_keeps_semantic_history_but_requires_fe
     assert report["ok"] is False
     assert report["assessments"]["integrity"] == "ok"
     assert report["assessments"]["active_relations"] == [{
-        "assessment_id": "assessment:sha256:f92a070189e46fa63aff6fb0e5350827a3441273ddaef3b576f696964837607b",
+        "assessment_id": "assessment:sha256:b3f564577237bbd997deddd7750f7f6053b6f112f371cdf5f3ea9a2643348212",
         "from": "art:decoding",
         "to": "claim:above-null",
         "rel": "supports",

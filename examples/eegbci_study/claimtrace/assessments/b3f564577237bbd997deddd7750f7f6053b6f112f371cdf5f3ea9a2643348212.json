@@ -1,0 +1,129 @@
+{
+  "id": "assessment:sha256:b3f564577237bbd997deddd7750f7f6053b6f112f371cdf5f3ea9a2643348212",
+  "schema_version": "claimtrace.semantic-assessment/2",
+  "recorded_at": "2026-07-14T22:33:14.935Z",
+  "subject": {
+    "claim_id": "claim:above-null",
+    "result_ids": [
+      "art:decoding"
+    ]
+  },
+  "mechanical_snapshot": {
+    "anchor_checks": [
+      {
+        "anchor_index": 0,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "54a984c04fd4c4bdfbdf544ff61cb6ebf325ef8b932b49e2eb4035a7ac3eaaec",
+        "result_id": "art:decoding",
+        "valid": true
+      },
+      {
+        "anchor_index": 1,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "2145c109d2ee2e1dafc9d9dab68e6396355f6c8d0400f1fc40cbcc2776e4072d",
+        "result_id": "art:decoding",
+        "valid": true
+      },
+      {
+        "anchor_index": 2,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+        "result_id": "art:decoding",
+        "valid": true
+      }
+    ],
+    "claim": {
+      "node_id": "claim:above-null",
+      "node_sha256": "aee7da2a472ae027828ca3471567a97b99ae79d05697f702b21555bc79a3dbf8",
+      "node_version_id": "node:sha256:aee7da2a472ae027828ca3471567a97b99ae79d05697f702b21555bc79a3dbf8"
+    },
+    "results": [
+      {
+        "artifact": {
+          "file_version_id": "file:sha256:18e535f94c14f04af2445171f253ff1cc3922158de9645e8fbc2ea69757a3903",
+          "path": "results/decoding.json",
+          "sha256": "18e535f94c14f04af2445171f253ff1cc3922158de9645e8fbc2ea69757a3903",
+          "size": 5991,
+          "state": "stable"
+        },
+        "node_id": "art:decoding",
+        "node_sha256": "4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9",
+        "node_version_id": "node:sha256:4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9"
+      }
+    ]
+  },
+  "agent_input": {
+    "alignment": {
+      "comparator": "match",
+      "direction": "match",
+      "exposure": "match",
+      "inference_level": "match",
+      "magnitude": "match",
+      "outcome": "match",
+      "population": "match",
+      "time_scope": "match"
+    },
+    "claim_frame": {
+      "comparator": "run-constrained label-permutation null",
+      "direction": "above the null 95th percentile",
+      "exposure": "imagined both-hands versus both-feet event labels",
+      "inference_level": "predictive",
+      "magnitude": "0.842262 versus 0.657738",
+      "outcome": "mean leave-one-run-out balanced accuracy",
+      "population": "participant S001, PhysioNet EEGMMIDB v1.0.0 runs 06, 10, and 14",
+      "time_scope": "the three selected recordings"
+    },
+    "evidence_anchors": [
+      {
+        "expected_value": 0.842262,
+        "kind": "json_pointer",
+        "pointer": "/observed_mean_balanced_accuracy",
+        "result_id": "art:decoding"
+      },
+      {
+        "expected_value": 0.657738,
+        "kind": "json_pointer",
+        "pointer": "/permutation/null_95th_percentile",
+        "result_id": "art:decoding"
+      },
+      {
+        "expected_value": true,
+        "kind": "json_pointer",
+        "pointer": "/criterion_met",
+        "result_id": "art:decoding"
+      }
+    ],
+    "limitations": [
+      "The result covers one participant and three selected runs only.",
+      "It does not establish population generalization, neural mechanism, source localization, or clinical utility.",
+      "The permutation null does not address every possible temporal or recording confound."
+    ],
+    "provenance": {
+      "agent": "codex:/root/lf_release_hardening"
+    },
+    "rationale": "The recorded held-out-run score and run-constrained null threshold exactly match the narrow result claim.",
+    "result_frame": {
+      "comparator": "run-constrained label-permutation null",
+      "direction": "above the null 95th percentile",
+      "exposure": "imagined both-hands versus both-feet event labels",
+      "inference_level": "predictive",
+      "magnitude": "0.842262 versus 0.657738",
+      "outcome": "mean leave-one-run-out balanced accuracy",
+      "population": "participant S001, PhysioNet EEGMMIDB v1.0.0 runs 06, 10, and 14",
+      "time_scope": "the three selected recordings"
+    },
+    "verdict": "supports_as_written"
+  },
+  "review": {
+    "state": "accepted",
+    "actor": "codex:/root/eeg_lf_review",
+    "supersedes_assessment_id": "assessment:sha256:3bcb5bf6278722f070c888da99aa96292a27f5af08b2f1cb0c0a32280ff89c17"
+  },
+  "derived": {
+    "effective_review_state": "accepted",
+    "proposed_relation": "supports",
+    "active_relation": "supports",
+    "stale": false,
+    "findings": []
+  }
+}
