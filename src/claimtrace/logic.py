@@ -33,6 +33,8 @@ VOCABULARY_SCHEMA = "claimtrace.symbolic-vocabulary/1"
 RULE_PACK_SCHEMA = "claimtrace.symbolic-rules/1"
 DERIVATION_SCHEMA = "claimtrace.symbolic-derivation/1"
 SELECTION_SCHEMA = "claimtrace.symbolic-selection/1"
+EVIDENCE_PLAN_SCHEMA = "claimtrace.symbolic-evidence-plan/1"
+PLAN_REQUEST_SCHEMA = "claimtrace.symbolic-plan-request/1"
 DERIVATION_ID_RE = re.compile(r"^derivation:sha256:([0-9a-f]{64})$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._:/-]{0,199}$")
@@ -1011,6 +1013,12 @@ def _node_hash(cfg, node):
         portable["logic_bindings"] = sorted(
             portable["logic_bindings"], key=_canonical_bytes,
         )
+    evidence_plan = portable.get("logic_evidence_plan")
+    if (isinstance(evidence_plan, dict)
+            and isinstance(evidence_plan.get("required_bindings"), list)):
+        evidence_plan["required_bindings"] = sorted(
+            evidence_plan["required_bindings"], key=_canonical_bytes,
+        )
     digest = _sha256(portable)
     return digest, f"node:sha256:{digest}"
 
@@ -1171,6 +1179,76 @@ def _logic_bindings(node, vocabulary):
             "arguments": arguments,
         }
     return bindings
+
+
+def _normal_binding_selections(
+        selections, *, collection_label="bindings", entry_label="binding selection"):
+    if (not isinstance(selections, list) or not selections
+            or len(selections) > MAX_INPUT_FACTS):
+        raise LogicError(f"{collection_label} must be a non-empty bounded list")
+    normalized = []
+    for item in selections:
+        if not isinstance(item, dict) or set(item) != {"result_id", "binding_id"}:
+            raise LogicError(
+                f"each {entry_label} requires exactly result_id and binding_id"
+            )
+        normalized.append({
+            "result_id": _identifier(item["result_id"], f"{entry_label} result_id"),
+            "binding_id": _identifier(item["binding_id"], f"{entry_label} binding_id"),
+        })
+    keys = [(item["result_id"], item["binding_id"]) for item in normalized]
+    if len(keys) != len(set(keys)):
+        raise LogicError(f"{collection_label} must not contain duplicates")
+    return sorted(normalized, key=lambda item: (item["result_id"], item["binding_id"]))
+
+
+def _normal_evidence_plan(value):
+    if not isinstance(value, dict) or set(value) != {
+            "schema_version", "required_bindings"}:
+        raise LogicError(
+            "logic_evidence_plan requires exactly schema_version and required_bindings"
+        )
+    if value["schema_version"] != EVIDENCE_PLAN_SCHEMA:
+        raise LogicError(
+            f"unsupported symbolic evidence-plan schema: {value['schema_version']!r}"
+        )
+    return {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "required_bindings": _normal_binding_selections(
+            value["required_bindings"],
+            collection_label="evidence-plan required_bindings",
+            entry_label="evidence-plan binding",
+        ),
+    }
+
+
+def _resolve_claim_evidence_plan(claim, nodes, vocabulary):
+    raw_plan = claim.get("logic_evidence_plan")
+    if raw_plan is None:
+        return None
+    if claim.get("type") not in {"claim", "hypothesis", "prediction", "conclusion"}:
+        raise LogicError(
+            "logic_evidence_plan is only valid on claim, hypothesis, prediction, or conclusion"
+        )
+    plan = _normal_evidence_plan(raw_plan)
+    for selection in plan["required_bindings"]:
+        result_id = selection["result_id"]
+        result = nodes.get(result_id)
+        if result is None:
+            raise LogicError(
+                f"evidence plan references unknown result node {result_id!r}"
+            )
+        if result.get("type") not in RESULT_TYPES:
+            raise LogicError(
+                f"evidence plan result {result_id!r} is not an eligible result-node type"
+            )
+        bindings = _logic_bindings(result, vocabulary)
+        if selection["binding_id"] not in bindings:
+            raise LogicError(
+                f"evidence plan result {result_id!r} does not declare compatible binding "
+                f"{selection['binding_id']!r}"
+            )
+    return plan
 
 
 def _extract_binding_arguments(binding, predicate, types, artifact, artifact_data,
@@ -1364,6 +1442,33 @@ def _snapshot_subject(cfg, claim_id, result_ids, agent_input, vocabulary, rule_p
         "status": claim.get("status"), "eligible": claim_eligible,
         "logic": claim_logic,
     }
+    evidence_plan = _resolve_claim_evidence_plan(claim, nodes, vocabulary)
+    if evidence_plan is not None:
+        claim_snapshot["evidence_plan"] = _copy(evidence_plan)
+        actual_bindings = sorted(
+            [
+                {
+                    "result_id": anchor["result_id"],
+                    "binding_id": anchor["binding_id"],
+                }
+                for fact in agent_input["facts"]
+                for anchor in fact["evidence"]
+            ],
+            key=lambda item: (item["result_id"], item["binding_id"]),
+        )
+        has_assumptions = any(
+            fact["assumption"] is not None for fact in agent_input["facts"]
+        )
+        if (has_assumptions
+                or actual_bindings != evidence_plan["required_bindings"]):
+            scoped_problems.append({
+                "code": "LOGIC_EVIDENCE_PLAN_MISMATCH",
+                "node_id": claim_id,
+                "detail": (
+                    "grounded premises must exactly equal every required evidence-plan "
+                    "binding and must not add assumptions"
+                ),
+            })
     types, predicates = _vocabulary_maps(vocabulary)
     anchors = sorted(
         [
@@ -1785,6 +1890,13 @@ def _derive(agent_input, snapshot):
             detail += "; ineligible result nodes: " + ", ".join(ineligible_results)
         findings.append(_finding("LOGIC_SUBJECT_INELIGIBLE", "error", detail))
     provenance_check = snapshot["provenance_check"]
+    if any(
+            item.get("code") == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+            for item in provenance_check["problems"]):
+        findings.append(_finding(
+            "LOGIC_EVIDENCE_PLAN_MISMATCH", "error",
+            "grounded premises do not exactly match the claim-owned evidence plan",
+        ))
     if not provenance_check["eligible"]:
         labels = [
             f"{item['code']}:{item['node_id']}"
@@ -1906,41 +2018,7 @@ def create_derivation(cfg, claim_id: str, result_ids: list[str], agent_input: di
     return {"id": _derivation_id(core), **core}
 
 
-def create_derivation_from_bindings(
-        cfg, claim_id: str, selections: list[dict], *, actor: str,
-        provenance: dict, note: str | None = None,
-        recorded_at: str | None = None) -> dict:
-    """Materialize trusted graph bindings, then create one symbolic derivation.
-
-    The caller selects only project-declared result/binding identities. Claimtrace
-    resolves the pinned target and policy assets from the claim, and extracts every
-    typed fact value from the selected artifacts.
-    """
-    claim_id = _identifier(claim_id, "claim_id")
-    _bounded_text(actor, "actor", 500, nonempty=True)
-    if (not isinstance(selections, list) or not selections
-            or len(selections) > MAX_INPUT_FACTS):
-        raise LogicError("bindings must be a non-empty bounded list")
-    normalized_selections = []
-    for item in selections:
-        if not isinstance(item, dict) or set(item) != {"result_id", "binding_id"}:
-            raise LogicError(
-                "each binding selection requires exactly result_id and binding_id"
-            )
-        normalized_selections.append({
-            "result_id": _identifier(item["result_id"], "selection result_id"),
-            "binding_id": _identifier(item["binding_id"], "selection binding_id"),
-        })
-    selection_keys = [
-        (item["result_id"], item["binding_id"]) for item in normalized_selections
-    ]
-    if len(selection_keys) != len(set(selection_keys)):
-        raise LogicError("binding selections must not contain duplicates")
-    normalized_selections.sort(key=lambda item: (item["result_id"], item["binding_id"]))
-    result_ids = sorted({item["result_id"] for item in normalized_selections})
-    if len(result_ids) > MAX_RESULT_IDS:
-        raise LogicError("binding selections reference too many result nodes")
-
+def _claim_logic_context(cfg, claim_id):
     raw = engine.load_raw(cfg)
     structural = list(engine.structural_issues(cfg, raw=raw))
     if structural:
@@ -1971,6 +2049,54 @@ def create_derivation_from_bindings(
         raise LogicError("claim logic selects an incompatible vocabulary and rule pack")
     claim_logic = _normal_claim_logic(raw_claim_logic, vocabulary, rule_pack)
     assert claim_logic is not None
+    return nodes, claim, claim_logic, vocabulary, rule_pack
+
+
+def resolve_claim_evidence_plan(cfg, claim_id: str) -> dict:
+    """Resolve and validate one exact, claim-owned required-premise plan."""
+    claim_id = _identifier(claim_id, "claim_id")
+    nodes, claim, _claim_logic, vocabulary, rule_pack = _claim_logic_context(
+        cfg, claim_id,
+    )
+    plan = _resolve_claim_evidence_plan(claim, nodes, vocabulary)
+    if plan is None:
+        raise LogicError(f"claim {claim_id!r} has no logic_evidence_plan")
+    return {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "claim_id": claim_id,
+        "vocabulary_id": vocabulary["id"],
+        "rule_pack_id": rule_pack["id"],
+        "required_bindings": _copy(plan["required_bindings"]),
+    }
+
+
+def create_derivation_from_bindings(
+        cfg, claim_id: str, selections: list[dict], *, actor: str,
+        provenance: dict, note: str | None = None,
+        recorded_at: str | None = None) -> dict:
+    """Materialize trusted graph bindings, then create one symbolic derivation.
+
+    The caller selects only project-declared result/binding identities. Claimtrace
+    resolves the pinned target and policy assets from the claim, and extracts every
+    typed fact value from the selected artifacts.
+    """
+    claim_id = _identifier(claim_id, "claim_id")
+    _bounded_text(actor, "actor", 500, nonempty=True)
+    normalized_selections = _normal_binding_selections(selections)
+    result_ids = sorted({item["result_id"] for item in normalized_selections})
+    if len(result_ids) > MAX_RESULT_IDS:
+        raise LogicError("binding selections reference too many result nodes")
+
+    nodes, claim, claim_logic, vocabulary, rule_pack = _claim_logic_context(
+        cfg, claim_id,
+    )
+    evidence_plan = _resolve_claim_evidence_plan(claim, nodes, vocabulary)
+    if (evidence_plan is not None
+            and normalized_selections != evidence_plan["required_bindings"]):
+        raise LogicError(
+            "binding selections must exactly match the claim-owned evidence plan; "
+            "use claimtrace.symbolic-plan-request/1 to materialize it automatically"
+        )
     types, predicates = _vocabulary_maps(vocabulary)
 
     selections_by_result = {result_id: [] for result_id in result_ids}
@@ -2046,6 +2172,17 @@ def create_derivation_from_bindings(
     )
 
 
+def create_derivation_from_evidence_plan(
+        cfg, claim_id: str, *, actor: str, provenance: dict,
+        note: str | None = None, recorded_at: str | None = None) -> dict:
+    """Materialize every binding in a claim-owned exact all-of evidence plan."""
+    resolved = resolve_claim_evidence_plan(cfg, claim_id)
+    return create_derivation_from_bindings(
+        cfg, resolved["claim_id"], resolved["required_bindings"], actor=actor,
+        provenance=provenance, note=note, recorded_at=recorded_at,
+    )
+
+
 def _validate_snapshot(snapshot, subject, agent_input):
     if not isinstance(snapshot, dict) or set(snapshot) != {
             "claim", "results", "provenance_check", "vocabulary", "rule_pack",
@@ -2080,9 +2217,13 @@ def _validate_snapshot(snapshot, subject, agent_input):
             or subject["rule_pack_id"] != rule_pack["id"]):
         raise LogicError("subject logic asset ids do not match the stored snapshots")
     claim = snapshot["claim"]
-    if not isinstance(claim, dict) or set(claim) != {
-            "node_id", "node_sha256", "node_version_id", "type", "status",
-            "eligible", "logic"}:
+    claim_base_keys = {
+        "node_id", "node_sha256", "node_version_id", "type", "status",
+        "eligible", "logic",
+    }
+    if (not isinstance(claim, dict)
+            or frozenset(claim) not in {frozenset(claim_base_keys),
+                                        frozenset(claim_base_keys | {"evidence_plan"})}):
         raise LogicError("mechanical claim snapshot has an invalid shape")
     if claim["node_id"] != subject["claim_id"]:
         raise LogicError("mechanical claim snapshot does not match the subject")
@@ -2091,6 +2232,26 @@ def _validate_snapshot(snapshot, subject, agent_input):
             or claim["node_version_id"] != f"node:sha256:{claim['node_sha256']}"
             or not isinstance(claim["eligible"], bool)):
         raise LogicError("mechanical claim node hash is invalid")
+    expected_plan_mismatch = False
+    if "evidence_plan" in claim:
+        evidence_plan = _normal_evidence_plan(claim["evidence_plan"])
+        if evidence_plan != claim["evidence_plan"]:
+            raise LogicError("mechanical evidence-plan snapshot is not canonical")
+        actual_bindings = sorted(
+            [
+                {
+                    "result_id": anchor["result_id"],
+                    "binding_id": anchor["binding_id"],
+                }
+                for fact in agent_input["facts"]
+                for anchor in fact["evidence"]
+            ],
+            key=lambda item: (item["result_id"], item["binding_id"]),
+        )
+        expected_plan_mismatch = (
+            actual_bindings != evidence_plan["required_bindings"]
+            or any(fact["assumption"] is not None for fact in agent_input["facts"])
+        )
     results = snapshot["results"]
     if (not isinstance(results, list)
             or not all(isinstance(item, dict) for item in results)
@@ -2209,6 +2370,15 @@ def _validate_snapshot(snapshot, subject, agent_input):
                 not provenance["problems"] and not provenance["pending"]
             )):
         raise LogicError("mechanical provenance check is not canonical")
+    has_plan_mismatch = any(
+        item.get("code") == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+        and item.get("node_id") == subject["claim_id"]
+        for item in provenance["problems"]
+    )
+    if has_plan_mismatch is not expected_plan_mismatch:
+        raise LogicError(
+            "mechanical evidence-plan mismatch state does not match grounded premises"
+        )
     checks = snapshot["anchor_checks"]
     expected_checks = [
         {
@@ -2400,6 +2570,11 @@ def validate_graph_logic_declarations(
     nodes = raw.get("nodes", []) if isinstance(raw, dict) else []
     if not isinstance(nodes, list):
         return issues
+    nodes_by_id = {
+        item["id"]: item
+        for item in nodes
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
 
     def add(node_id, declaration, detail):
         issues.append({
@@ -2450,6 +2625,37 @@ def validate_graph_logic_declarations(
                 _normal_claim_logic(declaration, vocabulary, rule_pack)
             except (KeyError, TypeError, LogicError) as exc:
                 add(node_id, "logic", exc)
+
+        if "logic_evidence_plan" in node:
+            try:
+                declaration = node.get("logic")
+                if not isinstance(declaration, dict) or set(declaration) != {
+                        "vocabulary_id", "rule_pack_id", "target"}:
+                    raise LogicError(
+                        "logic_evidence_plan requires a complete claim.logic declaration"
+                    )
+                vocabulary_id = _identifier(
+                    declaration.get("vocabulary_id"),
+                    "claim logic vocabulary_id",
+                )
+                rule_pack_id = _identifier(
+                    declaration.get("rule_pack_id"),
+                    "claim logic rule_pack_id",
+                )
+                vocabulary = vocabularies.get(vocabulary_id)
+                rule_pack = rule_packs.get(rule_pack_id)
+                if vocabulary is None or rule_pack is None:
+                    raise LogicError(
+                        "logic_evidence_plan claim policy assets are not configured"
+                    )
+                if rule_pack["vocabulary_id"] != vocabulary_id:
+                    raise LogicError(
+                        "logic_evidence_plan claim selects incompatible policy assets"
+                    )
+                _normal_claim_logic(declaration, vocabulary, rule_pack)
+                _resolve_claim_evidence_plan(node, nodes_by_id, vocabulary)
+            except (KeyError, TypeError, LogicError) as exc:
+                add(node_id, "logic_evidence_plan", exc)
 
         if "logic_bindings" not in node:
             continue

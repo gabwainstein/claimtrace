@@ -10,14 +10,17 @@ import pytest
 import claimtrace.logic as logic_module
 from claimtrace.config import Config
 from claimtrace.logic import (
+    EVIDENCE_PLAN_SCHEMA,
     LogicError,
     append_derivation,
     create_derivation,
     create_derivation_from_bindings,
+    create_derivation_from_evidence_plan,
     evaluate_derivation,
     load_derivations,
     load_rule_pack,
     load_vocabulary,
+    resolve_claim_evidence_plan,
     validate_derivation_document,
 )
 
@@ -266,6 +269,226 @@ def _make(cfg, agent_input=None, result_ids=None, vocabulary=None, rules=None):
         vocabulary=vocabulary or _vocabulary(), rule_pack=rules or _rules(),
         actor="agent:test", recorded_at=FIXED_TIME,
     )
+
+
+def _plan(cfg, bindings=None):
+    required = bindings or [
+        {"result_id": "art:scan", "binding_id": "gate:scan-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-completed"},
+    ]
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:gate")
+    claim["logic_evidence_plan"] = {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "required_bindings": required,
+    }
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    return required
+
+
+def test_claim_owned_plan_materializes_every_required_binding(tmp_path):
+    cfg = _project(tmp_path)
+    expected = _plan(cfg)
+
+    automatic = create_derivation_from_evidence_plan(
+        cfg, "claim:gate", actor="agent:auto",
+        provenance={"agent": "agent:auto"}, recorded_at=FIXED_TIME,
+    )
+    explicit = create_derivation_from_bindings(
+        cfg, "claim:gate", list(reversed(expected)), actor="agent:explicit",
+        provenance={"agent": "agent:explicit"}, recorded_at=FIXED_TIME,
+    )
+    resolved = resolve_claim_evidence_plan(cfg, "claim:gate")
+
+    assert resolved["required_bindings"] == expected
+    assert automatic["subject"]["result_ids"] == ["art:scan", "art:test"]
+    assert automatic["agent_input"]["facts"] == explicit["agent_input"]["facts"]
+    assert automatic["derived"]["proof_id"] == explicit["derived"]["proof_id"]
+    assert automatic["derived"]["active"] is True
+    assert automatic["mechanical_snapshot"]["claim"]["evidence_plan"] == {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "required_bindings": expected,
+    }
+    validate_derivation_document(automatic)
+
+
+@pytest.mark.parametrize("selections", [
+    [{"result_id": "art:test", "binding_id": "gate:test-completed"}],
+    [
+        {"result_id": "art:scan", "binding_id": "gate:scan-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-conflict"},
+    ],
+    [
+        {"result_id": "art:scan", "binding_id": "gate:scan-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-conflict"},
+    ],
+])
+def test_plan_governed_selection_rejects_missing_extra_or_alternate_bindings(
+        tmp_path, selections):
+    cfg = _project(tmp_path)
+    _plan(cfg)
+
+    with pytest.raises(LogicError, match="exactly match the claim-owned evidence plan"):
+        create_derivation_from_bindings(
+            cfg, "claim:gate", selections, actor="agent:manual",
+            provenance={"agent": "agent:manual"},
+        )
+
+
+def test_low_level_plan_bypass_is_visible_but_never_active(tmp_path):
+    cfg = _project(tmp_path)
+    _plan(cfg)
+    bypass = _make(
+        cfg, _agent_input(include_scan=False), result_ids=["art:test"],
+    )
+
+    assert bypass["derived"]["active"] is False
+    assert any(
+        item["code"] == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+        for item in bypass["derived"]["findings"]
+    )
+    assert any(
+        item["code"] == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+        for item in bypass["mechanical_snapshot"]["provenance_check"]["problems"]
+    )
+    validate_derivation_document(bypass)
+
+
+def test_plan_governed_derivation_rejects_added_assumptions(tmp_path):
+    cfg = _project(tmp_path)
+    _plan(cfg)
+    agent_input = _agent_input()
+    agent_input["facts"].append({
+        "atom": {
+            "predicate": "gate:scan_completed", "polarity": "positive",
+            "arguments": {
+                "release": _term("gate:release", "release-1"),
+                "critical": _term("ct:integer", "1"),
+            },
+        },
+        "evidence": [],
+        "assumption": "Assume an additional scan result.",
+    })
+    document = _make(cfg, agent_input=agent_input)
+
+    assert document["derived"]["active"] is False
+    assert any(
+        item["code"] == "LOGIC_EVIDENCE_PLAN_MISMATCH"
+        for item in document["derived"]["findings"]
+    )
+
+
+def test_plan_edit_stales_proof_but_order_only_change_does_not(tmp_path):
+    cfg = _project(tmp_path)
+    required = _plan(cfg)
+    document = create_derivation_from_evidence_plan(
+        cfg, "claim:gate", actor="agent:auto",
+        provenance={"agent": "agent:auto"}, recorded_at=FIXED_TIME,
+    )
+
+    _plan(cfg, list(reversed(required)))
+    reordered = evaluate_derivation(
+        cfg, document, vocabulary=_vocabulary(), rule_pack=_rules(),
+    )
+    assert reordered["stale"] is False
+    assert reordered["active"] is True
+
+    _plan(cfg, [
+        {"result_id": "art:scan", "binding_id": "gate:scan-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-conflict"},
+    ])
+    changed = evaluate_derivation(
+        cfg, document, vocabulary=_vocabulary(), rule_pack=_rules(),
+    )
+    assert changed["stale"] is True
+    assert changed["active"] is False
+    assert any(item["kind"] == "claim" for item in changed["drift"])
+
+
+def test_plan_materialization_rechecks_policy_after_resolution(tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    _plan(cfg)
+    original = logic_module.create_derivation_from_bindings
+
+    def mutate_then_materialize(config, claim_id, selections, **kwargs):
+        _plan(config, [
+            {"result_id": "art:scan", "binding_id": "gate:scan-completed"},
+            {"result_id": "art:test", "binding_id": "gate:test-conflict"},
+        ])
+        return original(config, claim_id, selections, **kwargs)
+
+    monkeypatch.setattr(
+        logic_module, "create_derivation_from_bindings", mutate_then_materialize,
+    )
+    with pytest.raises(LogicError, match="exactly match the claim-owned evidence plan"):
+        create_derivation_from_evidence_plan(
+            cfg, "claim:gate", actor="agent:auto",
+            provenance={"agent": "agent:auto"},
+        )
+
+
+def test_plan_request_requires_a_declared_plan(tmp_path):
+    cfg = _project(tmp_path)
+
+    with pytest.raises(LogicError, match="has no logic_evidence_plan"):
+        create_derivation_from_evidence_plan(
+            cfg, "claim:gate", actor="agent:auto",
+            provenance={"agent": "agent:auto"},
+        )
+
+
+def test_plan_rejects_binding_declared_only_for_another_vocabulary(tmp_path):
+    cfg = _project(tmp_path)
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    test_node = next(item for item in graph["nodes"] if item["id"] == "art:test")
+    foreign = copy.deepcopy(test_node["logic_bindings"][0])
+    foreign["id"] = "foreign:test-completed"
+    foreign["vocabulary_id"] = "foreign:vocabulary"
+    test_node["logic_bindings"].append(foreign)
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    _plan(cfg, [{
+        "result_id": "art:test", "binding_id": "foreign:test-completed",
+    }])
+
+    with pytest.raises(LogicError, match="does not declare compatible binding"):
+        resolve_claim_evidence_plan(cfg, "claim:gate")
+
+
+def test_plan_fails_explicitly_when_distinct_bindings_extract_duplicate_atoms(tmp_path):
+    cfg = _project(tmp_path)
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    test_node = next(item for item in graph["nodes"] if item["id"] == "art:test")
+    duplicate = copy.deepcopy(test_node["logic_bindings"][0])
+    duplicate["id"] = "gate:test-completed-duplicate"
+    test_node["logic_bindings"].append(duplicate)
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    _plan(cfg, [
+        {"result_id": "art:test", "binding_id": "gate:test-completed"},
+        {"result_id": "art:test", "binding_id": "gate:test-completed-duplicate"},
+    ])
+
+    with pytest.raises(LogicError, match="must not contain duplicate atoms"):
+        create_derivation_from_evidence_plan(
+            cfg, "claim:gate", actor="agent:auto",
+            provenance={"agent": "agent:auto"},
+        )
+
+
+def test_stored_plan_snapshot_tampering_is_rejected(tmp_path):
+    cfg = _project(tmp_path)
+    _plan(cfg)
+    document = create_derivation_from_evidence_plan(
+        cfg, "claim:gate", actor="agent:auto",
+        provenance={"agent": "agent:auto"}, recorded_at=FIXED_TIME,
+    )
+    tampered = copy.deepcopy(document)
+    tampered["mechanical_snapshot"]["claim"]["evidence_plan"][
+        "required_bindings"
+    ] = [{"result_id": "art:test", "binding_id": "gate:test-completed"}]
+
+    with pytest.raises(LogicError, match="mismatch state does not match grounded premises"):
+        validate_derivation_document(tampered)
 
 
 def test_binding_selection_materializes_project_target_and_artifact_values(tmp_path):

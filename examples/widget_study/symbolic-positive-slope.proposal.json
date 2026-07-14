@@ -1,9 +1,6 @@
 {
-  "schema_version": "claimtrace.symbolic-selection/1",
+  "schema_version": "claimtrace.symbolic-plan-request/1",
   "claim_id": "pred:slope",
-  "bindings": [
-    {"result_id": "fig:fit", "binding_id": "widget:figure-slope"}
-  ],
-  "note": "Use the reviewed figure metadata binding to test the configured positive-slope rule.",
+  "note": "Materialize every premise required by the reviewed claim-owned evidence plan.",
   "provenance": {"agent": "widget-demo-agent"}
 }

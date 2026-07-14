@@ -136,6 +136,15 @@ def _selection_proposal():
     }
 
 
+def _plan_request():
+    return {
+        "schema_version": "claimtrace.symbolic-plan-request/1",
+        "claim_id": "claim:ready",
+        "note": "Materialize every premise required by the claim-owned plan.",
+        "provenance": {"agent": "agent:test"},
+    }
+
+
 def _project(tmp_path):
     (tmp_path / "claimtrace" / "logic").mkdir(parents=True)
     (tmp_path / "results").mkdir()
@@ -199,6 +208,73 @@ def _project(tmp_path):
     proposal_path = tmp_path / "proposal.json"
     proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
     return Config(config_path), proposal_path
+
+
+def _add_plan(cfg):
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:ready")
+    claim["logic_evidence_plan"] = {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [{
+            "result_id": "art:check", "binding_id": "gate:check-complete",
+        }],
+    }
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+
+
+def test_cli_claim_only_plan_request_and_read_only_preview(tmp_path, capsys):
+    cfg, proposal_path = _project(tmp_path)
+    _add_plan(cfg)
+    proposal_path.write_text(json.dumps(_plan_request()), encoding="utf-8")
+    common = ["--config", str(cfg.config_path)]
+
+    assert main([*common, "evidence-plan", "claim:ready", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["required_bindings"] == [{
+        "result_id": "art:check", "binding_id": "gate:check-complete",
+    }]
+
+    assert main([
+        *common, "derive", str(proposal_path), "--actor", "agent:test", "--json",
+    ]) == 0
+    recorded = json.loads(capsys.readouterr().out)
+    assert recorded["current_derived"]["active"] is True
+    assert recorded["subject"]["result_ids"] == ["art:check"]
+    assert recorded["mechanical_snapshot"]["claim"]["evidence_plan"] == {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [{
+            "result_id": "art:check", "binding_id": "gate:check-complete",
+        }],
+    }
+
+
+def test_cli_plan_request_rejects_injected_binding_choice(tmp_path, capsys):
+    cfg, proposal_path = _project(tmp_path)
+    _add_plan(cfg)
+    proposal = _plan_request()
+    proposal["bindings"] = [{
+        "result_id": "art:check", "binding_id": "gate:check-failed",
+    }]
+    proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+
+    assert main([
+        "--config", str(cfg.config_path), "derive", str(proposal_path),
+        "--actor", "agent:test",
+    ]) == 2
+    assert "target or policy fields cannot be added" in capsys.readouterr().err
+    assert not cfg.derivations_path.exists()
+
+
+def test_cli_plan_request_requires_project_plan(tmp_path, capsys):
+    cfg, proposal_path = _project(tmp_path)
+    proposal_path.write_text(json.dumps(_plan_request()), encoding="utf-8")
+
+    assert main([
+        "--config", str(cfg.config_path), "derive", str(proposal_path),
+        "--actor", "agent:test",
+    ]) == 2
+    assert "has no logic_evidence_plan" in capsys.readouterr().err
+    assert not cfg.derivations_path.exists()
 
 
 def test_cli_derive_list_filter_and_explain_round_trip(tmp_path, capsys):

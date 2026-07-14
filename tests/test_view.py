@@ -10,8 +10,8 @@ from claimtrace.config import Config
 from claimtrace.cli import main
 from claimtrace.engine import GraphError
 from claimtrace.events import run_command
-from claimtrace.logic import (append_derivation, create_derivation, load_rule_pack,
-                              load_vocabulary)
+from claimtrace.logic import (EVIDENCE_PLAN_SCHEMA, append_derivation,
+                              create_derivation, load_rule_pack, load_vocabulary)
 from claimtrace.view import render_view
 
 
@@ -127,7 +127,8 @@ def _record_assessment(cfg, verdict="supports_as_written", *, accepted=False,
     return decision
 
 
-def _record_symbolic_proof(cfg, *, passed=True, include_negative_rule=True):
+def _record_symbolic_proof(
+        cfg, *, passed=True, include_negative_rule=True, evidence_plan=False):
     target = {
         "predicate": "view:validated", "polarity": "positive",
         "arguments": {
@@ -229,6 +230,14 @@ def _record_symbolic_proof(cfg, *, passed=True, include_negative_rule=True):
             },
         },
     ]
+    if evidence_plan:
+        claim["logic_evidence_plan"] = {
+            "schema_version": EVIDENCE_PLAN_SCHEMA,
+            "required_bindings": [{
+                "result_id": "artifact:result",
+                "binding_id": "view:result-observed",
+            }],
+        }
     cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
     config["logic"] = {
@@ -451,6 +460,66 @@ def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path
         "formal conclusion · target derivable under view:rules",
     ]
     assert "not a certificate of truth, scientific meaning, or evidentiary support" in html
+
+
+def test_claim_owned_evidence_plan_is_visible_on_semantic_claim(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, document = _record_symbolic_proof(cfg, evidence_plan=True)
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:result")
+    plan = claim["logic_evidence_plan"]
+    assert plan == document["mechanical_snapshot"]["claim"]["evidence_plan"]
+
+    output = tmp_path / "planned-claim.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    rendered_claim = next(
+        node for node in payload["nodes"] if node["key"] == "graph:claim:result"
+    )
+
+    assert rendered_claim["evidence_plan"] == plan
+    assert '"claim-owned exact all-of"' in html
+    assert '"Evidence plan"' in html
+    assert '"Required bindings"' in html
+    assert 'item.result_id + " / " + item.binding_id' in html
+
+
+def test_proof_details_expose_stored_mechanical_evidence_plan(tmp_path):
+    cfg = _project(tmp_path)
+    cfg, document = _record_symbolic_proof(cfg, evidence_plan=True)
+    stored_plan = document["mechanical_snapshot"]["claim"]["evidence_plan"]
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    claim = next(item for item in graph["nodes"] if item["id"] == "claim:result")
+    claim["logic_evidence_plan"]["required_bindings"][0]["binding_id"] = (
+        "view:result-failed"
+    )
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    output = tmp_path / "planned-proof.html"
+
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    proof = next(node for node in payload["nodes"] if node["kind"] == "proof")
+    current_claim = next(
+        node for node in payload["nodes"] if node["key"] == "graph:claim:result"
+    )
+
+    assert proof["proof"]["evidence_plan"] == stored_plan
+    assert proof["proof"]["evidence_plan"] == {
+        "schema_version": EVIDENCE_PLAN_SCHEMA,
+        "required_bindings": [{
+            "result_id": "artifact:result",
+            "binding_id": "view:result-observed",
+        }],
+    }
+    assert current_claim["evidence_plan"]["required_bindings"][0]["binding_id"] == (
+        "view:result-failed"
+    )
+    assert proof["proof"]["stale"] is True
+    assert '"Stored evidence plan"' in html
+    assert '"Stored plan schema"' in html
+    assert '"Stored required bindings"' in html
 
 
 def test_refutable_symbolic_outcome_is_never_drawn_as_claim_support(tmp_path):

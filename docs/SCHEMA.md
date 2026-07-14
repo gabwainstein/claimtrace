@@ -49,6 +49,7 @@ A `current` node whose binding differs from that concept's `canonical` is **sile
 | `run_ids` | optional list of exact `run:<uuid>` receipt IDs explicitly associated with this semantic result; never inferred |
 | `logic_bindings` | optional project-owned complete fact profiles for result nodes; each pins one vocabulary, input predicate, polarity, and extractor for every argument |
 | `logic` | optional formal target for a claim-like node; contains exactly `vocabulary_id`, `rule_pack_id`, and a typed derived `target` atom |
+| `logic_evidence_plan` | optional exact all-of premise policy for a formalized claim-like node; uses `claimtrace.symbolic-evidence-plan/1` and lists required result/binding IDs |
 
 ### node types
 `question` · `hypothesis` · `prediction` · `data` · `artifact` · `code` · `figure` · `claim` ·
@@ -259,6 +260,12 @@ A claim, hypothesis, prediction, or conclusion can pin its formal interpretation
         "release": {"type": "gate:release", "value": "release-1", "unit": null}
       }
     }
+  },
+  "logic_evidence_plan": {
+    "schema_version": "claimtrace.symbolic-evidence-plan/1",
+    "required_bindings": [
+      {"result_id": "art:test", "binding_id": "gate:test-completed"}
+    ]
   }
 }
 ```
@@ -299,10 +306,51 @@ binding IDs remain unique within that result, and a derivation can select only p
 to the vocabulary pinned by its claim. The report validates every declared target and profile,
 including live extraction against the current artifact, even before a profile is selected.
 
-### Preferred binding-selection proposal
+### Claim-owned exact evidence plans
 
-The normal input to `claimtrace derive ENTRY --actor ID` is a
-`claimtrace.symbolic-selection/1` object with exactly these fields:
+A formalized claim-like node can declare a top-level `logic_evidence_plan` object with exactly
+`schema_version` and `required_bindings`:
+
+```json
+{
+  "schema_version": "claimtrace.symbolic-evidence-plan/1",
+  "required_bindings": [
+    {"result_id": "art:test", "binding_id": "gate:test-completed"}
+  ]
+}
+```
+
+`required_bindings` is a non-empty, bounded list of unique objects containing exactly `result_id`
+and `binding_id`; order is canonicalized. The plan is valid only on a `claim`, `hypothesis`,
+`prediction`, or `conclusion` with a complete `logic` declaration. Every result must be a supported
+result-node type and expose the named complete binding for the claim-pinned vocabulary. Graph checks
+report malformed, unknown, or incompatible plans as blocking logic-declaration errors.
+
+`claimtrace evidence-plan CLAIM_ID --json` resolves the plan together with its claim-pinned
+`vocabulary_id` and `rule_pack_id`. The preferred derivation proposal for a planned claim contains
+exactly:
+
+```json
+{
+  "schema_version": "claimtrace.symbolic-plan-request/1",
+  "claim_id": "claim:gate",
+  "note": "Materialize the project-reviewed gate plan.",
+  "provenance": {"agent": "analysis-agent"}
+}
+```
+
+Claimtrace loads the plan at execution time and materializes every required binding. The request has
+no binding list and cannot supply a target, policy ID, locator, atom, assumption, proof step, or
+computed field. A planned claim's high-level selection must exactly match the plan; a low-level
+proposal with a missing, additional, or substituted evidence anchor, or any assumption, is recorded
+with an evidence-plan mismatch and cannot be active. Changes to the plan participate in the claim
+snapshot and make earlier certificates stale; order-only changes are canonicalized.
+
+### Binding-selection fallback
+
+For a claim without `logic_evidence_plan`, the high-level input to
+`claimtrace derive ENTRY --actor ID` is a `claimtrace.symbolic-selection/1` object with exactly these
+fields:
 
 ```json
 {
@@ -323,6 +371,10 @@ sorted result set; loads the vocabulary, rule pack, and target from the claim; e
 argument from the selected result bytes; and creates the low-level grounded facts. A selection
 proposal cannot add a target, policy ID, pointer, atom, polarity, assumption, closure fact, proof
 step, proof state, proof ID, snapshot, or activation flag.
+
+This selection shape is also accepted for a planned claim only when its canonical binding list
+exactly equals the plan. Prefer the claim-only plan request so the caller never transcribes that
+list.
 
 `note` is nullable bounded public text. `provenance` contains a required bounded `agent` string,
 optional bounded `model` and `skill_version` strings, and an optional SHA-256 `prompt_sha256`.
@@ -416,11 +468,18 @@ semantic policy. Deterministic materialization prevents a selection proposal fro
 does not make the mapping scientifically correct. A user or reviewer must inspect those declarations
 and use semantic assessments for result-to-prose meaning.
 
-Selection is constrained but not exhaustive: a caller cannot invent a binding, yet can omit a valid
-binding. Schema v1 has no claim-owned evidence plan that declares the exact required profiles or a
-deterministic graph query with inclusion/exclusion policy. Until that layer exists, repository
-review or CI must police cherry-picking; `require_derivations` requires an active certificate but
-does not prove that every relevant approved result was included.
+An exact claim-owned plan is exhaustive only relative to its reviewed `required_bindings` list. It
+prevents the derivation requester from omitting, adding, or replacing entries in that list, but it
+does not prove that the plan author included every scientifically relevant result. An authorized
+edit can still bias the plan, and exact schema v1 does not automatically discover newly added
+results. `require_derivations` requires an active certificate under the current plan; it does not
+establish universe-wide evidence completeness.
+
+Deterministic graph-query plans are deferred. Before such a schema can be safe, it must specify how
+corroborating bindings that materialize the same logical atom remain distinguishable, how
+query-matched evidence unused by the backward proof slice avoids spuriously making the proof
+inactive, and how a reproducible resolution certificate records the graph snapshot plus every
+inclusion and exclusion decision. Schema v1 therefore uses only an explicit exact all-of list.
 
 Derivation and assessment documents, reviews, and mechanical events are append-only only through
 the Claimtrace API. Content addressing catches edits to surviving files and broken surviving
@@ -444,7 +503,7 @@ The evaluator fails closed at these schema-v1 limits:
 | typed string value / explicit assumption | 2,000 characters each |
 | renderer template / public note | 4,000 characters each |
 | actor or provenance string | 500 characters |
-| low-level input facts or high-level binding selections | 5,000 |
+| low-level input facts, high-level binding selections, or evidence-plan required bindings | 5,000 |
 | distinct subject result IDs | 5,000 |
 | closure facts / inference rounds | 10,000 / 100 |
 | rule firings / proof candidates | 50,000 each |

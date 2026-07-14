@@ -16,10 +16,11 @@ from .config import CONFIG_NAME, load_config, strict_json_loads
 from .engine import (ANNOT_RELS, GraphError, compute_check, downstream, impact,
                      lint_issues, load_graph, log_entry, upstream)
 from .events import EventError, run_command
-from .logic import (SELECTION_SCHEMA, LogicError, append_derivation,
+from .logic import (PLAN_REQUEST_SCHEMA, SELECTION_SCHEMA, LogicError, append_derivation,
                     configured_logic_assets, create_derivation,
-                    create_derivation_from_bindings, evaluate_derivation,
-                    load_derivations, load_logic_asset)
+                    create_derivation_from_bindings,
+                    create_derivation_from_evidence_plan, evaluate_derivation,
+                    load_derivations, load_logic_asset, resolve_claim_evidence_plan)
 from .report import build_fatal_report, build_report, dumps_report
 from .snapshot import snapshot
 from .verify import run_verifiers
@@ -429,7 +430,13 @@ def cmd_derive(args):
     selection_expected = {
         "schema_version", "claim_id", "bindings", "note", "provenance",
     }
-    if set(entry) == selection_expected and entry.get("schema_version") == SELECTION_SCHEMA:
+    plan_expected = {"schema_version", "claim_id", "note", "provenance"}
+    if set(entry) == plan_expected and entry.get("schema_version") == PLAN_REQUEST_SCHEMA:
+        document = create_derivation_from_evidence_plan(
+            cfg, entry["claim_id"], actor=args.actor,
+            note=entry["note"], provenance=entry["provenance"],
+        )
+    elif set(entry) == selection_expected and entry.get("schema_version") == SELECTION_SCHEMA:
         document = create_derivation_from_bindings(
             cfg, entry["claim_id"], entry["bindings"], actor=args.actor,
             note=entry["note"], provenance=entry["provenance"],
@@ -456,10 +463,11 @@ def cmd_derive(args):
         )
     else:
         raise LogicError(
-            "derivation proposal must be either a claimtrace.symbolic-selection/1 "
-            "binding selection or the exact low-level claim_id/result_ids/vocabulary_id/"
-            "rule_pack_id/agent_input form; mechanical_snapshot and derived are computed "
-            "by claimtrace, and target or policy fields cannot be added to selection proposals"
+            "derivation proposal must be a claimtrace.symbolic-plan-request/1 claim-only "
+            "request, a claimtrace.symbolic-selection/1 binding selection, or the exact "
+            "low-level claim_id/result_ids/vocabulary_id/rule_pack_id/agent_input form; "
+            "mechanical_snapshot and derived are computed by claimtrace, and target or "
+            "policy fields cannot be added to plan or selection proposals"
         )
     path = append_derivation(cfg, document)
     _stored, issues = load_derivations(cfg)
@@ -496,6 +504,20 @@ def cmd_derive(args):
         for item in [*evaluation["findings"], *claim_level["findings"]]
     )
     return 1 if has_error else 0
+
+
+def cmd_evidence_plan(args):
+    plan = resolve_claim_evidence_plan(_cfg(args), args.claim_id)
+    if args.json:
+        _write_json(plan)
+    else:
+        print(f"EVIDENCE PLAN {plan['claim_id']}")
+        print(f"  vocabulary: {plan['vocabulary_id']}")
+        print(f"  rule pack: {plan['rule_pack_id']}")
+        print(f"  required bindings: {len(plan['required_bindings'])}")
+        for item in plan["required_bindings"]:
+            print(f"    {item['result_id']} / {item['binding_id']}")
+    return 0
 
 
 def cmd_derivations(args):
@@ -873,11 +895,16 @@ def main(argv=None):
     p = sub.add_parser("derive", help="append a grounded project-rule symbolic derivation")
     p.add_argument(
         "entry",
-        help=("recommended claimtrace.symbolic-selection/1 binding proposal; "
-              "the exact low-level typed-fact form is also accepted"),
+        help=("preferred claimtrace.symbolic-plan-request/1 claim-only proposal; "
+              "binding-selection and exact low-level typed-fact forms are also accepted"),
     )
     p.add_argument("--actor", required=True, help="identity submitting the grounded premises")
     p.add_argument("--json", action="store_true", help="emit the recorded derivation as JSON")
+    p = sub.add_parser(
+        "evidence-plan", help="show a claim-owned exact required-premise plan",
+    )
+    p.add_argument("claim_id", help="formalized claim, hypothesis, prediction, or conclusion id")
+    p.add_argument("--json", action="store_true", help="emit one deterministic JSON document")
     p = sub.add_parser("derivations", help="list symbolic derivations under current rule assets")
     p.add_argument("--state", choices=("derivable", "refutable", "conflict", "unknown"))
     p.add_argument("--json", action="store_true", help="emit one deterministic JSON document")
@@ -914,7 +941,8 @@ def main(argv=None):
         "check": cmd_check, "lint": cmd_lint, "downstream": cmd_downstream, "upstream": cmd_upstream,
         "impact": cmd_impact, "node": cmd_node, "log": cmd_log, "journal": cmd_journal,
         "assess": cmd_assess, "assessments": cmd_assessments, "review": cmd_review,
-        "derive": cmd_derive, "derivations": cmd_derivations, "explain": cmd_explain,
+        "derive": cmd_derive, "evidence-plan": cmd_evidence_plan,
+        "derivations": cmd_derivations, "explain": cmd_explain,
         "snapshot": cmd_snapshot, "verify": cmd_verify, "summary": cmd_summary, "run": cmd_run,
         "view": cmd_view, "init": cmd_init, "install-skill": cmd_install_skill,
     }
