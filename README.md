@@ -44,19 +44,29 @@ tracks the **semantic** layer they don't:
   and finite rules let users or agents compute conditional claim states without executable policy
   plugins or agent-authored proof steps.
 
-No database, daemon, or cloud is required. The semantic graph and optional run receipts are plain,
-content-addressed JSON files that remain readable, diffable, and Git-auditable.
+No database, daemon, or cloud is required. The mutable semantic graph is plain JSON; run receipts,
+semantic assessments, and symbolic derivations use separate content-addressed JSON stores. All
+remain readable, diffable, and Git-auditable.
 
 ---
 
 ## Install
 
+For a published release:
+
 ```bash
-pip install claimtrace            # core engine (stdlib only)
-pip install "claimtrace[verify]"  # + numpy/pandas if your verifiers use them
+pip install claimtrace-provenance            # core engine (stdlib only)
+pip install "claimtrace-provenance[verify]"  # + numpy/pandas if your verifiers use them
 ```
 
-Or from source:
+The PyPI distribution is named `claimtrace-provenance`; the installed Python package and command
+remain `claimtrace`. PyPI's shorter `claimtrace` distribution belongs to an unrelated molecular-
+figure project that exposes the same import and console-command names. Do not install both
+distributions in one environment: package files and the `claimtrace` entry point can overwrite one
+another. Use a fresh virtual environment and remove the unrelated distribution before installing
+this one.
+
+From a source checkout (including before the first renamed distribution is published):
 
 ```bash
 git clone https://github.com/gabwainstein/claimtrace && cd claimtrace && pip install -e .
@@ -86,30 +96,40 @@ claimtrace journal --status dead_end  # show me everything I already tried that 
 claimtrace view --output research-map.html  # semantic trajectory + mechanical receipt overlay
 ```
 
-## Try the demo (nothing to set up)
+## Try the real-data demo
 
-A complete synthetic project lives in [`examples/widget_study/`](examples/widget_study/):
+From a source checkout, start with the stdlib-only [Palmer Penguins study](examples/penguin_study/).
+Its pinned CC0 source
+CSVs, deterministic raw-to-curated transformation, results, figure, run receipts, semantic-review
+history, and symbolic proof are checked in:
 
 ```bash
-cd examples/widget_study
-claimtrace run --input data/raw_measurements.csv --input analysis/01_clean.py \
-  --output data/clean.csv -- python analysis/01_clean.py
-claimtrace run --input data/clean.csv --input analysis/02_fit.py \
-  --output results/fit.json -- python analysis/02_fit.py
-claimtrace run --input data/clean.csv --input results/fit.json --input analysis/03_figure.py \
-  --output figures/fit.svg -- python analysis/03_figure.py
-claimtrace check        # green
-claimtrace check --strict --json  # declarations agree with captured run boundaries
-claimtrace verify       # confirms slope ≈ 2.0, R² > 0.9 from results/fit.json
-claimtrace assessments  # accepted support plus a visible causal-language narrowing
-claimtrace snapshot     # lock the figure's input hashes
+cd examples/penguin_study
+claimtrace verify
+claimtrace check --strict --json
+claimtrace assessments --all --json
+claimtrace derivations --json
 claimtrace view --output research-map.html
-claimtrace impact --set dataset_version=v2   # see the propagation list
-claimtrace journal      # the lab notebook, including a logged dead-end
 ```
 
-Then edit `data/raw_measurements.csv` and re-run `claimtrace check` — it now reports `STALE_DATA` on
-the figure, because its locked inputs changed.
+The narrow result is the classical aggregation reversal: among 342 complete records, the pooled
+bill-depth-on-bill-length slope is negative (`-0.085021`), while the Adelie, Chinstrap, and Gentoo
+slopes are positive. The demo records that as a descriptive association, not a causal effect or a
+general claim about penguin biology.
+
+For a compact neuroscience example, see [EEGBCI motor-imagery decoding](examples/eegbci_study/).
+It pins three PhysioNet EEGMMIDB files by official SHA-256, fits every CSP + LDA fold without using
+the held-out run, and compares the observed score with a within-run label-permutation null. Its raw
+EDFs are deliberately downloaded by the explicit fetch step rather than committed, and its optional MNE
+environment is isolated from Claimtrace's stdlib-only core. In the pinned S001 analysis the mean
+balanced accuracy is `0.842262`, versus a null 95th percentile of `0.657738` (`p = 0.005`); that is
+a result for these three recordings, not a population or clinical-performance claim.
+
+The [examples index](examples/) explains the scope and data-license boundary of each project. Run
+the EEG example's explicit fetch step to download its raw files; opening the example alone does not
+perform network access. The
+synthetic [widget study](examples/widget_study/) remains as a small engine-test fixture, not the
+public scientific showcase.
 
 ---
 
@@ -139,10 +159,14 @@ The historical `reads` relation is the one direction exception: write
     { "from": "data:raw", "to": "art:fit",     "rel": "produces" },
     { "from": "code:fit", "to": "art:fit",     "rel": "produces" },
     { "from": "art:fit",  "to": "fig:fit",     "rel": "renders" },
-    { "from": "art:fit",  "to": "claim:slope", "rel": "supports" }
+    { "from": "art:fit",  "to": "claim:slope", "rel": "derives_from" }
   ]
 }
 ```
+
+Use a structural relation such as `derives_from` to preserve result-to-claim propagation without
+silently declaring that the result's meaning supports the prose. A reviewed semantic assessment
+can project an attributed `supports`, `refutes`, or `related` relation separately.
 
 Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](docs/SCHEMA.md).
 
@@ -162,7 +186,7 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace journal [--status ...]` | every attempt grouped by verdict |
 | `claimtrace assess ENTRY --actor ID` | append an external-agent semantic proposal; claimtrace computes evidence snapshots and policy output |
 | `claimtrace assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
-| `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append an independent acceptance, rejection, contest, or supersession decision |
+| `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append a separate-actor acceptance, rejection, contest, or supersession decision |
 | `claimtrace evidence-plan CLAIM_ID [--json]` | show the claim-owned exact all-of binding plan and its pinned vocabulary/rule pack |
 | `claimtrace derive ENTRY --actor ID` | materialize a claim-owned evidence plan (preferred), select bindings for an unplanned claim, or import explicit typed facts |
 | `claimtrace derivations [--state ...] [--json]` | list derivations reevaluated against the current graph, artifacts, vocabulary, and rules |
@@ -173,6 +197,20 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace init` | scaffold a config in a project |
 | `claimtrace install-skill [--target ...]` | install the packaged `claimtrace-log` skill without silently overwriting project customizations |
 
+The standalone trajectory is also a navigable canvas: use the mouse wheel or the visible controls
+to zoom around the pointer, drag empty background to pan, and use **Fit** to recover the full view.
+The zoom and pan camera is page-local and never enters the graph or saved node-layout record.
+The trajectory can be rearranged without changing the research record. Drag any node,
+or choose it in **Focus** and use the keyboard-accessible directional buttons; connected edges and
+labels follow immediately. **Auto-arrange** restores the deterministic logical-layer
+layout. Manual coordinates live only in browser storage for the current origin and output path:
+they are never written into the graph, provenance stores, or generated HTML. Consequently they
+survive a refresh at the same URL but are not a portable or shared layout, and a different
+localhost port has separate storage. Edges follow orthogonal lanes with rounded turns around padded node boundaries;
+moving any node reroutes the graph so unrelated relationships cannot remain hidden underneath it.
+Click an edge, its label, or choose it under **Relationship** to highlight exactly that edge and its
+direct source and target, with the full relation and traversal status shown in the details panel.
+
 ## Grounded semantic assessments
 
 A graph edge can declare that a result supports a claim, but a hash cannot tell whether the result
@@ -181,7 +219,8 @@ or inference level as the claim. Semantic assessments add that meaning check wit
 is fully mechanical.
 
 An external agent submits a JSON object containing exactly `claim_id`, `result_ids`, and
-`agent_input`. Schema v1 accepts exactly one result per assessment. The agent authors the verdict,
+`agent_input`. Both supported assessment schemas accept exactly one result per assessment; new
+records use v2 and legacy v1 records retain v1 policy semantics. The agent authors the verdict,
 complete structured claim and result frames, all eight fixed
 alignment dimensions, exact evidence anchors, a concise rationale, limitations, and its provenance.
 Allowed verdicts are `supports_as_written`, `supports_narrower_claim`,
@@ -192,22 +231,33 @@ The external agent must not provide `mechanical_snapshot`, `derived`, or a revie
 Claimtrace computes the node and artifact SHA-256 identities, resolves every anchor, detects later
 node/file drift and conflicting active assessments, and derives the eligible relation and findings.
 A narrowing can activate `related`; it never becomes support for the original wording.
+`supports_as_written` and `contradicts_as_written` otherwise require complete alignment. The one
+narrow specificity exception is magnitude: a result may state a magnitude when a qualitative
+directional claim does not. Missing result magnitude, partial or mismatched magnitudes, and any
+unstated population, exposure, comparator, outcome, direction, time scope, or inference level still
+fail closed.
 
 ```bash
 claimtrace assess semantic-proposal.json --actor analysis-agent --json
 claimtrace assessments --state proposed --json
-claimtrace review assessment:sha256:<digest> --state accepted --actor independent-reviewer --json
+claimtrace review assessment:sha256:<digest> --state accepted --actor separate-reviewer --json
 claimtrace assessments --all --json
 ```
 
 Assessments are immutable, content-addressed JSON documents. A review appends one successor; it does
-not rewrite or branch the proposal. The first reviewer string must differ from the proposer string,
+not rewrite or branch the proposal, and it preserves the predecessor's schema-bound policy. Mixed
+v1/v2 stores are supported, but one review chain cannot switch policy versions. The first reviewer
+string must differ from the proposer string,
 but those identities are self-asserted rather than authenticated. Acceptance fails closed for
 invalid anchors, staleness, accepted-review conflicts, store-integrity failures, and inconsistent
 modality declarations. An unreviewed conflicting proposal cannot deactivate an accepted relation.
-Set `"require_assessments": true` to make a direct, active `supports` or `refutes` edge without
-matching accepted semantic coverage block strict checking; the default is advisory for gradual
-adoption. An accepted opposite-polarity assessment is always a hard conflict.
+Set `"require_assessments": true` to make semantic coverage a strict requirement. A direct
+`supports` or `refutes` declaration must have a matching accepted relation. A structural
+`derives_from` edge from a result-like node to a claim-like node must have a current accepted
+assessment with an active `supports`, `refutes`, or `related` relation. An unreviewed pair, or an
+accepted judgement that activates no relation, then blocks strict checking. The default is
+advisory for gradual adoption, and an accepted opposite-polarity assessment against a direct
+declaration is always a hard conflict.
 
 Acceptance records an attributed judgement under this policy. It is not proof that the analysis is
 valid or the scientific claim is true. The checked-in widget demo makes the distinction concrete:
@@ -315,8 +365,9 @@ These states mean **conditional derivability under the pinned project rules and 
 They do not establish that the rules are scientifically valid, that a premise is true, that the
 formal target accurately expresses the prose claim, or that a binding accurately expresses the
 artifact's scientific construct. Semantic assessments cover result-to-prose meaning only. The
-prose-to-target and binding-to-predicate mappings remain repository policy that needs independent
-review; Claimtrace does not yet store a dedicated review record for either mapping. Set
+prose-to-target and binding-to-predicate mappings remain repository policy that needs separate
+review; call that review independent only when the surrounding workflow establishes it. Claimtrace
+does not yet store a dedicated review record for either mapping. Set
 `logic.require_derivations` only when a project wants strict checks to require an active
 `derivable` certificate for each configured claim target.
 
@@ -355,9 +406,10 @@ document containing only the claim ID, public note, and provenance. Claimtrace m
 required binding, the typed facts, and the pinned target. For an unplanned claim, the skill can fall
 back to `claimtrace.symbolic-selection/1` with existing result/binding IDs. The skill never creates
 pointers, atoms, rules, proof steps, or proof states.
-Agents still need the user or an independent reviewer to judge scientific meaning; Claimtrace
-automates integrity, grounding, conditional inference, reconciliation, propagation, policy checks,
-and display.
+Agents still need the user or a scientifically independent reviewer to judge scientific meaning;
+Claimtrace automates integrity, grounding, conditional inference, reconciliation, propagation,
+policy checks, and display. Claimtrace itself enforces only that the first reviewer actor string
+differs from the proposer string; it does not authenticate people or establish independence.
 
 An exact plan prevents the requesting agent from cherry-picking within that reviewed list. It does
 not establish that the list includes every scientifically relevant result; that remains repository
@@ -385,19 +437,24 @@ been re-derived, so a human still does the judging.
 
 The system deliberately has four evidence layers:
 
-- The **semantic graph** contains attributed scientific assertions: hypotheses, predictions,
+- The **semantic graph** contains declared scientific assertions: hypotheses, predictions,
   methods, claims, conclusions, and their declared dependencies. A generic command wrapper must not
   invent or silently mutate those assertions.
 - The **mechanical receipt ledger** records declared inputs/outputs, stable pre/post SHA-256 file
   versions, direct-child argv and return code, best-effort Git/lockfile context, and project-window
   deltas.
 - The **semantic assessment ledger** stores an external agent's schema-constrained interpretation,
-  exact evidence anchors, claimtrace-computed hashes and policy findings, and a separate reviewer's
+  exact evidence anchors, claimtrace-computed hashes and policy findings, and a separate actor's
   immutable decision. It can detect drift and disagreement; it cannot make the interpretation true.
 - The **symbolic derivation ledger** stores typed premises grounded through project-owned complete
   fact profiles, the pinned vocabulary and rule pack, and a Claimtrace-computed composite proof.
   It establishes conditional derivability only; it cannot certify premise truth, scientific
   support, or equivalence between a formal target and the prose claim.
+
+Mechanical receipts intentionally preserve the observed executable and working-directory paths.
+That can reveal usernames or workspace layout when a ledger is published. Argument-secret
+redaction does not anonymize those environment paths; review them before release or generate the
+public ledger in a neutral build environment. Never edit a content-addressed receipt in place.
 
 “Project-owned” means declared in project files; it is a governance convention, not an access
 control boundary. A process that can edit the graph, bindings, vocabulary, or rules can change the
@@ -411,8 +468,9 @@ pins, signatures, or an equivalent control appropriate to the project. CLI `--ac
 Automatic materialization proves only that a configured extractor returned a typed value from the
 pinned bytes. The choice of predicate, polarity, extractor, rules, and formal target remains a
 human-reviewed semantic mapping. It can be internally exact and still represent the wrong
-scientific construct. Semantic assessments and independent review cover that different question;
-neither layer should be described as proof of scientific truth.
+scientific construct. Semantic assessment plus repository review can cover that different question;
+neither layer should be described as proof of scientific truth or as independently reviewed unless
+the surrounding workflow actually establishes that independence.
 
 A claim-owned evidence plan provides completeness only relative to its reviewed exact list. It
 prevents a requester from omitting, adding, or replacing bindings in that list, but an authorized
@@ -450,4 +508,8 @@ incremental reporting, and adapter boundaries around this deterministic core.
 
 ## License
 
-MIT © Gabriel Wainstein. Developed with the assistance of Claude Code.
+Claimtrace's original software and documentation are MIT licensed © Gabriel Wainstein. The example
+datasets and data-derived artifacts keep their upstream terms; see the
+[third-party notices](https://github.com/gabwainstein/claimtrace/blob/main/THIRD_PARTY_NOTICES.md).
+Developed with the assistance of Claude Code and
+Codex.

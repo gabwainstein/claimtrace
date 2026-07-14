@@ -1,0 +1,91 @@
+{
+  "schema_version": "claimtrace.symbolic-rules/1",
+  "id": "eegbci:decoding-rules",
+  "version": "1.0.0",
+  "vocabulary_id": "eegbci:vocabulary",
+  "rules": [
+    {
+      "id": "eegbci:valid-and-above-null",
+      "when": [
+        {
+          "predicate": "eegbci:decoding_summary",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "folds_valid": {"var": "folds_valid"},
+            "observed": {"var": "observed"},
+            "null95": {"var": "null95"}
+          }
+        }
+      ],
+      "where": [
+        {
+          "op": "eq",
+          "left": {"var": "folds_valid"},
+          "right": {"const": {"type": "ct:boolean", "value": true, "unit": null}}
+        },
+        {"op": "gt", "left": {"var": "observed"}, "right": {"var": "null95"}}
+      ],
+      "then": {
+        "predicate": "eegbci:exceeds_run_constrained_null",
+        "polarity": "positive",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "eegbci:valid-but-not-above-null",
+      "when": [
+        {
+          "predicate": "eegbci:decoding_summary",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "folds_valid": {"var": "folds_valid"},
+            "observed": {"var": "observed"},
+            "null95": {"var": "null95"}
+          }
+        }
+      ],
+      "where": [
+        {
+          "op": "eq",
+          "left": {"var": "folds_valid"},
+          "right": {"const": {"type": "ct:boolean", "value": true, "unit": null}}
+        },
+        {"op": "lte", "left": {"var": "observed"}, "right": {"var": "null95"}}
+      ],
+      "then": {
+        "predicate": "eegbci:exceeds_run_constrained_null",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "eegbci:invalid-folds",
+      "when": [
+        {
+          "predicate": "eegbci:decoding_summary",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "folds_valid": {"var": "folds_valid"},
+            "observed": {"var": "observed"},
+            "null95": {"var": "null95"}
+          }
+        }
+      ],
+      "where": [
+        {
+          "op": "eq",
+          "left": {"var": "folds_valid"},
+          "right": {"const": {"type": "ct:boolean", "value": false, "unit": null}}
+        }
+      ],
+      "then": {
+        "predicate": "eegbci:exceeds_run_constrained_null",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    }
+  ]
+}

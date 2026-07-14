@@ -1,0 +1,113 @@
+{
+  "id": "event:sha256:d0d3e91080c62d3c4f1629e4fe7e191f3515b28d21e5142027a28ed835e46d4d",
+  "payload": {
+    "capture_scope": {
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "writes": "declared_snapshots_plus_unattributed_project_window"
+    },
+    "name": null,
+    "plan": {
+      "argv": [
+        "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+        "analysis/02_analyze.py"
+      ],
+      "argv_capture": "redacted_best_effort",
+      "control_plane_before": {
+        "event_ledger": {
+          "event_count": 12,
+          "event_ids_sha256": "d65de2925ae5743ed098337a85aa74f76604f1a740dec5152d0847f9f7d72060",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "path": "claimtrace/graph.json",
+            "sha256": "cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "size": 9579,
+            "state": "stable"
+          }
+        ]
+      },
+      "cwd": ".",
+      "declared_inputs": [
+        {
+          "file_version_id": "file:sha256:b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027378258669900,
+          "path": "data/prepared_epochs.npz",
+          "sha256": "b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "size": 501096,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027378259669900,
+          "path": "results/preprocessing.json",
+          "sha256": "2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "size": 2070,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972571899000,
+          "path": "analysis/02_analyze.py",
+          "sha256": "1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "size": 7265,
+          "state": "stable"
+        }
+      ],
+      "declared_outputs": [
+        "results/decoding.json"
+      ],
+      "environment": {
+        "capture": "partial_no_environment_variables",
+        "controller_implementation": "CPython",
+        "controller_python": "3.13.9",
+        "executable": {
+          "requested": "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+          "resolved": "H:\\Codes\\Github\\claimtrace\\examples\\eegbci_study\\.venv\\Scripts\\python.exe",
+          "sha256": "0e818a1f9a0b8fbd4e7cc458a07cb7de2ea02ea326e387699a33b92f151242cd",
+          "state": "stable"
+        },
+        "platform": "Windows-11-10.0.26200-SP0",
+        "root_lockfiles": [
+          {
+            "path": "requirements.txt",
+            "sha256": "91f524340534f60ffb02af032d76a90787414255da2d11704f90993a47f919b9"
+          }
+        ]
+      },
+      "git": {
+        "branch": "codex/symbolic-claim-kernel",
+        "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+        "state": "captured",
+        "tracked_dirty": false,
+        "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "untracked_files": "not_captured"
+      },
+      "parameters": {
+        "permutations": "199",
+        "validation": "leave-one-run-out"
+      },
+      "seeds": {
+        "numpy": "20260714"
+      }
+    },
+    "plan_id": "recipe:sha256:d02924be898f3046e609c277bccf02667cd4e8afd94b5cfbbf6037a73dc4849d"
+  },
+  "recorded_at": "2026-07-14T11:09:54.491Z",
+  "run_id": "run:a9ebc85a-fc04-481d-bd88-36e53b784cf2",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.started"
+}

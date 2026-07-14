@@ -1,0 +1,57 @@
+{
+  "node": "fig:decoding",
+  "output": "figures/decoding.svg",
+  "output_sha1": "e5bacb31b5fbd1eb13eb2413a9a1ba226d47f8e9",
+  "backbone": {
+    "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+    "analysis_plan": "s001-mi-logo-csp-lda-v1"
+  },
+  "value": "Observed fold scores, null distribution, observed mean, and null threshold",
+  "locked_at": "2026-07-14T11:58:12+00:00",
+  "inputs": [
+    {
+      "path": "analysis/00_fetch.py",
+      "sha1": "71bc3d4374112efd532afa2a6b73df0c72e10e8c"
+    },
+    {
+      "path": "analysis/01_prepare.py",
+      "sha1": "df1169482391cfb3010b56abcc6a9ec71d51e0d4"
+    },
+    {
+      "path": "analysis/02_analyze.py",
+      "sha1": "4573cc0210782da2d56c8c5253f247486c1c15a2"
+    },
+    {
+      "path": "analysis/03_figure.py",
+      "sha1": "8fdea7b4353f69366cc8983cd7aeb1dca04663e6"
+    },
+    {
+      "path": "data/S001R06.edf",
+      "sha1": "44a44328cbc71fbd9b830884ae6b44331965f84c"
+    },
+    {
+      "path": "data/S001R10.edf",
+      "sha1": "f101df9c540a4627211a66bb568c18c91114a173"
+    },
+    {
+      "path": "data/S001R14.edf",
+      "sha1": "68e7cf0f8655eabebbb6ecf5d390d0b2e5ba6cb5"
+    },
+    {
+      "path": "data/prepared_epochs.npz",
+      "sha1": "3a527871e96860619901b8eed22141626e819fbf"
+    },
+    {
+      "path": "data/source_manifest.json",
+      "sha1": "8de14d4965be5bbeeb0ffba99ec6f7cd5c578dd4"
+    },
+    {
+      "path": "results/decoding.json",
+      "sha1": "cb6408f5e137d180c9557f39007b2a0de6471e3f"
+    },
+    {
+      "path": "results/preprocessing.json",
+      "sha1": "ab13b33dda667a41ebc19d3c58f86bccf13b2246"
+    }
+  ]
+}

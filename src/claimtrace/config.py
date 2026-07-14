@@ -13,7 +13,7 @@ claimtrace.config.json schema (all paths relative to the config file's directory
     "render_types": ["figure"],              # node types whose staleness is checked
     "input_types":  ["data", "artifact", "code"], # types that count as staleness INPUTS to a render
     "run_output_types": ["artifact"],        # non-render node types expected to have run receipts
-    "require_assessments": false,             # strict-block unassessed supports/refutes links
+    "require_assessments": false,             # strict-block unreviewed result-to-claim links
     "logic": {                                # optional declarative symbolic-claim extension
       "derivations": "claimtrace/derivations",
       "vocabularies": ["claimtrace/logic/vocabulary.json"],

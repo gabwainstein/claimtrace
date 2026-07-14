@@ -1,0 +1,6 @@
+{
+  "schema_version": "claimtrace.symbolic-plan-request/1",
+  "claim_id": "claim:sign-reversal",
+  "note": "Materialize the complete slope profile required by the reviewed claim-owned evidence plan.",
+  "provenance": {"agent": "codex:/root/build_penguins"}
+}
