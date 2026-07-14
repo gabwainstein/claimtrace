@@ -1,0 +1,220 @@
+{
+  "id": "event:sha256:04895ca6709d9d0b75838167380dbcb632f474305fff96c034b29ea4b2c2e09a",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 0,
+          "event_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "path": "claimtrace/graph.json",
+            "sha256": "ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "size": 8443,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 0,
+          "event_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "path": "claimtrace/graph.json",
+            "sha256": "ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "size": 8443,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 75566198100,
+    "git_after": {
+      "branch": "codex/symbolic-claim-kernel",
+      "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+      "state": "captured",
+      "tracked_dirty": false,
+      "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:3574c337435be09c64d440a75ef3b6c7ae36123e62c34d3009cae4b1e50a6900",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972571899000,
+          "path": "analysis/00_fetch.py",
+          "sha256": "3574c337435be09c64d440a75ef3b6c7ae36123e62c34d3009cae4b1e50a6900",
+          "size": 3144,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:3574c337435be09c64d440a75ef3b6c7ae36123e62c34d3009cae4b1e50a6900",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972571899000,
+          "path": "analysis/00_fetch.py",
+          "sha256": "3574c337435be09c64d440a75ef3b6c7ae36123e62c34d3009cae4b1e50a6900",
+          "size": 3144,
+          "state": "stable"
+        },
+        "path": "analysis/00_fetch.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024055771141900,
+          "path": "data/S001R06.edf",
+          "sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+          "size": 2596896,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "data/S001R06.edf",
+          "state": "missing"
+        },
+        "path": "data/S001R06.edf",
+        "produced": true,
+        "transition": "created"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024083537733700,
+          "path": "data/S001R10.edf",
+          "sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+          "size": 2596896,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "data/S001R10.edf",
+          "state": "missing"
+        },
+        "path": "data/S001R10.edf",
+        "produced": true,
+        "transition": "created"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024109046898900,
+          "path": "data/S001R14.edf",
+          "sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+          "size": 2596896,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "data/S001R14.edf",
+          "state": "missing"
+        },
+        "path": "data/S001R14.edf",
+        "produced": true,
+        "transition": "created"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:4a54db9fe41c119edd1b8ff46da4ff2d7d001a752f1ef7e97220c45df96737d5",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024109055899900,
+          "path": "data/source_manifest.json",
+          "sha256": "4a54db9fe41c119edd1b8ff46da4ff2d7d001a752f1ef7e97220c45df96737d5",
+          "size": 1019,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "data/source_manifest.json",
+          "state": "missing"
+        },
+        "path": "data/source_manifest.json",
+        "produced": true,
+        "transition": "created"
+      }
+    ],
+    "plan_id": "recipe:sha256:a96b6af33c69aa6eb3884454df2c6129737ad593927c646a6cb6aed86b3fbf0c",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:04417135ef69d09e3c92661e0fa37d34aa12044e8b01f7e11e2935ef16e12347",
+    "start_event_id": "event:sha256:919b09ea3ae8147e06340e39bc934a68f22b1d033dad0fd6a7c1e7c1ceb23532",
+    "window_deltas": [
+      {
+        "after_sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "data/S001R06.edf",
+        "transition": "created"
+      },
+      {
+        "after_sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "data/S001R10.edf",
+        "transition": "created"
+      },
+      {
+        "after_sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "data/S001R14.edf",
+        "transition": "created"
+      },
+      {
+        "after_sha256": "4a54db9fe41c119edd1b8ff46da4ff2d7d001a752f1ef7e97220c45df96737d5",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "data/source_manifest.json",
+        "transition": "created"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-14T10:15:09.228Z",
+  "run_id": "run:ce72e1be-e0c1-4b07-9798-f24a2c909223",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}

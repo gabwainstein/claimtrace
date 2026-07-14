@@ -1,0 +1,19 @@
+{
+  "byte_identical_to_official_curated": true,
+  "columns": [
+    "species",
+    "island",
+    "bill_length_mm",
+    "bill_depth_mm",
+    "flipper_length_mm",
+    "body_mass_g",
+    "sex",
+    "year"
+  ],
+  "dataset_version": "palmerpenguins-v0.1.0",
+  "generated_sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+  "official_curated_sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+  "output_rows": 344,
+  "schema_version": "claimtrace.penguin-preprocess/1",
+  "source_rows": 344
+}

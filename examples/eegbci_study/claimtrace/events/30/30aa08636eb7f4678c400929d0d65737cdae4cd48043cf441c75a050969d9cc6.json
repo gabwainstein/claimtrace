@@ -1,0 +1,186 @@
+{
+  "id": "event:sha256:30aa08636eb7f4678c400929d0d65737cdae4cd48043cf441c75a050969d9cc6",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 4,
+          "event_ids_sha256": "2bc8c8c8bc28a5ead51c706d04d546ef63c699e97512920d6f14445f3d9f78c6",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "path": "claimtrace/graph.json",
+            "sha256": "ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "size": 8443,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 4,
+          "event_ids_sha256": "2bc8c8c8bc28a5ead51c706d04d546ef63c699e97512920d6f14445f3d9f78c6",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "path": "claimtrace/graph.json",
+            "sha256": "ae2ad64f1229f5c2a8b5f13aa13fdec64b235bb2fc8942d8651f9e8ac1fa1630",
+            "size": 8443,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 36328380800,
+    "git_after": {
+      "branch": "codex/symbolic-claim-kernel",
+      "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+      "state": "captured",
+      "tracked_dirty": false,
+      "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024122326173000,
+          "path": "data/prepared_epochs.npz",
+          "sha256": "b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "size": 501096,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024122326173000,
+          "path": "data/prepared_epochs.npz",
+          "sha256": "b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+          "size": 501096,
+          "state": "stable"
+        },
+        "path": "data/prepared_epochs.npz",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024122327171600,
+          "path": "results/preprocessing.json",
+          "sha256": "2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "size": 2070,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024122327171600,
+          "path": "results/preprocessing.json",
+          "sha256": "2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+          "size": 2070,
+          "state": "stable"
+        },
+        "path": "results/preprocessing.json",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972571899000,
+          "path": "analysis/02_analyze.py",
+          "sha256": "1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "size": 7265,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972571899000,
+          "path": "analysis/02_analyze.py",
+          "sha256": "1ee62a84b155f5d61680e49fa355eedd3ba1c18cfabc3e343fc393d4bf2cd0ad",
+          "size": 7265,
+          "state": "stable"
+        },
+        "path": "analysis/02_analyze.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:a404a6f9b449722078768b4f32dca31d3962c0f9138da9011d81fcf94c211038",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024166009950300,
+          "path": "results/decoding.json",
+          "sha256": "a404a6f9b449722078768b4f32dca31d3962c0f9138da9011d81fcf94c211038",
+          "size": 6139,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "results/decoding.json",
+          "state": "missing"
+        },
+        "path": "results/decoding.json",
+        "produced": true,
+        "transition": "created"
+      }
+    ],
+    "plan_id": "recipe:sha256:6afe14fe7b9fbdf771576d169e14b85d06373aadeef6731fefaf35953b174b10",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:a6dad517e3b26bbc7a1c3cf7b1a5fc9b8b589017ac494bf1906e0bb01729bd8f",
+    "start_event_id": "event:sha256:ff0dda1635b60e30c2840ac02b9734c7aeb1f7b6c5cb1335f26d9c94f57f7323",
+    "window_deltas": [
+      {
+        "after_sha256": "a404a6f9b449722078768b4f32dca31d3962c0f9138da9011d81fcf94c211038",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "results/decoding.json",
+        "transition": "created"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-14T10:16:06.828Z",
+  "run_id": "run:f0126850-7c52-4abf-8002-9a6f6aeaa4c0",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}

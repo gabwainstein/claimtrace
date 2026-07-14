@@ -1,0 +1,27 @@
+{
+  "doi": "10.13026/C28G6P",
+  "files": [
+    {
+      "path": "data/S001R06.edf",
+      "sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+      "size_bytes": 2596896,
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R06.edf"
+    },
+    {
+      "path": "data/S001R10.edf",
+      "sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+      "size_bytes": 2596896,
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R10.edf"
+    },
+    {
+      "path": "data/S001R14.edf",
+      "sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+      "size_bytes": 2596896,
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R14.edf"
+    }
+  ],
+  "id": "physionet-eegmmidb-1.0.0",
+  "license": "Open Data Commons Attribution License v1.0",
+  "license_url": "https://physionet.org/content/eegmmidb/view-license/1.0.0/",
+  "sha256s_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+}

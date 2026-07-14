@@ -1,0 +1,212 @@
+{
+  "id": "event:sha256:a8e4edd5383fc9d0f8c91fccc7462ac685b653fb1066079892cc9ad40e0554cc",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 2,
+          "event_ids_sha256": "693bf85abf13963a259cbc27db57a0178e763c75c1b3caf8875046c06ae9f5a4",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "path": "claimtrace.config.json",
+            "sha256": "a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "size": 563,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "path": "claimtrace/graph.json",
+            "sha256": "8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "size": 8495,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 2,
+          "event_ids_sha256": "693bf85abf13963a259cbc27db57a0178e763c75c1b3caf8875046c06ae9f5a4",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "path": "claimtrace.config.json",
+            "sha256": "a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "size": 563,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "path": "claimtrace/graph.json",
+            "sha256": "8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "size": 8495,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 47069700,
+    "git_after": {
+      "branch": "codex/symbolic-claim-kernel",
+      "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+      "state": "captured",
+      "tracked_dirty": false,
+      "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152119969700,
+          "path": "data/source/penguins_raw.csv",
+          "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "size": 53098,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152119969700,
+          "path": "data/source/penguins_raw.csv",
+          "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "size": 53098,
+          "state": "stable"
+        },
+        "path": "data/source/penguins_raw.csv",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152120970500,
+          "path": "data/source/penguins.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152120970500,
+          "path": "data/source/penguins.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "path": "data/source/penguins.csv",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024109720150200,
+          "path": "analysis/01_prepare.py",
+          "sha256": "e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "size": 3257,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024109720150200,
+          "path": "analysis/01_prepare.py",
+          "sha256": "e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "size": 3257,
+          "state": "stable"
+        },
+        "path": "analysis/01_prepare.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024163697203500,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "data/penguins_clean.csv",
+          "state": "missing"
+        },
+        "path": "data/penguins_clean.csv",
+        "produced": true,
+        "transition": "created"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:f1d155dc373bb002677aa8a84462a57f8dc154ec4688627c4a5c02d9174760b7",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024163697203500,
+          "path": "results/preprocess.json",
+          "sha256": "f1d155dc373bb002677aa8a84462a57f8dc154ec4688627c4a5c02d9174760b7",
+          "size": 539,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "results/preprocess.json",
+          "state": "missing"
+        },
+        "path": "results/preprocess.json",
+        "produced": true,
+        "transition": "created"
+      }
+    ],
+    "plan_id": "recipe:sha256:3d6eb1c08f3e5bae3635aa9ec9bd4b32452bec44b7aaa31a0539b3adb3d875bd",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:f1327b0a971ef8963e1671aece0f915cbd207bdbd634a9091e9616e455cc5fb0",
+    "start_event_id": "event:sha256:b6f460fcd54b41509fe963615026d816e87ce2a25bec39e1a8f5fda800d82c15",
+    "window_deltas": [
+      {
+        "after_sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "data/penguins_clean.csv",
+        "transition": "created"
+      },
+      {
+        "after_sha256": "f1d155dc373bb002677aa8a84462a57f8dc154ec4688627c4a5c02d9174760b7",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "results/preprocess.json",
+        "transition": "created"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-14T10:16:03.850Z",
+  "run_id": "run:188fc705-506c-4295-ba7a-9ff28aa7977e",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}
