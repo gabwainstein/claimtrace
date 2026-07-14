@@ -1,0 +1,6 @@
+{
+  "schema_version": "claimtrace.symbolic-plan-request/1",
+  "claim_id": "pred:slope",
+  "note": "Materialize every premise required by the reviewed claim-owned evidence plan.",
+  "provenance": {"agent": "widget-demo-agent"}
+}

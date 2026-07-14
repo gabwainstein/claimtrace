@@ -1,11 +1,23 @@
 {
   "node": "fig:fit",
   "output": "figures/fit.svg",
-  "output_sha1": "9aa9756169790e772f08c35ab92598b0a424f5d0",
+  "output_sha1": "6f42f42b9b72d51e463c9767c7ab14dc66b47778",
   "backbone": "v2",
   "value": "scatter + fit line",
-  "locked_at": "2026-06-28T11:40:20+00:00",
+  "locked_at": "2026-07-13T17:45:17+00:00",
   "inputs": [
+    {
+      "path": "analysis/01_clean.py",
+      "sha1": "370279f1e1d2312d2119d5a75a47b0375f7d603f"
+    },
+    {
+      "path": "analysis/02_fit.py",
+      "sha1": "b7fea60356009f2684636883bf7f9677b12e7505"
+    },
+    {
+      "path": "analysis/03_figure.py",
+      "sha1": "c60174f6b48190a2f1355502aa24466c8a72960d"
+    },
     {
       "path": "data/clean.csv",
       "sha1": "6888f58f2d34169a803f3500013355187735ea51"

@@ -1,0 +1,122 @@
+{
+  "id": "assessment:sha256:d721a75b2080dca6c2c9d98d5b3cb29d1af0e63bca798a59675fd7b203e67347",
+  "schema_version": "claimtrace.semantic-assessment/1",
+  "recorded_at": "2026-07-13T00:03:00Z",
+  "subject": {
+    "claim_id": "hyp:linear",
+    "result_ids": [
+      "art:fit"
+    ]
+  },
+  "mechanical_snapshot": {
+    "anchor_checks": [
+      {
+        "anchor_index": 0,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "7eb4823f23e92cf35c741abb02de20cbdfd451f6e9d42d1c71afd03137a68f72",
+        "result_id": "art:fit",
+        "valid": true
+      },
+      {
+        "anchor_index": 1,
+        "detail": "exact JSON value matched",
+        "observed_value_sha256": "ad63e7a7cbadcbed0388d4dece4e3750afd3f83385563e5d942f1ee68d457ee2",
+        "result_id": "art:fit",
+        "valid": true
+      }
+    ],
+    "claim": {
+      "node_id": "hyp:linear",
+      "node_sha256": "5d541e8540a5046e715bbcc9978f9970e6c3d5a47f02b9c448c36d665a1f2c38",
+      "node_version_id": "node:sha256:5d541e8540a5046e715bbcc9978f9970e6c3d5a47f02b9c448c36d665a1f2c38"
+    },
+    "results": [
+      {
+        "artifact": {
+          "file_version_id": "file:sha256:704622b679cf79f42e7c69733899542af36011415c7657b68294454cfb0d5a1b",
+          "path": "results/fit.json",
+          "sha256": "704622b679cf79f42e7c69733899542af36011415c7657b68294454cfb0d5a1b",
+          "size": 75,
+          "state": "stable"
+        },
+        "node_id": "art:fit",
+        "node_sha256": "8d7840ef60fefd5d46669599fbb8a33fa0c2cf0152002779a978019fb3b859b3",
+        "node_version_id": "node:sha256:8d7840ef60fefd5d46669599fbb8a33fa0c2cf0152002779a978019fb3b859b3"
+      }
+    ]
+  },
+  "agent_input": {
+    "alignment": {
+      "comparator": "match",
+      "direction": "match",
+      "exposure": "match",
+      "inference_level": "mismatch",
+      "magnitude": "match",
+      "outcome": "match",
+      "population": "match",
+      "time_scope": "not_applicable"
+    },
+    "claim_frame": {
+      "comparator": "longer versus shorter polishing time",
+      "direction": "positive",
+      "exposure": "polishing time",
+      "inference_level": "causal",
+      "magnitude": "positive relationship",
+      "outcome": "widget shininess",
+      "population": "synthetic widgets in this study",
+      "time_scope": null
+    },
+    "evidence_anchors": [
+      {
+        "expected_value": 2.0147,
+        "kind": "json_pointer",
+        "pointer": "/slope",
+        "result_id": "art:fit"
+      },
+      {
+        "expected_value": 0.9929,
+        "kind": "json_pointer",
+        "pointer": "/r2",
+        "result_id": "art:fit"
+      }
+    ],
+    "limitations": [
+      "The synthetic observations do not encode random assignment or another causal design.",
+      "A high R2 does not resolve the causal inference mismatch."
+    ],
+    "provenance": {
+      "agent": "claimtrace-widget-demo-agent"
+    },
+    "rationale": "The OLS artifact shows a positive association, but the demo contains no intervention or causal identification that supports the hypothesis as written.",
+    "recommended_claim": "Longer polishing was positively associated with widget shininess in this synthetic dataset.",
+    "result_frame": {
+      "comparator": "longer versus shorter polishing time",
+      "direction": "positive",
+      "exposure": "polishing time",
+      "inference_level": "associational",
+      "magnitude": "positive relationship",
+      "outcome": "widget shininess",
+      "population": "synthetic widgets in this study",
+      "time_scope": null
+    },
+    "verdict": "supports_narrower_claim"
+  },
+  "review": {
+    "state": "accepted",
+    "actor": "claimtrace-widget-demo-reviewer",
+    "supersedes_assessment_id": "assessment:sha256:a98cb4bee73ce84800e83b2221d122b8b8b3faf1778ecd38593d6b20cdb774b3"
+  },
+  "derived": {
+    "effective_review_state": "accepted",
+    "proposed_relation": "related",
+    "active_relation": "related",
+    "stale": false,
+    "findings": [
+      {
+        "code": "CAUSAL_MODALITY_MISMATCH",
+        "severity": "warning",
+        "detail": "associational evidence cannot support a causal claim as written"
+      }
+    ]
+  }
+}

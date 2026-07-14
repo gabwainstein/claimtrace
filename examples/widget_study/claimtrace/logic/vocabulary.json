@@ -1,0 +1,42 @@
+{
+  "schema_version": "claimtrace.symbolic-vocabulary/1",
+  "id": "widget:vocabulary",
+  "version": "1.0.0",
+  "types": [
+    {"id": "widget:study", "base": "ct:symbol"}
+  ],
+  "units": ["widget:shininess-per-minute"],
+  "predicates": [
+    {
+      "id": "widget:reported_slope",
+      "kind": "input",
+      "arguments": [
+        {"name": "study", "type": "widget:study", "unit": null},
+        {"name": "slope", "type": "ct:decimal", "unit": "widget:shininess-per-minute"}
+      ]
+    },
+    {
+      "id": "widget:positive_fitted_slope",
+      "kind": "derived",
+      "arguments": [
+        {"name": "study", "type": "widget:study", "unit": null}
+      ]
+    }
+  ],
+  "renderers": [
+    {
+      "id": "widget:positive-slope-en",
+      "predicate": "widget:positive_fitted_slope",
+      "polarity": "positive",
+      "language": "en",
+      "template": "{study} has a positive fitted slope."
+    },
+    {
+      "id": "widget:nonpositive-slope-en",
+      "predicate": "widget:positive_fitted_slope",
+      "polarity": "negative",
+      "language": "en",
+      "template": "{study} does not have a positive fitted slope."
+    }
+  ]
+}
