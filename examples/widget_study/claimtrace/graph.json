@@ -8,26 +8,35 @@
     }
   },
   "nodes": [
+    { "id": "question:polish", "type": "question", "status": "current",                   "value": "does longer polishing make a widget shinier?" },
+    { "id": "hyp:linear",    "type": "hypothesis", "status": "current",                   "value": "longer polishing causally increases widget shininess" },
+    { "id": "pred:slope",    "type": "prediction", "status": "current",                   "value": "the fitted polishing-time slope is positive", "logic": { "vocabulary_id": "widget:vocabulary", "rule_pack_id": "widget:slope-rules", "target": { "predicate": "widget:positive_fitted_slope", "polarity": "positive", "arguments": { "study": { "type": "widget:study", "value": "widget-polishing-v2", "unit": null } } } }, "logic_evidence_plan": { "schema_version": "claimtrace.symbolic-evidence-plan/1", "required_bindings": [{ "result_id": "fig:fit", "binding_id": "widget:figure-slope" }] } },
     { "id": "data:raw",     "type": "data",       "status": "current", "backbone": "v2", "path": "data/raw_measurements.csv", "value": "raw widget polish/shininess measurements" },
     { "id": "code:clean",   "type": "code",       "status": "current",                   "path": "analysis/01_clean.py" },
     { "id": "art:clean",    "type": "artifact",   "status": "current", "backbone": "v2", "path": "data/clean.csv", "value": "cleaned measurements" },
     { "id": "code:fit",     "type": "code",       "status": "current",                   "path": "analysis/02_fit.py" },
     { "id": "art:fit",      "type": "artifact",   "status": "current", "backbone": "v2", "path": "results/fit.json", "value": "OLS slope/intercept/r2" },
     { "id": "code:figure",  "type": "code",       "status": "current",                   "path": "analysis/03_figure.py" },
-    { "id": "fig:fit",      "type": "figure",     "status": "current", "backbone": "v2", "path": "figures/fit.svg", "value": "scatter + fit line" },
+    { "id": "fig:fit",      "type": "figure",     "status": "current", "backbone": "v2", "path": "figures/fit.svg", "value": "scatter + fit line", "logic_bindings": [{ "id": "widget:figure-slope", "vocabulary_id": "widget:vocabulary", "predicate": "widget:reported_slope", "polarity": "positive", "arguments": { "study": { "kind": "text_lines", "start_line": 2, "end_line": 2, "prefix": "<metadata id=\"claimtrace-study\">", "suffix": "</metadata>\n" }, "slope": { "kind": "text_lines", "start_line": 3, "end_line": 3, "prefix": "<metadata id=\"claimtrace-slope\">", "suffix": "</metadata>\n" } } }] },
     { "id": "claim:slope",  "type": "claim",      "status": "current", "backbone": "v2", "value": "polishing time predicts shininess; slope ~ 2.0 (R2 > 0.9)" },
+    { "id": "conclusion:linear", "type": "conclusion", "status": "current", "backbone": "v2", "value": "the synthetic study is consistent with a positive linear relationship" },
     { "id": "doc:readme",   "type": "doc",        "status": "current",                   "path": "README.md", "value": "demo write-up" },
     { "id": "exp:loglog",   "type": "experiment", "status": "dead_end", "date": "2026-06-28", "script": "analysis/explore_loglog.py", "value": "log-log fit — worse R2 than linear, no curvature evidence; abandoned" }
   ],
   "edges": [
+    { "from": "question:polish", "to": "hyp:linear", "rel": "motivates" },
+    { "from": "hyp:linear",  "to": "pred:slope",  "rel": "predicts" },
+    { "from": "pred:slope",  "to": "art:fit",     "rel": "tested_by" },
     { "from": "data:raw",    "to": "art:clean",   "rel": "produces" },
     { "from": "code:clean",  "to": "art:clean",   "rel": "produces" },
     { "from": "art:clean",   "to": "art:fit",     "rel": "produces" },
     { "from": "code:fit",    "to": "art:fit",     "rel": "produces" },
     { "from": "art:fit",     "to": "fig:fit",     "rel": "renders" },
+    { "from": "art:clean",   "to": "fig:fit",     "rel": "renders" },
     { "from": "code:figure", "to": "fig:fit",     "rel": "renders" },
     { "from": "art:fit",     "to": "claim:slope", "rel": "supports" },
-    { "from": "claim:slope", "to": "doc:readme",  "rel": "cites" },
+    { "from": "claim:slope", "to": "conclusion:linear", "rel": "concludes" },
+    { "from": "conclusion:linear", "to": "doc:readme",  "rel": "cites" },
     { "from": "exp:loglog",  "to": "claim:slope", "rel": "tried_before" }
   ]
 }
