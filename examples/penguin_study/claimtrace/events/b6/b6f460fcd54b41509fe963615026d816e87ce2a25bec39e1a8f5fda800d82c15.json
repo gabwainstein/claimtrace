@@ -1,0 +1,104 @@
+{
+  "id": "event:sha256:b6f460fcd54b41509fe963615026d816e87ce2a25bec39e1a8f5fda800d82c15",
+  "payload": {
+    "capture_scope": {
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "writes": "declared_snapshots_plus_unattributed_project_window"
+    },
+    "name": null,
+    "plan": {
+      "argv": [
+        "python",
+        "analysis/01_prepare.py"
+      ],
+      "argv_capture": "redacted_best_effort",
+      "control_plane_before": {
+        "event_ledger": {
+          "event_count": 2,
+          "event_ids_sha256": "693bf85abf13963a259cbc27db57a0178e763c75c1b3caf8875046c06ae9f5a4",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "path": "claimtrace.config.json",
+            "sha256": "a9304a8226637bb71eb388a687fa9376952a24bd2d02cb2b4204f1eb13755148",
+            "size": 563,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "path": "claimtrace/graph.json",
+            "sha256": "8aff992c609278c02950ebcf98ffbc535d2d1ac5fcf015ea666950135c2ddd7e",
+            "size": 8495,
+            "state": "stable"
+          }
+        ]
+      },
+      "cwd": ".",
+      "declared_inputs": [
+        {
+          "file_version_id": "file:sha256:144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152119969700,
+          "path": "data/source/penguins_raw.csv",
+          "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+          "size": 53098,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024152120970500,
+          "path": "data/source/penguins.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784024109720150200,
+          "path": "analysis/01_prepare.py",
+          "sha256": "e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+          "size": 3257,
+          "state": "stable"
+        }
+      ],
+      "declared_outputs": [
+        "data/penguins_clean.csv",
+        "results/preprocess.json"
+      ],
+      "environment": {
+        "capture": "partial_no_environment_variables",
+        "controller_implementation": "CPython",
+        "controller_python": "3.13.9",
+        "executable": {
+          "requested": "python",
+          "resolved": "C:\\Users\\gwbez\\anaconda3\\python.exe",
+          "sha256": "7679e53fa969789309e81fdad0d52b8cda5f83c9abf7cb31a3c58bf24b31e264",
+          "state": "stable"
+        },
+        "platform": "Windows-11-10.0.26200-SP0",
+        "root_lockfiles": []
+      },
+      "git": {
+        "branch": "codex/symbolic-claim-kernel",
+        "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+        "state": "captured",
+        "tracked_dirty": false,
+        "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "untracked_files": "not_captured"
+      },
+      "parameters": {},
+      "seeds": {}
+    },
+    "plan_id": "recipe:sha256:3d6eb1c08f3e5bae3635aa9ec9bd4b32452bec44b7aaa31a0539b3adb3d875bd"
+  },
+  "recorded_at": "2026-07-14T10:16:03.645Z",
+  "run_id": "run:188fc705-506c-4295-ba7a-9ff28aa7977e",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.started"
+}

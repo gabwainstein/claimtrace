@@ -1,0 +1,22 @@
+{
+  "dataset_version": "palmerpenguins-v0.1.0",
+  "license": "CC0-1.0",
+  "license_url": "https://allisonhorst.github.io/palmerpenguins/LICENSE.html",
+  "original_study_doi": "10.1371/journal.pone.0090081",
+  "package_citation": "Horst AM, Hill AP, Gorman KB (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0.",
+  "package_doi": "10.5281/zenodo.3960218",
+  "package_url": "https://allisonhorst.github.io/palmerpenguins/",
+  "schema_version": "claimtrace.penguin-source-manifest/1",
+  "sources": {
+    "penguins.csv": {
+      "bytes": 15241,
+      "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+      "url": "https://raw.githubusercontent.com/allisonhorst/palmerpenguins/v0.1.0/inst/extdata/penguins.csv"
+    },
+    "penguins_raw.csv": {
+      "bytes": 53098,
+      "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+      "url": "https://raw.githubusercontent.com/allisonhorst/palmerpenguins/v0.1.0/inst/extdata/penguins_raw.csv"
+    }
+  }
+}

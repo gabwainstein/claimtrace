@@ -1,0 +1,85 @@
+{
+  "array_shape": [
+    45,
+    9,
+    161
+  ],
+  "channels": [
+    "FC3",
+    "FCz",
+    "FC4",
+    "C3",
+    "Cz",
+    "C4",
+    "CP3",
+    "CPz",
+    "CP4"
+  ],
+  "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
+  "epoch_seconds_after_onset": [
+    1.0,
+    2.0
+  ],
+  "event_mapping": {
+    "T1": "both_hands_imagery",
+    "T2": "both_feet_imagery"
+  },
+  "filter_hz": [
+    7.0,
+    30.0
+  ],
+  "limitations": [
+    "Only one participant and three repeated runs are included.",
+    "No amplitude-based artifact rejection or manually judged ICA was applied.",
+    "The fixed nine-channel subset and 7-30 Hz band do not establish source localization."
+  ],
+  "mne_version": "1.12.1",
+  "numpy_version": "2.3.5",
+  "participant": "S001",
+  "reference": "fixed average-reference projection",
+  "run_reports": [
+    {
+      "class_counts": {
+        "both_feet_imagery": 8,
+        "both_hands_imagery": 7
+      },
+      "dropped_epochs": 0,
+      "retained_epochs": 15,
+      "run": 6,
+      "source_path": "data/S001R06.edf",
+      "source_sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3"
+    },
+    {
+      "class_counts": {
+        "both_feet_imagery": 8,
+        "both_hands_imagery": 7
+      },
+      "dropped_epochs": 0,
+      "retained_epochs": 15,
+      "run": 10,
+      "source_path": "data/S001R10.edf",
+      "source_sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1"
+    },
+    {
+      "class_counts": {
+        "both_feet_imagery": 8,
+        "both_hands_imagery": 7
+      },
+      "dropped_epochs": 0,
+      "retained_epochs": 15,
+      "run": 14,
+      "source_path": "data/S001R14.edf",
+      "source_sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137"
+    }
+  ],
+  "runs": [
+    6,
+    10,
+    14
+  ],
+  "sampling_frequency_hz": 160.0,
+  "schema_version": 1,
+  "study_id": "eegbci-s001-r06-r10-r14-v1.0.0",
+  "task": "imagined movement of both hands versus both feet",
+  "total_epochs": 45
+}

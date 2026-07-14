@@ -1,0 +1,45 @@
+{
+  "schema_version": "claimtrace.symbolic-vocabulary/1",
+  "id": "penguin:vocabulary",
+  "version": "1.0.0",
+  "types": [
+    {"id": "penguin:study", "base": "ct:symbol"}
+  ],
+  "units": ["penguin:mm-per-mm"],
+  "predicates": [
+    {
+      "id": "penguin:reported_slopes",
+      "kind": "input",
+      "arguments": [
+        {"name": "study", "type": "penguin:study", "unit": null},
+        {"name": "pooled", "type": "ct:decimal", "unit": "penguin:mm-per-mm"},
+        {"name": "adelie", "type": "ct:decimal", "unit": "penguin:mm-per-mm"},
+        {"name": "chinstrap", "type": "ct:decimal", "unit": "penguin:mm-per-mm"},
+        {"name": "gentoo", "type": "ct:decimal", "unit": "penguin:mm-per-mm"}
+      ]
+    },
+    {
+      "id": "penguin:species_conditioned_sign_reversal",
+      "kind": "derived",
+      "arguments": [
+        {"name": "study", "type": "penguin:study", "unit": null}
+      ]
+    }
+  ],
+  "renderers": [
+    {
+      "id": "penguin:sign-reversal-positive-en",
+      "predicate": "penguin:species_conditioned_sign_reversal",
+      "polarity": "positive",
+      "language": "en",
+      "template": "{study} has a negative pooled slope and positive slope within every declared species."
+    },
+    {
+      "id": "penguin:sign-reversal-negative-en",
+      "predicate": "penguin:species_conditioned_sign_reversal",
+      "polarity": "negative",
+      "language": "en",
+      "template": "{study} does not have the configured pooled-versus-within-species sign reversal."
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "schema_version": "claimtrace.symbolic-rules/1",
+  "id": "penguin:sign-rules",
+  "version": "1.0.0",
+  "vocabulary_id": "penguin:vocabulary",
+  "rules": [
+    {
+      "id": "penguin:all-signs-match",
+      "when": [
+        {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "pooled": {"var": "pooled"},
+            "adelie": {"var": "adelie"},
+            "chinstrap": {"var": "chinstrap"},
+            "gentoo": {"var": "gentoo"}
+          }
+        }
+      ],
+      "where": [
+        {"op": "lt", "left": {"var": "pooled"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}},
+        {"op": "gt", "left": {"var": "adelie"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}},
+        {"op": "gt", "left": {"var": "chinstrap"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}},
+        {"op": "gt", "left": {"var": "gentoo"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}}
+      ],
+      "then": {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "positive",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "penguin:pooled-not-negative",
+      "when": [
+        {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "pooled": {"var": "pooled"},
+            "adelie": {"var": "adelie"},
+            "chinstrap": {"var": "chinstrap"},
+            "gentoo": {"var": "gentoo"}
+          }
+        }
+      ],
+      "where": [
+        {"op": "gte", "left": {"var": "pooled"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}}
+      ],
+      "then": {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "penguin:adelie-not-positive",
+      "when": [
+        {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "pooled": {"var": "pooled"},
+            "adelie": {"var": "adelie"},
+            "chinstrap": {"var": "chinstrap"},
+            "gentoo": {"var": "gentoo"}
+          }
+        }
+      ],
+      "where": [
+        {"op": "lte", "left": {"var": "adelie"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}}
+      ],
+      "then": {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "penguin:chinstrap-not-positive",
+      "when": [
+        {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "pooled": {"var": "pooled"},
+            "adelie": {"var": "adelie"},
+            "chinstrap": {"var": "chinstrap"},
+            "gentoo": {"var": "gentoo"}
+          }
+        }
+      ],
+      "where": [
+        {"op": "lte", "left": {"var": "chinstrap"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}}
+      ],
+      "then": {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    },
+    {
+      "id": "penguin:gentoo-not-positive",
+      "when": [
+        {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "study": {"var": "study"},
+            "pooled": {"var": "pooled"},
+            "adelie": {"var": "adelie"},
+            "chinstrap": {"var": "chinstrap"},
+            "gentoo": {"var": "gentoo"}
+          }
+        }
+      ],
+      "where": [
+        {"op": "lte", "left": {"var": "gentoo"}, "right": {"const": {"type": "ct:decimal", "value": "0", "unit": "penguin:mm-per-mm"}}}
+      ],
+      "then": {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "negative",
+        "arguments": {"study": {"var": "study"}}
+      }
+    }
+  ]
+}

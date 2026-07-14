@@ -1,11 +1,18 @@
-"""Engine tests against the synthetic widget-study demo + a temp project for log()."""
+"""Engine tests against the checked-in demos and a temp project for log()."""
 import json
+import shutil
 from pathlib import Path
 
 from claimtrace import engine
 from claimtrace.config import Config
+from claimtrace.report import build_report
 
-DEMO = Path(__file__).resolve().parents[1] / "examples" / "widget_study" / "claimtrace.config.json"
+ROOT = Path(__file__).resolve().parents[1]
+DEMO = ROOT / "examples" / "widget_study" / "claimtrace.config.json"
+PUBLIC_DEMOS = [
+    ROOT / "examples" / "penguin_study" / "claimtrace.config.json",
+    ROOT / "examples" / "eegbci_study" / "claimtrace.config.json",
+]
 
 
 def cfg():
@@ -47,6 +54,84 @@ def test_check_has_no_silent_drift():
     problems, _ = engine.compute_check(cfg())
     kinds = {k for k, _, _ in problems}
     assert "SILENT_DRIFT" not in kinds  # demo graph is internally consistent on v2
+
+
+def test_public_science_examples_cover_the_full_claim_trajectory():
+    required_types = {
+        "question", "hypothesis", "prediction", "data", "code", "artifact",
+        "figure", "claim", "conclusion", "reference", "doc",
+    }
+    for config_path in PUBLIC_DEMOS:
+        nodes, edges, _concepts = engine.load_graph(Config(config_path))
+        assert required_types <= {node["type"] for node in nodes.values()}
+        assert not {"supports", "refutes"} & {edge["rel"] for edge in edges}
+        assert any(
+            nodes[edge["from"]]["type"] in {"artifact", "figure", "data"}
+            and nodes[edge["to"]]["type"] == "claim"
+            and edge["rel"] == "derives_from"
+            for edge in edges
+        )
+        assert any(
+            node["type"] == "claim"
+            and "logic" in node
+            and "logic_evidence_plan" in node
+            for node in nodes.values()
+        )
+        assert all(node.get("path") != "research-map.html" for node in nodes.values())
+
+
+def test_penguin_demo_is_a_green_strict_semantic_and_symbolic_record():
+    report = build_report(Config(PUBLIC_DEMOS[0]), strict=True)
+
+    assert report["ok"] is True
+    assert report["exit_code"] == 0
+    assert report["assessments"]["integrity"] == "ok"
+    assert {
+        (item["from"], item["to"], item["rel"])
+        for item in report["assessments"]["active_relations"]
+    } == {
+        ("art:slopes", "claim:estimated-slopes", "supports"),
+        ("art:slopes", "claim:sign-reversal", "supports"),
+    }
+    assert report["derivations"]["integrity"] == "ok"
+    assert {
+        (item["claim_id"], item["proof_state"], item["claim_level_active"])
+        for item in report["derivations"]["active_proofs"]
+    } == {("claim:sign-reversal", "derivable", True)}
+
+
+def test_eeg_demo_clean_checkout_boundary_keeps_semantic_history_but_requires_fetch(tmp_path):
+    source = PUBLIC_DEMOS[1].parent
+    destination = tmp_path / "eegbci_study"
+
+    def ignore(_directory, names):
+        ignored = {".venv", "research-map.html", "__pycache__"}
+        ignored.update(name for name in names
+                       if name.lower().endswith((".edf", ".pyc")))
+        return ignored.intersection(names)
+
+    shutil.copytree(source, destination, ignore=ignore)
+    report = build_report(Config(destination / "claimtrace.config.json"), strict=True)
+
+    assert report["ok"] is False
+    assert report["assessments"]["integrity"] == "ok"
+    assert report["assessments"]["active_relations"] == [{
+        "assessment_id": "assessment:sha256:f92a070189e46fa63aff6fb0e5350827a3441273ddaef3b576f696964837607b",
+        "from": "art:decoding",
+        "to": "claim:above-null",
+        "rel": "supports",
+    }]
+    assert report["assessments"]["required_dependencies"][0]["status"] == "covered"
+    assert report["derivations"]["integrity"] == "ok"
+    assert report["derivations"]["active_proofs"] == []
+    missing_nodes = {
+        item["node_id"] for item in report["findings"]
+        if item["code"] == "MISSING_FILE"
+    }
+    assert missing_nodes == {"data:r06", "data:r10", "data:r14"}
+    codes = {item["code"] for item in report["findings"]}
+    assert {"DERIVATION_STALE", "MISSING_CLAIM_DERIVATION"} <= codes
+    assert "UNASSESSED_CLAIM_DEPENDENCY" not in codes
 
 
 def test_log_appends_node(tmp_path):

@@ -2,7 +2,10 @@
 import json
 import sys
 
-from claimtrace.assessment import append_assessment, create_assessment, transition_review
+import claimtrace.assessment as assessment_module
+from claimtrace.assessment import (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
+                                   SUPPORTED_SCHEMA_VERSIONS, append_assessment,
+                                   create_assessment, transition_review)
 from claimtrace.cli import main
 from claimtrace.config import Config
 from claimtrace.events import run_command
@@ -74,6 +77,18 @@ def _contradiction_input():
     value["result_frame"]["direction"] = "negative"
     value["alignment"]["direction"] = "mismatch"
     return value
+
+
+def _as_legacy_v1(document):
+    legacy = json.loads(json.dumps(document))
+    legacy["schema_version"] = LEGACY_SCHEMA_VERSION
+    legacy["derived"] = assessment_module._derive(
+        legacy["mechanical_snapshot"], legacy["agent_input"], legacy["review"],
+        schema_version=LEGACY_SCHEMA_VERSION,
+    )
+    core = {key: value for key, value in legacy.items() if key != "id"}
+    legacy["id"] = assessment_module._assessment_id(core)
+    return legacy
 
 
 def test_bare_check_keeps_human_output(tmp_path, capsys):
@@ -344,7 +359,7 @@ def test_json_report_is_one_deterministic_document(tmp_path, capsys):
     assert main(["--config", str(cfg.config_path), "check", "--json"]) == 0
     captured = capsys.readouterr()
     parsed = json.loads(captured.out)
-    assert parsed["report_schema_version"] == "1.2"
+    assert parsed["report_schema_version"] == "1.3"
     assert parsed["fatal"] is None
     assert captured.err == ""
 
@@ -412,6 +427,76 @@ def test_declared_support_is_visibly_unassessed_and_policy_can_require_review(tm
     assert finding["blocking"] is True
 
 
+def test_structural_claim_dependency_is_visibly_unassessed_and_policy_can_require_review(tmp_path):
+    (tmp_path / "result.json").write_text(json.dumps({"slope": 0.41}), encoding="utf-8")
+    nodes = [
+        {"id": "exp:fit", "type": "experiment", "status": "current", "path": "result.json"},
+        {"id": "claim:memory", "type": "claim", "status": "current",
+         "value": "Exposure is associated with memory."},
+    ]
+    edges = [{"from": "exp:fit", "to": "claim:memory", "rel": "derives_from"}]
+    cfg = _project(tmp_path, nodes, edges)
+
+    advisory = build_report(cfg, strict=True)
+    finding = next(item for item in advisory["findings"]
+                   if item["code"] == "UNASSESSED_CLAIM_DEPENDENCY")
+    assert finding["severity"] == "info"
+    assert finding["blocking"] is False
+    assert advisory["assessments"]["required_dependencies"] == [{
+        "from": "exp:fit",
+        "to": "claim:memory",
+        "declared_relation": "derives_from",
+        "status": "unassessed",
+        "assessment_ids": [],
+        "assessed_relations": [],
+    }]
+
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["require_assessments"] = True
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    required = build_report(Config(cfg.config_path), strict=True)
+    finding = next(item for item in required["findings"]
+                   if item["code"] == "UNASSESSED_CLAIM_DEPENDENCY")
+    assert finding["severity"] == "warning"
+    assert finding["blocking"] is True
+    assert required["ok"] is False
+
+
+def test_accepted_assessment_covers_structural_claim_dependency(tmp_path):
+    (tmp_path / "result.json").write_text(json.dumps({"slope": 0.41}), encoding="utf-8")
+    cfg = _project(tmp_path, [
+        {"id": "exp:fit", "type": "experiment", "status": "current", "path": "result.json"},
+        {"id": "claim:memory", "type": "claim", "status": "current",
+         "value": "Exposure is associated with memory."},
+    ], [{"from": "exp:fit", "to": "claim:memory", "rel": "derives_from"}])
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["require_assessments"] = True
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+
+    proposal = create_assessment(
+        cfg, "claim:memory", ["exp:fit"], _semantic_input(), actor="agent:test",
+        recorded_at="2026-07-13T08:00:00.000Z",
+    )
+    append_assessment(cfg, proposal)
+    accepted = transition_review(
+        cfg, proposal, "accepted", actor="scientist:1", assessments=[proposal],
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    append_assessment(cfg, accepted)
+
+    report = build_report(cfg, strict=True)
+    assert report["ok"] is True
+    assert report["assessments"]["required_dependencies"] == [{
+        "from": "exp:fit",
+        "to": "claim:memory",
+        "declared_relation": "derives_from",
+        "status": "covered",
+        "assessment_ids": [accepted["id"]],
+        "assessed_relations": ["supports"],
+    }]
+
+
 def test_accepted_assessment_covers_declared_support_link(tmp_path):
     (tmp_path / "result.json").write_text(json.dumps({"slope": 0.41}), encoding="utf-8")
     cfg = _project(tmp_path, [
@@ -445,6 +530,75 @@ def test_accepted_assessment_covers_declared_support_link(tmp_path):
     }]
     current = [item for item in report["assessments"]["items"] if item["is_current"]]
     assert [item["id"] for item in current] == [accepted["id"]]
+
+
+def test_report_projects_mixed_assessment_schemas_explicitly(tmp_path):
+    (tmp_path / "result.json").write_text(json.dumps({"slope": 0.41}), encoding="utf-8")
+    cfg = _project(tmp_path, [
+        {"id": "exp:fit", "type": "experiment", "status": "current", "path": "result.json"},
+        {"id": "claim:memory", "type": "claim", "status": "current",
+         "value": "Exposure is associated with memory."},
+    ])
+    current = create_assessment(
+        cfg, "claim:memory", ["exp:fit"], _semantic_input(), actor="agent:v2",
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    legacy = _as_legacy_v1(create_assessment(
+        cfg, "claim:memory", ["exp:fit"], _semantic_input(), actor="agent:v1",
+        recorded_at="2026-07-13T08:00:00.000Z",
+    ))
+    append_assessment(cfg, legacy)
+    append_assessment(cfg, current)
+
+    assessments = build_report(cfg, strict=False)["assessments"]
+    assert assessments["integrity"] == "ok"
+    assert assessments["assessment_schema_version"] == SCHEMA_VERSION
+    assert assessments["current_assessment_schema_version"] == SCHEMA_VERSION
+    assert assessments["supported_assessment_schema_versions"] == sorted(
+        SUPPORTED_SCHEMA_VERSIONS
+    )
+    assert {item["schema_version"] for item in assessments["items"]} == {
+        LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
+    }
+
+
+def test_strict_report_activates_specific_result_for_qualitative_claim(tmp_path):
+    cfg = _project(tmp_path, [
+        {"id": "exp:fit", "type": "artifact", "status": "current", "path": "result.json"},
+        {"id": "claim:memory", "type": "claim", "status": "current",
+         "value": "Exposure is positively associated with memory."},
+    ], [{"from": "exp:fit", "to": "claim:memory", "rel": "supports"}])
+    run = run_command(
+        cfg,
+        [sys.executable, "-c",
+         "from pathlib import Path; Path('result.json').write_text('{\"slope\": 0.41}')"],
+        inputs=[], outputs=["result.json"], no_inputs=True, cwd=str(tmp_path),
+    )
+    assert run["exit_code"] == 0
+
+    agent_input = _semantic_input()
+    agent_input["claim_frame"]["magnitude"] = None
+    agent_input["alignment"]["magnitude"] = "not_stated"
+    proposal = create_assessment(
+        cfg, "claim:memory", ["exp:fit"], agent_input, actor="agent:test",
+        recorded_at="2026-07-13T08:00:00.000Z",
+    )
+    append_assessment(cfg, proposal)
+    accepted = transition_review(
+        cfg, proposal, "accepted", actor="scientist:1", assessments=[proposal],
+        recorded_at="2026-07-13T08:01:00.000Z",
+    )
+    append_assessment(cfg, accepted)
+
+    report = build_report(cfg, strict=True)
+    assert report["ok"] is True
+    assert report["assessments"]["active_relations"] == [{
+        "assessment_id": accepted["id"],
+        "from": "exp:fit", "to": "claim:memory", "rel": "supports",
+    }]
+    assert "CLAIM_ALIGNMENT_INCOMPLETE" not in {
+        item["code"] for item in report["findings"]
+    }
 
 
 def test_proposed_narrowing_is_pending_and_stays_out_of_active_support(tmp_path):

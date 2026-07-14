@@ -1,0 +1,42 @@
+{
+  "analysis": "OLS bill_depth_mm ~ bill_length_mm",
+  "by_species": {
+    "Adelie": {
+      "intercept": 11.409124,
+      "n": 151,
+      "pearson_r": 0.391492,
+      "r2": 0.153266,
+      "slope": 0.178834
+    },
+    "Chinstrap": {
+      "intercept": 7.56914,
+      "n": 68,
+      "pearson_r": 0.653536,
+      "r2": 0.42711,
+      "slope": 0.222212
+    },
+    "Gentoo": {
+      "intercept": 5.251008,
+      "n": 123,
+      "pearson_r": 0.643384,
+      "r2": 0.413943,
+      "slope": 0.204844
+    }
+  },
+  "common_within_species_slope": 0.199894,
+  "complete_case_n": 342,
+  "dataset_version": "palmerpenguins-v0.1.0",
+  "interpretation_boundary": "Descriptive association in these complete records; no causal or population-level biological inference.",
+  "missing_excluded": 2,
+  "pattern": "pooled_negative_each_species_positive",
+  "pooled": {
+    "intercept": 20.885468,
+    "n": 342,
+    "pearson_r": -0.235053,
+    "r2": 0.05525,
+    "slope": -0.085021
+  },
+  "schema_version": "claimtrace.penguin-slopes/1",
+  "study_id": "palmerpenguins-v0.1.0-bill-complete-cases",
+  "total_rows": 344
+}

@@ -14,6 +14,9 @@ from pathlib import Path
 
 from . import __version__
 from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
+                         SUPPORTED_SCHEMA_VERSIONS as SUPPORTED_ASSESSMENT_SCHEMA_VERSIONS,
+                         CLAIM_TYPES as ASSESSMENT_CLAIM_TYPES,
+                         RESULT_TYPES as ASSESSMENT_RESULT_TYPES,
                          evaluate_assessment, load_assessments)
 from .engine import (_ordered_subset, build_adj, compute_check, direct_inputs,
                      lint_issues, load_graph, load_raw)
@@ -23,7 +26,7 @@ from .logic import (DERIVATION_SCHEMA, LogicError, derivations_path,
                     evaluate_derivation, load_derivations, load_logic_asset, load_rule_pack,
                     load_vocabulary, validate_graph_logic_declarations)
 
-REPORT_SCHEMA_VERSION = "1.2"
+REPORT_SCHEMA_VERSION = "1.3"
 _SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2, "info": 3}
 
 
@@ -452,7 +455,7 @@ def _receipt_projection(cfg, raw):
 def _assessment_projection(cfg, raw):
     """Project immutable semantic reviews without treating them as scientific truth."""
     documents, integrity_issues = load_assessments(cfg)
-    _nodes, edges, _concepts = load_graph(cfg, raw=raw)
+    nodes, edges, _concepts = load_graph(cfg, raw=raw)
     extra = []
     for issue in integrity_issues:
         extra.append({
@@ -486,6 +489,7 @@ def _assessment_projection(cfg, raw):
             evaluation["active_relation"] = None
         item = {
             "id": document["id"],
+            "schema_version": document["schema_version"],
             "recorded_at": document["recorded_at"],
             "subject": copy.deepcopy(document["subject"]),
             "mechanical_snapshot": copy.deepcopy(document["mechanical_snapshot"]),
@@ -622,19 +626,92 @@ def _assessment_projection(cfg, raw):
                 "source": "assessments",
             })
 
+    required_dependencies = []
+    for edge in edges:
+        if edge.get("rel") != "derives_from":
+            continue
+        result_id = edge.get("from")
+        claim_id = edge.get("to")
+        result_node = nodes.get(result_id, {})
+        claim_node = nodes.get(claim_id, {})
+        if (result_node.get("type") not in ASSESSMENT_RESULT_TYPES
+                or claim_node.get("type") not in ASSESSMENT_CLAIM_TYPES):
+            continue
+        assessments = sorted(
+            accepted_by_pair.get((result_id, claim_id), []),
+            key=lambda item: item["assessment_id"],
+        )
+        relation_bearing = [
+            item for item in assessments
+            if item["active_relation"] in {"supports", "refutes", "related"}
+        ]
+        if relation_bearing:
+            status = "covered"
+        elif assessments:
+            status = "assessed_without_relation"
+        else:
+            status = "unassessed"
+        required_dependencies.append({
+            "from": result_id,
+            "to": claim_id,
+            "declared_relation": "derives_from",
+            "status": status,
+            "assessment_ids": [item["assessment_id"] for item in assessments],
+            "assessed_relations": sorted({
+                item["active_relation"] or "none" for item in assessments
+            }),
+        })
+        if status == "covered":
+            continue
+        severity = "warning" if cfg.require_assessments else "info"
+        if status == "assessed_without_relation":
+            extra.append({
+                "severity": severity,
+                "code": "ASSESSED_CLAIM_DEPENDENCY_WITHOUT_RELATION",
+                "node_id": claim_id,
+                "detail": (
+                    f"structural claim dependency {result_id} -> {claim_id} was "
+                    "reviewed, but no accepted semantic relation is active: "
+                    + ", ".join(
+                        f"{item['assessment_id']}={item['active_relation'] or 'none'}"
+                        for item in assessments
+                    )
+                ),
+                "source": "assessments",
+            })
+        else:
+            extra.append({
+                "severity": severity,
+                "code": "UNASSESSED_CLAIM_DEPENDENCY",
+                "node_id": claim_id,
+                "detail": (
+                    f"structural claim dependency {result_id} -> {claim_id} has no "
+                    "current accepted semantic assessment"
+                ),
+                "source": "assessments",
+            })
+
     active_relations.sort(key=lambda item: (
         item["from"], item["to"], item["rel"], item["assessment_id"],
     ))
     declared_links.sort(key=lambda item: (
         item["from"], item["to"], item["declared_relation"],
     ))
+    required_dependencies.sort(key=lambda item: (
+        item["from"], item["to"], item["declared_relation"],
+    ))
     return {
         "assessment_schema_version": ASSESSMENT_SCHEMA_VERSION,
+        "current_assessment_schema_version": ASSESSMENT_SCHEMA_VERSION,
+        "supported_assessment_schema_versions": sorted(
+            SUPPORTED_ASSESSMENT_SCHEMA_VERSIONS
+        ),
         "integrity": "error" if integrity_issues else "ok",
         "policy": {"require_assessments": cfg.require_assessments},
         "items": items,
         "active_relations": active_relations,
         "declared_links": declared_links,
+        "required_dependencies": required_dependencies,
     }, extra
 
 
@@ -809,7 +886,6 @@ def _derivation_projection(cfg, raw):
     integrity_error = bool(integrity_findings)
     items = []
     active_proofs = []
-    evaluation_findings = []
     for document in sorted(documents, key=lambda item: item["id"]):
         subject = document["subject"]
         pair = resolved.get(document["id"])
@@ -820,14 +896,6 @@ def _derivation_projection(cfg, raw):
                 effective = evaluate_derivation(
                     cfg, document, vocabulary=pair[0], rule_pack=pair[1],
                 )
-                for finding in effective.get("findings", []):
-                    evaluation_findings.append({
-                        "severity": finding["severity"],
-                        "code": finding["code"],
-                        "node_id": subject["claim_id"],
-                        "detail": f"{document['id']}: {finding['detail']}",
-                        "source": "derivations",
-                    })
             except LogicError as exc:
                 integrity_error = True
                 integrity_findings.append({
@@ -883,6 +951,33 @@ def _derivation_projection(cfg, raw):
                 "outcome_atoms": copy.deepcopy(effective["outcome_atoms"]),
                 "rendered_outcomes": copy.deepcopy(effective["rendered_outcomes"]),
                 "assumptions": copy.deepcopy(effective["assumptions"]),
+            })
+
+    # Immutable submissions remain visible with their effective findings, but an old
+    # stale submission must not make the current report fail when another submission
+    # is active for the exact same re-evaluated proof.  Compute this only after the
+    # global integrity gate: an integrity fault suppresses every active replacement
+    # and therefore cannot hide a stale finding.
+    active_proof_ids = {
+        item["effective"].get("proof_id") for item in items
+        if item["effective"]["active"]
+    }
+    evaluation_findings = []
+    for item in items:
+        effective = item["effective"]
+        has_active_equivalent = (
+            not effective["active"]
+            and effective.get("proof_id") in active_proof_ids
+        )
+        for finding in effective.get("findings", []):
+            if finding["code"] == "DERIVATION_STALE" and has_active_equivalent:
+                continue
+            evaluation_findings.append({
+                "severity": finding["severity"],
+                "code": finding["code"],
+                "node_id": item["subject"]["claim_id"],
+                "detail": f"{item['id']}: {finding['detail']}",
+                "source": "derivations",
             })
 
     proof_groups = {}

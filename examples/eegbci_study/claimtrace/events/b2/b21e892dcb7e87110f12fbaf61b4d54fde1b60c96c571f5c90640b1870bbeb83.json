@@ -1,0 +1,164 @@
+{
+  "id": "event:sha256:b21e892dcb7e87110f12fbaf61b4d54fde1b60c96c571f5c90640b1870bbeb83",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 18,
+          "event_ids_sha256": "8a584958ee25f0cda15b097bd51f8b2f45fc40689f3a2832ec76ae911aac17ff",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "path": "claimtrace/graph.json",
+            "sha256": "cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "size": 9579,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 18,
+          "event_ids_sha256": "8a584958ee25f0cda15b097bd51f8b2f45fc40689f3a2832ec76ae911aac17ff",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "path": "claimtrace.config.json",
+            "sha256": "6a9fbbfee90e09b51adad5018ca899f1d6aab9505dec8df11450625458908af6",
+            "size": 557,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "path": "claimtrace/graph.json",
+            "sha256": "cbda94face5a010587c0550ae55f251ba76c231a290e42d0380d5cc87e10adcf",
+            "size": 9579,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 74698500,
+    "git_after": {
+      "branch": "codex/symbolic-claim-kernel",
+      "head": "0bb547483b5404f12df31991790f030e5ffb3ee4",
+      "state": "captured",
+      "tracked_dirty": false,
+      "tracked_patch_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027581640642900,
+          "path": "results/decoding.json",
+          "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "size": 6303,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027581640642900,
+          "path": "results/decoding.json",
+          "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "size": 6303,
+          "state": "stable"
+        },
+        "path": "results/decoding.json",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:a306e0766088f540c72e8b166b1ee3e3db4ffb240deeaa59559eab49b25f71d0",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972572899800,
+          "path": "analysis/03_figure.py",
+          "sha256": "a306e0766088f540c72e8b166b1ee3e3db4ffb240deeaa59559eab49b25f71d0",
+          "size": 3655,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:a306e0766088f540c72e8b166b1ee3e3db4ffb240deeaa59559eab49b25f71d0",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784023972572899800,
+          "path": "analysis/03_figure.py",
+          "sha256": "a306e0766088f540c72e8b166b1ee3e3db4ffb240deeaa59559eab49b25f71d0",
+          "size": 3655,
+          "state": "stable"
+        },
+        "path": "analysis/03_figure.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:4d8db5b7e6f10174ce26213d75e4284a45ca823cbaabef1f4910495d6ca9156d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784027594373409400,
+          "path": "figures/decoding.svg",
+          "sha256": "4d8db5b7e6f10174ce26213d75e4284a45ca823cbaabef1f4910495d6ca9156d",
+          "size": 2830,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "figures/decoding.svg",
+          "state": "missing"
+        },
+        "path": "figures/decoding.svg",
+        "produced": true,
+        "transition": "created"
+      }
+    ],
+    "plan_id": "recipe:sha256:fe76797c2fcf59f1471dd5019cca3ea14a56ab4c9aec5515a6b686ff6b0b7e2f",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:ffcad63a5c5fc236aad2299eedacf3e3024a36c19c5ba244857699ce2e6a1059",
+    "start_event_id": "event:sha256:85308b867d4f3aa27eb9c0c0cce6cbac00c7935f99b44eb07456d09a03c04824",
+    "window_deltas": [
+      {
+        "after_sha256": "4d8db5b7e6f10174ce26213d75e4284a45ca823cbaabef1f4910495d6ca9156d",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "figures/decoding.svg",
+        "transition": "created"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-14T11:13:14.977Z",
+  "run_id": "run:5d16b71b-0edc-4788-8f5c-0194c91fcdb2",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}

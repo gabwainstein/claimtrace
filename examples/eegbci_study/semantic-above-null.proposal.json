@@ -1,0 +1,64 @@
+{
+  "claim_id": "claim:above-null",
+  "result_ids": ["art:decoding"],
+  "agent_input": {
+    "verdict": "supports_as_written",
+    "claim_frame": {
+      "population": "participant S001, PhysioNet EEGMMIDB v1.0.0 runs 06, 10, and 14",
+      "exposure": "imagined both-hands versus both-feet event labels",
+      "comparator": "run-constrained label-permutation null",
+      "outcome": "mean leave-one-run-out balanced accuracy",
+      "direction": "above the null 95th percentile",
+      "magnitude": "0.842262 versus 0.657738",
+      "time_scope": "the three selected recordings",
+      "inference_level": "predictive"
+    },
+    "result_frame": {
+      "population": "participant S001, PhysioNet EEGMMIDB v1.0.0 runs 06, 10, and 14",
+      "exposure": "imagined both-hands versus both-feet event labels",
+      "comparator": "run-constrained label-permutation null",
+      "outcome": "mean leave-one-run-out balanced accuracy",
+      "direction": "above the null 95th percentile",
+      "magnitude": "0.842262 versus 0.657738",
+      "time_scope": "the three selected recordings",
+      "inference_level": "predictive"
+    },
+    "alignment": {
+      "population": "match",
+      "exposure": "match",
+      "comparator": "match",
+      "outcome": "match",
+      "direction": "match",
+      "magnitude": "match",
+      "time_scope": "match",
+      "inference_level": "match"
+    },
+    "evidence_anchors": [
+      {
+        "result_id": "art:decoding",
+        "kind": "json_pointer",
+        "pointer": "/observed_mean_balanced_accuracy",
+        "expected_value": 0.842262
+      },
+      {
+        "result_id": "art:decoding",
+        "kind": "json_pointer",
+        "pointer": "/permutation/null_95th_percentile",
+        "expected_value": 0.657738
+      },
+      {
+        "result_id": "art:decoding",
+        "kind": "json_pointer",
+        "pointer": "/criterion_met",
+        "expected_value": true
+      }
+    ],
+    "rationale": "The recorded held-out-run score and run-constrained null threshold exactly match the narrow result claim.",
+    "limitations": [
+      "The result covers one participant and three selected runs only.",
+      "It does not establish population generalization, neural mechanism, source localization, or clinical utility.",
+      "The permutation null does not address every possible temporal or recording confound."
+    ],
+    "provenance": {"agent": "codex:/root/release_hardening"}
+  }
+}

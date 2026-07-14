@@ -75,8 +75,9 @@ The demo has two deterministic, checked-in proposal→acceptance chains in
   inference-level mismatch stays visible and the accepted active relation is only `related`.
 
 There is deliberately no direct `supports` edge from `art:fit` to `hyp:linear`. The named demo agent
-and reviewer are synthetic actors that make the external-proposal/independent-review boundary
-visible; their acceptance records a judgement, not proof that the science is true.
+and reviewer are synthetic actors that make the external-proposal/separate-actor-review boundary
+visible; they do not establish real reviewer independence, and their acceptance records a judgement,
+not proof that the science is true.
 
 ```bash
 claimtrace assessments --json       # current accepted leaves and live findings

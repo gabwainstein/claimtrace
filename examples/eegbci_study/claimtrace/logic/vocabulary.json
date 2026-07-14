@@ -1,0 +1,44 @@
+{
+  "schema_version": "claimtrace.symbolic-vocabulary/1",
+  "id": "eegbci:vocabulary",
+  "version": "1.0.0",
+  "types": [
+    {"id": "eegbci:study", "base": "ct:symbol"}
+  ],
+  "units": ["eegbci:balanced-accuracy"],
+  "predicates": [
+    {
+      "id": "eegbci:decoding_summary",
+      "kind": "input",
+      "arguments": [
+        {"name": "study", "type": "eegbci:study", "unit": null},
+        {"name": "folds_valid", "type": "ct:boolean", "unit": null},
+        {"name": "observed", "type": "ct:decimal", "unit": "eegbci:balanced-accuracy"},
+        {"name": "null95", "type": "ct:decimal", "unit": "eegbci:balanced-accuracy"}
+      ]
+    },
+    {
+      "id": "eegbci:exceeds_run_constrained_null",
+      "kind": "derived",
+      "arguments": [
+        {"name": "study", "type": "eegbci:study", "unit": null}
+      ]
+    }
+  ],
+  "renderers": [
+    {
+      "id": "eegbci:criterion-met-en",
+      "predicate": "eegbci:exceeds_run_constrained_null",
+      "polarity": "positive",
+      "language": "en",
+      "template": "{study} meets the configured above-null decoding criterion."
+    },
+    {
+      "id": "eegbci:criterion-not-met-en",
+      "predicate": "eegbci:exceeds_run_constrained_null",
+      "polarity": "negative",
+      "language": "en",
+      "template": "{study} does not meet the configured above-null decoding criterion."
+    }
+  ]
+}

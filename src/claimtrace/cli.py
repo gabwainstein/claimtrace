@@ -10,7 +10,9 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
-from .assessment import (AssessmentError, append_assessment, append_review_transition,
+from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
+                         SUPPORTED_SCHEMA_VERSIONS as SUPPORTED_ASSESSMENT_SCHEMA_VERSIONS,
+                         AssessmentError, append_assessment, append_review_transition,
                          create_assessment, evaluate_assessment, load_assessments)
 from .config import CONFIG_NAME, load_config, strict_json_loads
 from .engine import (ANNOT_RELS, GraphError, compute_check, downstream, impact,
@@ -189,6 +191,7 @@ def _write_json(value):
 def _assessment_output(document, evaluation, path=None):
     return {
         "id": document["id"],
+        "schema_version": document["schema_version"],
         "path": str(path) if path is not None else None,
         "recorded_at": document["recorded_at"],
         "subject": document["subject"],
@@ -278,6 +281,10 @@ def cmd_assessments(args):
         items.append(item)
     output = {
         "schema": "claimtrace.assessment-list/1",
+        "current_assessment_schema_version": ASSESSMENT_SCHEMA_VERSION,
+        "supported_assessment_schema_versions": sorted(
+            SUPPORTED_ASSESSMENT_SCHEMA_VERSIONS
+        ),
         "integrity": "error" if issues else "ok",
         "issues": issues,
         "items": items,

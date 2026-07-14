@@ -298,12 +298,158 @@ def test_render_view_is_standalone_atomic_and_deterministic(tmp_path):
     assert "forceSimulation" not in html
     assert 'id="layer-select"' in html
     assert 'id="focus-select"' in html
+    assert 'id="edge-select"' in html
     assert 'id="assessment-select"' in html
+    assert '<button id="layout-reset" type="button">Auto-arrange</button>' in html
+    assert 'class="move-controls" role="group"' in html
+    assert 'id="layout-status"' in html
     assert 'role="region"' in html and 'aria-labelledby="detail-title"' in html
     assert 'role: "button"' not in html
     assert 'group.addEventListener("click"' in html
+    assert 'group.addEventListener("pointerdown"' in html
+    assert 'group.addEventListener("pointermove"' in html
+    assert 'group.addEventListener("pointerup"' in html
+    assert 'group.addEventListener("pointercancel"' in html
+    assert 'group.addEventListener("lostpointercapture"' in html
     assert "ct-ancestor" in html and "ct-descendant" in html
     assert "ct-type-claim" in html and "ct-status-stale" in html
+
+
+def test_manual_layout_is_browser_local_sanitized_and_visual_only(tmp_path):
+    cfg = _project(tmp_path)
+    graph_before = cfg.graph_path.read_bytes()
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+
+    canonical = {
+        node["key"]: (node["x"], node["y"], node["layer"], node["row"])
+        for node in payload["nodes"]
+    }
+    assert canonical
+    assert re.fullmatch(r"[0-9a-f]{64}", payload["layout_id"])
+    assert "positions" not in payload
+    assert cfg.graph_path.read_bytes() == graph_before
+    assert "const defaultPositions = new Map" in html
+    assert "window.localStorage.getItem(layoutStorageKey)" in html
+    assert "window.localStorage.setItem(layoutStorageKey" in html
+    assert "window.localStorage.removeItem(layoutStorageKey)" in html
+    assert "version: 1" in html
+    assert "layout_id: data.layout_id" in html
+    assert "saved.layout_id !== data.layout_id" in html
+    assert "Object.prototype.hasOwnProperty.call(saved.positions, key)" in html
+    assert "Number.isFinite(value)" in html
+    assert "maximumCanvasWidth" in html and "maximumCanvasHeight" in html
+    assert "maximumCoordinate = 200000" not in html
+    assert '"data-node-key": node.key' in html
+    assert '"data-edge-key": edge.key' in html
+    assert '"data-edge-label-for": edge.key' in html
+    assert "positionAllEdges()" in html
+    assert 'elements.hit.setAttribute("d", pathData)' in html
+    assert "setPointerCapture" in html and "releasePointerCapture" in html
+    assert "inverseMatrix: inverseMatrix" in html
+    assert 'group.addEventListener("pointercancel", cancelDrag)' in html
+    assert 'group.addEventListener("lostpointercapture", cancelDrag)' in html
+    assert 'window.addEventListener("blur"' in html
+    assert 'document.addEventListener("keydown"' not in html
+    assert "browser-local and visual only" in html
+    assert "the graph, provenance, and logical layers do not change" in html
+
+
+def test_viewport_zoom_and_pan_are_transient_scoped_and_accessible(tmp_path):
+    cfg = _project(tmp_path)
+    graph_before = cfg.graph_path.read_bytes()
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+
+    assert cfg.graph_path.read_bytes() == graph_before
+    assert 'class="graph-scroll" role="region" tabindex="0"' in html
+    assert 'aria-label="Graph view controls"' in html
+    assert 'id="zoom-out"' in html
+    assert 'id="zoom-reset"' in html
+    assert 'id="zoom-in"' in html
+    assert 'id="viewport-fit"' in html
+    assert "height: clamp(420px, 68vh, 760px)" in html
+    assert "cursor: grab" in html and "cursor: grabbing" in html
+    assert "vector-effect: non-scaling-stroke" in html
+    assert "minimumViewportZoom = 0.25" in html
+    assert "maximumViewportZoom = 3" in html
+    assert "viewportZoomStep = 1.2" in html
+    assert "function applyZoomDimensions()" in html
+    assert 'svg.style.width = Math.max(1, width * viewportZoom) + "px"' in html
+    assert "function setViewportZoom(value, clientX, clientY)" in html
+    assert "if (dragState || panState || !Number.isFinite(value)) return false" in html
+    assert "function fitViewport()" in html
+    assert "function centerNodeInViewport(node)" in html
+    assert "centerNodeInViewport(selectedNode)" in html
+    assert "function panTargetIsInteractive(target)" in html
+    assert 'target.closest(".ct-node, .ct-edge-group")' in html
+    assert "function beginPan(event)" in html
+    assert "graphScroll.setPointerCapture(event.pointerId)" in html
+    assert "graphScroll.releasePointerCapture(event.pointerId)" in html
+    assert "function handleViewportWheel(event)" in html
+    assert 'graphScroll.addEventListener("wheel", handleViewportWheel, {passive: false})' in html
+    assert 'graphScroll.addEventListener("pointerdown", beginPan)' in html
+    assert 'graphScroll.addEventListener("pointermove", continuePan)' in html
+    assert 'graphScroll.addEventListener("pointerup", finishPan)' in html
+    assert 'graphScroll.addEventListener("pointercancel", cancelPan)' in html
+    assert 'graphScroll.addEventListener("lostpointercapture", cancelPan)' in html
+    assert "if (panState) cancelPan({pointerId: panState.pointerId})" in html
+    save_layout = html[
+        html.index("function saveLayout") : html.index("function viewportClientCenter")
+    ]
+    assert "viewportZoom" not in save_layout
+    assert "panState" not in save_layout
+
+
+def test_edges_are_selectable_and_use_obstacle_aware_routes(tmp_path):
+    cfg = _project(tmp_path)
+    graph_before = cfg.graph_path.read_bytes()
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+
+    assert cfg.graph_path.read_bytes() == graph_before
+    assert '"class": "ct-edge-hit"' in html
+    assert "stroke-width: 18px" in html
+    assert 'markerUnits="strokeWidth"' not in html
+    assert html.count('markerUnits="userSpaceOnUse"') == 6
+    assert 'id="arrow-selected"' in html
+    assert 'markerWidth="7" markerHeight="7"' in html
+    assert '"data-edge-hit-key": edge.key' in html
+    assert '"data-edge-group-key": edge.key' in html
+    assert '"role": "button"' in html
+    assert 'group.addEventListener("click", function () { selectEdge(edge.key); })' in html
+    assert 'group.addEventListener("keydown"' in html
+    assert 'event.key !== "Enter" && event.key !== " "' in html
+    assert "function buildRoutingContext()" in html
+    assert "function buildEdgePorts()" in html
+    assert "function routeBetween(start, target, context)" in html
+    assert "function nearbySegmentUsage(left, right, usedSegments)" in html
+    assert "function segmentBlocked(left, right, obstacles)" in html
+    assert "routingClearance = 10" in html
+    assert "routingLaneSeparation = 20" in html
+    assert "edgeApproachLength = 20" in html
+    assert "edgeArrowGap = 5" in html
+    assert "edgeCornerRadius = 8" in html
+    assert "function clearEscapeDistance(node, side, coordinate, desiredDistance)" in html
+    assert "canvasPadding - 2, edgeApproachLength + (escapeOffset || 0)" in html
+    assert "appendRoutePoint(points, pair.target.tip)" in html
+    assert "function roundedCornerClear(before, corner, after)" in html
+    assert "const radius = Math.min(edgeCornerRadius, incoming / 2, outgoing / 2)" in html
+    assert '" Q" + corner.x + "," + corner.y' in html
+    assert "positionAllEdges();" in html
+    assert "nodePositionOverlaps(key, boundedX, boundedY)" in html
+    assert "selectedEdge = edges.has(key) ? key : null" in html
+    assert 'element.classList.toggle("ct-edge-source"' in html
+    assert 'element.classList.toggle("ct-edge-target"' in html
+    assert 'elements.group.classList.toggle("ct-edge-selected"' in html
+    assert '(exactSelection ? "selected" : edge.kind)' in html
+    assert 'appendDetail(list, "Relation", edge.relation)' in html
+    assert 'appendDetail(list, "Trajectory traversal"' in html
+    assert "relationship focus highlights only its direct endpoints" in html
 
 
 def test_layout_is_layered_and_annotations_do_not_define_ancestry(tmp_path):
@@ -421,6 +567,10 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     nodes = {node["key"]: node for node in payload["nodes"]}
 
     assert payload["schema"] == "claimtrace.view/3"
+    rendered_review = next(
+        item for item in payload["assessments"] if item["id"] == accepted["id"]
+    )
+    assert rendered_review["schema_version"] == accepted["schema_version"]
     review = nodes["review:" + accepted["id"]]
     assert review["kind"] == "assessment"
     assert review["status"] == "accepted"
@@ -435,6 +585,39 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     assert all(edge["traversable"] for edge in assessment_edges)
     assert 'document.createElement("table")' in html
     assert "Claim as written" in html and "Result actually obtained" in html
+    assert 'appendDetail(provenanceList, "Policy schema", review.schema_version)' in html
+
+
+def test_structural_result_to_claim_edge_exposes_semantic_coverage(tmp_path):
+    cfg = _project(tmp_path)
+    graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))
+    support = next(edge for edge in graph["edges"] if edge["rel"] == "supports")
+    support["rel"] = "derives_from"
+    cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
+    accepted = _record_assessment(cfg, accepted=True)
+
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    edge = next(
+        item for item in payload["edges"]
+        if item["kind"] == "dependency"
+        and item["source"] == "graph:artifact:result"
+        and item["target"] == "graph:claim:result"
+    )
+
+    assert edge["relation"] == "derives_from"
+    assert edge["assessment_state"] == "covered"
+    claim = next(item for item in payload["nodes"]
+                 if item["key"] == "graph:claim:result")
+    assert claim["claim_links"] == [{
+        "from": "artifact:result",
+        "to": "claim:result",
+        "declared_relation": "derives_from",
+        "status": "covered",
+        "assessment_ids": [accepted["id"]],
+        "assessed_relations": ["supports"],
+    }]
 
 
 def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path):

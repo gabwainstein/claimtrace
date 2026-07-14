@@ -1,0 +1,902 @@
+{
+  "id": "derivation:sha256:709f793a7de060a78512997a6eaa0a7778f635112d0aa65c4bb8f5e4834d52fd",
+  "schema_version": "claimtrace.symbolic-derivation/1",
+  "recorded_at": "2026-07-14T11:14:03.613217Z",
+  "actor": "codex:/root/build_eegbci",
+  "subject": {
+    "claim_id": "claim:above-null",
+    "result_ids": [
+      "art:decoding"
+    ],
+    "vocabulary_id": "eegbci:vocabulary",
+    "rule_pack_id": "eegbci:decoding-rules"
+  },
+  "agent_input": {
+    "target": {
+      "predicate": "eegbci:exceeds_run_constrained_null",
+      "polarity": "positive",
+      "arguments": {
+        "study": {
+          "type": "eegbci:study",
+          "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+          "unit": null
+        }
+      }
+    },
+    "facts": [
+      {
+        "atom": {
+          "predicate": "eegbci:decoding_summary",
+          "polarity": "positive",
+          "arguments": {
+            "folds_valid": {
+              "type": "ct:boolean",
+              "value": true,
+              "unit": null
+            },
+            "null95": {
+              "type": "ct:decimal",
+              "value": "0.657738",
+              "unit": "eegbci:balanced-accuracy"
+            },
+            "observed": {
+              "type": "ct:decimal",
+              "value": "0.842262",
+              "unit": "eegbci:balanced-accuracy"
+            },
+            "study": {
+              "type": "eegbci:study",
+              "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+              "unit": null
+            }
+          }
+        },
+        "evidence": [
+          {
+            "result_id": "art:decoding",
+            "binding_id": "eegbci:decoding-summary",
+            "fact_index": 0
+          }
+        ],
+        "assumption": null
+      }
+    ],
+    "note": "Materialize every premise in the reviewed decoding evidence plan.",
+    "provenance": {
+      "agent": "codex:/root/build_eegbci"
+    }
+  },
+  "mechanical_snapshot": {
+    "claim": {
+      "node_id": "claim:above-null",
+      "node_sha256": "6a18ad8976810e251e41fbb06165514bc8d0668991193f4de30a0585ae5d8b7d",
+      "node_version_id": "node:sha256:6a18ad8976810e251e41fbb06165514bc8d0668991193f4de30a0585ae5d8b7d",
+      "type": "claim",
+      "status": "current",
+      "eligible": true,
+      "logic": {
+        "vocabulary_id": "eegbci:vocabulary",
+        "rule_pack_id": "eegbci:decoding-rules",
+        "target": {
+          "predicate": "eegbci:exceeds_run_constrained_null",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "type": "eegbci:study",
+              "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+              "unit": null
+            }
+          }
+        }
+      },
+      "evidence_plan": {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [
+          {
+            "result_id": "art:decoding",
+            "binding_id": "eegbci:decoding-summary"
+          }
+        ]
+      }
+    },
+    "results": [
+      {
+        "node_id": "art:decoding",
+        "node_sha256": "4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9",
+        "node_version_id": "node:sha256:4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9",
+        "type": "artifact",
+        "status": "current",
+        "eligible": true,
+        "artifact": {
+          "state": "stable",
+          "path": "results/decoding.json",
+          "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+          "size": 6303
+        }
+      }
+    ],
+    "provenance_check": {
+      "scope_node_ids": [
+        "art:decoding",
+        "art:epochs",
+        "art:preprocessing",
+        "art:source-manifest",
+        "claim:above-null",
+        "code:analyze",
+        "code:fetch",
+        "code:prepare",
+        "data:r06",
+        "data:r10",
+        "data:r14",
+        "hyp:discriminative-pattern",
+        "pred:above-null",
+        "question:within-recording-decoding",
+        "ref:eegbci-dataset",
+        "ref:mne-csp-example"
+      ],
+      "node_versions": [
+        {
+          "node_id": "art:decoding",
+          "node_sha256": "4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9",
+          "node_version_id": "node:sha256:4eeb910a8a99f04b51167dba276b7cbb7560bd1529f28d4df53b09d55d6427c9",
+          "artifact": {
+            "state": "stable",
+            "path": "results/decoding.json",
+            "sha256": "492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+            "file_version_id": "file:sha256:492ebe778a32233e047b10bf788a742d6cf4ce2c16d7d57812ea3f9f8a2c95e6",
+            "size": 6303
+          }
+        },
+        {
+          "node_id": "art:epochs",
+          "node_sha256": "b502f2fe1bfd3d9159ef7c7b20444906e784aef3ae92f6d02ef5f616d40d5db4",
+          "node_version_id": "node:sha256:b502f2fe1bfd3d9159ef7c7b20444906e784aef3ae92f6d02ef5f616d40d5db4",
+          "artifact": {
+            "state": "stable",
+            "path": "data/prepared_epochs.npz",
+            "sha256": "b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+            "file_version_id": "file:sha256:b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153",
+            "size": 501096
+          }
+        },
+        {
+          "node_id": "art:preprocessing",
+          "node_sha256": "bfae96574ed3ce3632a0556b374d35bb799ef448744aff5dcf51b1011cc5913d",
+          "node_version_id": "node:sha256:bfae96574ed3ce3632a0556b374d35bb799ef448744aff5dcf51b1011cc5913d",
+          "artifact": {
+            "state": "stable",
+            "path": "results/preprocessing.json",
+            "sha256": "2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+            "file_version_id": "file:sha256:2fe1a797c316ffb4032f4a75fa858d504869316933df32b50ffe8ef9a719e17f",
+            "size": 2070
+          }
+        },
+        {
+          "node_id": "art:source-manifest",
+          "node_sha256": "301709848150fa17cd41fe9aadfcc6c4b128aa8da811e6df23ba800967c97c9d",
+          "node_version_id": "node:sha256:301709848150fa17cd41fe9aadfcc6c4b128aa8da811e6df23ba800967c97c9d",
+          "artifact": {
+            "state": "stable",
+            "path": "data/source_manifest.json",
+            "sha256": "99bd3cfd8ca773448351a08cd5bcb7b8ffb16daa32505ed9ac31f5db27c04218",
+            "file_version_id": "file:sha256:99bd3cfd8ca773448351a08cd5bcb7b8ffb16daa32505ed9ac31f5db27c04218",
+            "size": 1032
+          }
+        },
+        {
+          "node_id": "claim:above-null",
+          "node_sha256": "6a18ad8976810e251e41fbb06165514bc8d0668991193f4de30a0585ae5d8b7d",
+          "node_version_id": "node:sha256:6a18ad8976810e251e41fbb06165514bc8d0668991193f4de30a0585ae5d8b7d",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "code:analyze",
+          "node_sha256": "cea904f944e0c75e7ccd867c6bffe38f90fa9396c1df240ac95f73aca4f6cac3",
+          "node_version_id": "node:sha256:cea904f944e0c75e7ccd867c6bffe38f90fa9396c1df240ac95f73aca4f6cac3",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/02_analyze.py",
+            "sha256": "89696bc3d7e1a48c0cd9927c4bd8b74919e9d3b3ef7c6035223a660eb5a987e3",
+            "file_version_id": "file:sha256:89696bc3d7e1a48c0cd9927c4bd8b74919e9d3b3ef7c6035223a660eb5a987e3",
+            "size": 7478
+          }
+        },
+        {
+          "node_id": "code:fetch",
+          "node_sha256": "453b22261bbbea74d9ff3529bbdc36af77e91ede370e05130b8887b3e17db30d",
+          "node_version_id": "node:sha256:453b22261bbbea74d9ff3529bbdc36af77e91ede370e05130b8887b3e17db30d",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/00_fetch.py",
+            "sha256": "15e0468bb29c34cf62a04f758859da12fec4ec036bd0fabc926c8e0310649e80",
+            "file_version_id": "file:sha256:15e0468bb29c34cf62a04f758859da12fec4ec036bd0fabc926c8e0310649e80",
+            "size": 3156
+          }
+        },
+        {
+          "node_id": "code:prepare",
+          "node_sha256": "60a6e3b19b2be47b2edb9c6e71cd2f9bf31f395c7d8f7b219046dab150d9b864",
+          "node_version_id": "node:sha256:60a6e3b19b2be47b2edb9c6e71cd2f9bf31f395c7d8f7b219046dab150d9b864",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/01_prepare.py",
+            "sha256": "c021a0eb12120b203b47bdd7458f296c02753e525f324d3e9a9f55922362c29e",
+            "file_version_id": "file:sha256:c021a0eb12120b203b47bdd7458f296c02753e525f324d3e9a9f55922362c29e",
+            "size": 4767
+          }
+        },
+        {
+          "node_id": "data:r06",
+          "node_sha256": "22325bef8af2585b70ae3ec3b141f19e25f0c5e7edf79e9b1b545c3858430017",
+          "node_version_id": "node:sha256:22325bef8af2585b70ae3ec3b141f19e25f0c5e7edf79e9b1b545c3858430017",
+          "artifact": {
+            "state": "stable",
+            "path": "data/S001R06.edf",
+            "sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+            "file_version_id": "file:sha256:5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3",
+            "size": 2596896
+          }
+        },
+        {
+          "node_id": "data:r10",
+          "node_sha256": "658dd5a25f2df9c6e3d9e8e4e651d205124cda7e798fb243b1fb0620d9f53582",
+          "node_version_id": "node:sha256:658dd5a25f2df9c6e3d9e8e4e651d205124cda7e798fb243b1fb0620d9f53582",
+          "artifact": {
+            "state": "stable",
+            "path": "data/S001R10.edf",
+            "sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+            "file_version_id": "file:sha256:20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1",
+            "size": 2596896
+          }
+        },
+        {
+          "node_id": "data:r14",
+          "node_sha256": "55e5f74df927c1c0809a79525d9669c78705b06dffbb7e79c397d771d0720a3b",
+          "node_version_id": "node:sha256:55e5f74df927c1c0809a79525d9669c78705b06dffbb7e79c397d771d0720a3b",
+          "artifact": {
+            "state": "stable",
+            "path": "data/S001R14.edf",
+            "sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+            "file_version_id": "file:sha256:2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137",
+            "size": 2596896
+          }
+        },
+        {
+          "node_id": "hyp:discriminative-pattern",
+          "node_sha256": "0f0c311dfd81597048a7627e306629c96d3bd71bcc9b64a162a8117c6c07d6d9",
+          "node_version_id": "node:sha256:0f0c311dfd81597048a7627e306629c96d3bd71bcc9b64a162a8117c6c07d6d9",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "pred:above-null",
+          "node_sha256": "08c6780d2aca9ee2fab7bf4bf62c14612f08b67e3b4d0d693fdc832d93d5d5ba",
+          "node_version_id": "node:sha256:08c6780d2aca9ee2fab7bf4bf62c14612f08b67e3b4d0d693fdc832d93d5d5ba",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "question:within-recording-decoding",
+          "node_sha256": "c3f7caf873e7a79a44672fc9b70e7d0b5dea87d0c5e8e5f67427d026b5fe808e",
+          "node_version_id": "node:sha256:c3f7caf873e7a79a44672fc9b70e7d0b5dea87d0c5e8e5f67427d026b5fe808e",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "ref:eegbci-dataset",
+          "node_sha256": "12c38d30f41ec2ff109c133080f4884315ba6cf6c4daf9a6cb494593a31a22f9",
+          "node_version_id": "node:sha256:12c38d30f41ec2ff109c133080f4884315ba6cf6c4daf9a6cb494593a31a22f9",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "ref:mne-csp-example",
+          "node_sha256": "b54ac0009e591b3a094010103d9115e916e0653014b9a82ffde111a19747cfe1",
+          "node_version_id": "node:sha256:b54ac0009e591b3a094010103d9115e916e0653014b9a82ffde111a19747cfe1",
+          "artifact": {
+            "state": "not_declared"
+          }
+        }
+      ],
+      "edge_versions": [
+        {
+          "edge": {
+            "from": "art:decoding",
+            "to": "claim:above-null",
+            "rel": "derives_from"
+          },
+          "edge_sha256": "22253c3bc22c1b9dc6051ddd067002d5f25c839ca3d816525ec0a33341c05692"
+        },
+        {
+          "edge": {
+            "from": "art:epochs",
+            "to": "art:decoding",
+            "rel": "produces"
+          },
+          "edge_sha256": "a8be2b65de24daeca2ee363513150fe449b7634df190b4789b20eb4189d76c9d"
+        },
+        {
+          "edge": {
+            "from": "art:preprocessing",
+            "to": "art:decoding",
+            "rel": "produces"
+          },
+          "edge_sha256": "62e727df47c89ceb79aec2f1a364dcd9862c0aa66201dae43ff5318539d494ab"
+        },
+        {
+          "edge": {
+            "from": "art:source-manifest",
+            "to": "art:epochs",
+            "rel": "produces"
+          },
+          "edge_sha256": "626889e9571eb5f27bb3b2aebc44ebd3d15716ed0ca86f4bc26f6625d5052e6a"
+        },
+        {
+          "edge": {
+            "from": "art:source-manifest",
+            "to": "art:preprocessing",
+            "rel": "produces"
+          },
+          "edge_sha256": "038836c7d9eafc90ae5d3d5a4d58b7c76bba8e71fa4d480511546f92d039466d"
+        },
+        {
+          "edge": {
+            "from": "code:analyze",
+            "to": "art:decoding",
+            "rel": "produces"
+          },
+          "edge_sha256": "52f30c4b883ac8f29f752ec8c60f237ba1dbf86d65fcbf60c3a59d795ad7f813"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "to": "art:source-manifest",
+            "rel": "produces"
+          },
+          "edge_sha256": "0bcb1d6ebdfabb84a08e19366929e453edd9469d16398296114ddf231b7f425d"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "to": "data:r06",
+            "rel": "produces"
+          },
+          "edge_sha256": "ce9a8c10c5a7acc296617042353afe5588271542c78db25637794ae12c87b24c"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "to": "data:r10",
+            "rel": "produces"
+          },
+          "edge_sha256": "1e5bb5a25ec4876ec1a1bd46263436853d88f9bd328c22a5fef64b8cc3e26490"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "to": "data:r14",
+            "rel": "produces"
+          },
+          "edge_sha256": "e68455b9a7bab822b6fab0aadcbc6e8af138984d30a17ad0710ace389042ee24"
+        },
+        {
+          "edge": {
+            "from": "code:prepare",
+            "to": "art:epochs",
+            "rel": "produces"
+          },
+          "edge_sha256": "25d86e58d9c4238de826a40dff535fe042f4e9ab390c36463506c2670e2dce84"
+        },
+        {
+          "edge": {
+            "from": "code:prepare",
+            "to": "art:preprocessing",
+            "rel": "produces"
+          },
+          "edge_sha256": "de7c8d8c49a613bb262757b00c17ab18f159b93140a0ead7714ebd748f388c3e"
+        },
+        {
+          "edge": {
+            "from": "data:r06",
+            "to": "art:epochs",
+            "rel": "produces"
+          },
+          "edge_sha256": "6eb82437106fe533c3dfe70feb3c244696f86a656b7b6bf0f12409a1952879ae"
+        },
+        {
+          "edge": {
+            "from": "data:r06",
+            "to": "art:preprocessing",
+            "rel": "produces"
+          },
+          "edge_sha256": "12bcfd623ed2eee45211981a74117d1051fb49b3ae2a2f845b9722b01f61f17e"
+        },
+        {
+          "edge": {
+            "from": "data:r10",
+            "to": "art:epochs",
+            "rel": "produces"
+          },
+          "edge_sha256": "b0f0c7bcbc59d177dafcf31174d8d9f7b299795df8d86c277302fe7e52f87fdc"
+        },
+        {
+          "edge": {
+            "from": "data:r10",
+            "to": "art:preprocessing",
+            "rel": "produces"
+          },
+          "edge_sha256": "cb354111adacb4643225a981b107bdd00be2051e31b3df1349f613420674ed64"
+        },
+        {
+          "edge": {
+            "from": "data:r14",
+            "to": "art:epochs",
+            "rel": "produces"
+          },
+          "edge_sha256": "207810af83512de8e87153084052426408c7ceb27e2f7c4b232879b02629d4a2"
+        },
+        {
+          "edge": {
+            "from": "data:r14",
+            "to": "art:preprocessing",
+            "rel": "produces"
+          },
+          "edge_sha256": "136be7f8a66eb9649ec9b015f4b4421cece2cb5c6fcf9967843b17eeae7f5a98"
+        },
+        {
+          "edge": {
+            "from": "hyp:discriminative-pattern",
+            "to": "pred:above-null",
+            "rel": "predicts"
+          },
+          "edge_sha256": "9ab13ea050ab7a41fb2edefbf16d839c011023987db2ac2d94c50235cf335139"
+        },
+        {
+          "edge": {
+            "from": "pred:above-null",
+            "to": "art:decoding",
+            "rel": "tested_by"
+          },
+          "edge_sha256": "5d07fc3595b6c4398689c585374275ef28e3210074732e7e24a65aaf15bfe363"
+        },
+        {
+          "edge": {
+            "from": "question:within-recording-decoding",
+            "to": "hyp:discriminative-pattern",
+            "rel": "motivates"
+          },
+          "edge_sha256": "1486f3f2129120131ba0664c160bb9f6793d3be20636609ddaaafa99a95906b7"
+        },
+        {
+          "edge": {
+            "from": "ref:eegbci-dataset",
+            "to": "art:source-manifest",
+            "rel": "cites"
+          },
+          "edge_sha256": "a7a5e46c67e705264bed50ab52a7f52ed898f142d0ae588e9f6b4877d3483035"
+        },
+        {
+          "edge": {
+            "from": "ref:eegbci-dataset",
+            "to": "data:r06",
+            "rel": "cites"
+          },
+          "edge_sha256": "cff6686ce31f261153863124a4db13c1805c1e1b8610985339727fb20a1c9579"
+        },
+        {
+          "edge": {
+            "from": "ref:eegbci-dataset",
+            "to": "data:r10",
+            "rel": "cites"
+          },
+          "edge_sha256": "02b85e3e9fdf23ca4aca16fd49d69f89b9b1d58c67d19f6660403ae55ec7cac9"
+        },
+        {
+          "edge": {
+            "from": "ref:eegbci-dataset",
+            "to": "data:r14",
+            "rel": "cites"
+          },
+          "edge_sha256": "a6a0892ae200343fd09d50cc09843e477127b0f3705888b3b5ba5db461ab4e0a"
+        },
+        {
+          "edge": {
+            "from": "ref:mne-csp-example",
+            "to": "code:analyze",
+            "rel": "cites"
+          },
+          "edge_sha256": "692b26cfc05103448501ea20428143530114011b52ee244c3eaed304c9e6f7ec"
+        },
+        {
+          "edge": {
+            "from": "ref:mne-csp-example",
+            "to": "code:prepare",
+            "rel": "cites"
+          },
+          "edge_sha256": "13843ceb8c7fd1d0060acf11a1d23dd5f77f3ce125c016dd155c9bb81daeb634"
+        }
+      ],
+      "problems": [],
+      "pending": [],
+      "eligible": true
+    },
+    "vocabulary": {
+      "id": "eegbci:vocabulary",
+      "version": "1.0.0",
+      "sha256": "bab7813b4fdc7b9875061d35d83eedfd2b021ba9a165b71b0e052d79c40e6e2d",
+      "document": {
+        "schema_version": "claimtrace.symbolic-vocabulary/1",
+        "id": "eegbci:vocabulary",
+        "version": "1.0.0",
+        "types": [
+          {
+            "id": "eegbci:study",
+            "base": "ct:symbol"
+          }
+        ],
+        "units": [
+          "eegbci:balanced-accuracy"
+        ],
+        "predicates": [
+          {
+            "id": "eegbci:decoding_summary",
+            "kind": "input",
+            "arguments": [
+              {
+                "name": "study",
+                "type": "eegbci:study",
+                "unit": null
+              },
+              {
+                "name": "folds_valid",
+                "type": "ct:boolean",
+                "unit": null
+              },
+              {
+                "name": "observed",
+                "type": "ct:decimal",
+                "unit": "eegbci:balanced-accuracy"
+              },
+              {
+                "name": "null95",
+                "type": "ct:decimal",
+                "unit": "eegbci:balanced-accuracy"
+              }
+            ]
+          },
+          {
+            "id": "eegbci:exceeds_run_constrained_null",
+            "kind": "derived",
+            "arguments": [
+              {
+                "name": "study",
+                "type": "eegbci:study",
+                "unit": null
+              }
+            ]
+          }
+        ],
+        "renderers": [
+          {
+            "id": "eegbci:criterion-met-en",
+            "predicate": "eegbci:exceeds_run_constrained_null",
+            "polarity": "positive",
+            "language": "en",
+            "template": "{study} meets the configured above-null decoding criterion."
+          },
+          {
+            "id": "eegbci:criterion-not-met-en",
+            "predicate": "eegbci:exceeds_run_constrained_null",
+            "polarity": "negative",
+            "language": "en",
+            "template": "{study} does not meet the configured above-null decoding criterion."
+          }
+        ]
+      }
+    },
+    "rule_pack": {
+      "id": "eegbci:decoding-rules",
+      "version": "1.0.0",
+      "vocabulary_id": "eegbci:vocabulary",
+      "sha256": "5e264e42790bda40dec4adc9be77ac82ab451384553d6f742dd2cac02fd5a7b1",
+      "document": {
+        "schema_version": "claimtrace.symbolic-rules/1",
+        "id": "eegbci:decoding-rules",
+        "version": "1.0.0",
+        "vocabulary_id": "eegbci:vocabulary",
+        "rules": [
+          {
+            "id": "eegbci:invalid-folds",
+            "when": [
+              {
+                "predicate": "eegbci:decoding_summary",
+                "polarity": "positive",
+                "arguments": {
+                  "folds_valid": {
+                    "var": "folds_valid"
+                  },
+                  "null95": {
+                    "var": "null95"
+                  },
+                  "observed": {
+                    "var": "observed"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "folds_valid"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:boolean",
+                    "value": false,
+                    "unit": null
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "eegbci:exceeds_run_constrained_null",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "eegbci:valid-and-above-null",
+            "when": [
+              {
+                "predicate": "eegbci:decoding_summary",
+                "polarity": "positive",
+                "arguments": {
+                  "folds_valid": {
+                    "var": "folds_valid"
+                  },
+                  "null95": {
+                    "var": "null95"
+                  },
+                  "observed": {
+                    "var": "observed"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "folds_valid"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:boolean",
+                    "value": true,
+                    "unit": null
+                  }
+                }
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "observed"
+                },
+                "right": {
+                  "var": "null95"
+                }
+              }
+            ],
+            "then": {
+              "predicate": "eegbci:exceeds_run_constrained_null",
+              "polarity": "positive",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "eegbci:valid-but-not-above-null",
+            "when": [
+              {
+                "predicate": "eegbci:decoding_summary",
+                "polarity": "positive",
+                "arguments": {
+                  "folds_valid": {
+                    "var": "folds_valid"
+                  },
+                  "null95": {
+                    "var": "null95"
+                  },
+                  "observed": {
+                    "var": "observed"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "folds_valid"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:boolean",
+                    "value": true,
+                    "unit": null
+                  }
+                }
+              },
+              {
+                "op": "lte",
+                "left": {
+                  "var": "observed"
+                },
+                "right": {
+                  "var": "null95"
+                }
+              }
+            ],
+            "then": {
+              "predicate": "eegbci:exceeds_run_constrained_null",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "anchor_checks": [
+      {
+        "fact_index": 0,
+        "result_id": "art:decoding",
+        "binding_id": "eegbci:decoding-summary",
+        "predicate": "eegbci:decoding_summary",
+        "polarity": "positive",
+        "valid": true,
+        "detail": "complete project-bound fact matched exact typed artifact values",
+        "argument_checks": [
+          {
+            "argument": "folds_valid",
+            "kind": "json_pointer",
+            "pointer": "/all_folds_valid",
+            "observed_value_sha256": "0f3ac3049b819d792c0d7ab5c038ed9297c5168b4f08eb91f9b0f5e4eb45d055",
+            "valid": true
+          },
+          {
+            "argument": "null95",
+            "kind": "json_pointer",
+            "pointer": "/permutation/null_95th_percentile",
+            "observed_value_sha256": "f6acd3a18ee62fcb5ca79c16ffb5992781be5d82c5a4b084a08120b2172cc204",
+            "valid": true
+          },
+          {
+            "argument": "observed",
+            "kind": "json_pointer",
+            "pointer": "/observed_mean_balanced_accuracy",
+            "observed_value_sha256": "b5627502658b2796c13cf2e468c0107b29241db6402198f38a3d30eebc746901",
+            "valid": true
+          },
+          {
+            "argument": "study",
+            "kind": "json_pointer",
+            "pointer": "/study_id",
+            "observed_value_sha256": "c470e0e6ceb425836dafbfd7e403a018c1ba52844752a49e790b529ebd6b4d02",
+            "valid": true
+          }
+        ]
+      }
+    ]
+  },
+  "derived": {
+    "proof_state": "derivable",
+    "target": {
+      "predicate": "eegbci:exceeds_run_constrained_null",
+      "polarity": "positive",
+      "arguments": {
+        "study": {
+          "type": "eegbci:study",
+          "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+          "unit": null
+        }
+      }
+    },
+    "rendered_target": "eegbci-s001-r06-r10-r14-v1.0.0 meets the configured above-null decoding criterion.",
+    "outcome_relation": "target_derived",
+    "outcome_atoms": [
+      {
+        "predicate": "eegbci:exceeds_run_constrained_null",
+        "polarity": "positive",
+        "arguments": {
+          "study": {
+            "type": "eegbci:study",
+            "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+            "unit": null
+          }
+        }
+      }
+    ],
+    "rendered_outcomes": [
+      "eegbci-s001-r06-r10-r14-v1.0.0 meets the configured above-null decoding criterion."
+    ],
+    "claim_bound": true,
+    "active": true,
+    "stale": false,
+    "proof_id": "proof:sha256:7f434205abb03decf4e519ecd1b0e0736454ca2f0b96be71fb280ee6059d17c5",
+    "input_fact_ids": [
+      "atom:sha256:6a98c659a12cf0eb955c43f4b10a89a6ed04217c3a5193bc322aed4271e955b4"
+    ],
+    "used_input_fact_ids": [
+      "atom:sha256:6a98c659a12cf0eb955c43f4b10a89a6ed04217c3a5193bc322aed4271e955b4"
+    ],
+    "unused_input_fact_ids": [],
+    "used_result_ids": [
+      "art:decoding"
+    ],
+    "supporting_fact_id": "atom:sha256:423a6c39a353a00f251e9aed026fe51ae604ae4cffa80f3bfa7d73076b86b761",
+    "refuting_fact_id": null,
+    "proof_steps": [
+      {
+        "rule_id": "eegbci:valid-and-above-null",
+        "rule_sha256": "rule:sha256:c6b9a80767dcd68cf19522e657da4d4886cfde70a7018870513cfe351e228cc8",
+        "premise_fact_ids": [
+          "atom:sha256:6a98c659a12cf0eb955c43f4b10a89a6ed04217c3a5193bc322aed4271e955b4"
+        ],
+        "conclusion_fact_id": "atom:sha256:423a6c39a353a00f251e9aed026fe51ae604ae4cffa80f3bfa7d73076b86b761",
+        "substitution": {
+          "folds_valid": {
+            "type": "ct:boolean",
+            "value": true,
+            "unit": null
+          },
+          "null95": {
+            "type": "ct:decimal",
+            "value": "0.657738",
+            "unit": "eegbci:balanced-accuracy"
+          },
+          "observed": {
+            "type": "ct:decimal",
+            "value": "0.842262",
+            "unit": "eegbci:balanced-accuracy"
+          },
+          "study": {
+            "type": "eegbci:study",
+            "value": "eegbci-s001-r06-r10-r14-v1.0.0",
+            "unit": null
+          }
+        }
+      }
+    ],
+    "assumptions": [],
+    "drift": [],
+    "findings": []
+  }
+}
