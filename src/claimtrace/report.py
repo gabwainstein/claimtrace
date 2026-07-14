@@ -10,6 +10,7 @@ import copy
 import json
 import os
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 
 from . import __version__
@@ -797,6 +798,58 @@ def _logic_assets(cfg):
     return vocabularies, rule_packs, projected, extra
 
 
+def _derivation_replacement_key(item):
+    """Identify the logical proof represented by a derivation report item.
+
+    Mechanical snapshot hashes deliberately do not participate: line-ending or other
+    byte-level provenance drift can change a proof id without changing the logic.  The
+    subject result ids and evidence bindings do participate, so a proof over different
+    evidence cannot silently replace stale history.
+    """
+    effective = item["effective"]
+    input_facts = []
+    for fact in item["agent_input"]["facts"]:
+        input_facts.append({
+            "atom": copy.deepcopy(fact["atom"]),
+            "evidence": [
+                {
+                    "result_id": anchor["result_id"],
+                    "binding_id": anchor["binding_id"],
+                }
+                for anchor in fact["evidence"]
+            ],
+            "assumption": fact["assumption"],
+        })
+    return _canonical_json({
+        "claim_id": item["subject"]["claim_id"],
+        "result_ids": copy.deepcopy(item["subject"]["result_ids"]),
+        "vocabulary_id": item["subject"]["vocabulary_id"],
+        "rule_pack_id": item["subject"]["rule_pack_id"],
+        "target": copy.deepcopy(effective["target"]),
+        "proof_state": effective["proof_state"],
+        "input_facts": input_facts,
+        "input_fact_ids": copy.deepcopy(effective.get("input_fact_ids", [])),
+        "used_input_fact_ids": copy.deepcopy(
+            effective.get("used_input_fact_ids", []),
+        ),
+        "unused_input_fact_ids": copy.deepcopy(
+            effective.get("unused_input_fact_ids", []),
+        ),
+        "outcome_relation": effective["outcome_relation"],
+        "outcome_atoms": copy.deepcopy(effective["outcome_atoms"]),
+        "supporting_fact_id": effective.get("supporting_fact_id"),
+        "refuting_fact_id": effective.get("refuting_fact_id"),
+        "proof_steps": copy.deepcopy(effective.get("proof_steps", [])),
+        "assumptions": copy.deepcopy(effective.get("assumptions", [])),
+    })
+
+
+def _derivation_recorded_at(item):
+    """Return the validated RFC 3339 timestamp as a comparable UTC datetime."""
+    value = item["recorded_at"]
+    return datetime.fromisoformat(value[:-1] + "+00:00")
+
+
 def _derivation_projection(cfg, raw):
     """Project conditional symbolic derivations without converting them into claim links."""
     vocabularies, rule_packs, assets, asset_findings = _logic_assets(cfg)
@@ -954,20 +1007,32 @@ def _derivation_projection(cfg, raw):
             })
 
     # Immutable submissions remain visible with their effective findings, but an old
-    # stale submission must not make the current report fail when another submission
-    # is active for the exact same re-evaluated proof.  Compute this only after the
-    # global integrity gate: an integrity fault suppresses every active replacement
-    # and therefore cannot hide a stale finding.
-    active_proof_ids = {
-        item["effective"].get("proof_id") for item in items
-        if item["effective"]["active"]
-    }
+    # stale submission must not make the current report fail when a later submission
+    # is active for the same logical proof.  Mechanical provenance hashes (and thus
+    # proof ids) can change under byte-only normalization, so replacement equivalence
+    # uses exact semantic proof content and evidence identities.  Compute this only
+    # after the global integrity gate: an integrity fault suppresses every active
+    # replacement and therefore cannot hide a stale finding.
+    latest_active_by_key = {}
+    for item in items:
+        if not item["effective"]["active"]:
+            continue
+        key = _derivation_replacement_key(item)
+        recorded_at = _derivation_recorded_at(item)
+        latest_active_by_key[key] = max(
+            recorded_at,
+            latest_active_by_key.get(key, recorded_at),
+        )
     evaluation_findings = []
     for item in items:
         effective = item["effective"]
+        replacement_time = latest_active_by_key.get(
+            _derivation_replacement_key(item),
+        )
         has_active_equivalent = (
             not effective["active"]
-            and effective.get("proof_id") in active_proof_ids
+            and replacement_time is not None
+            and replacement_time > _derivation_recorded_at(item)
         )
         for finding in effective.get("findings", []):
             if finding["code"] == "DERIVATION_STALE" and has_active_equivalent:

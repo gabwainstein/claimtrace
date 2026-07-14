@@ -76,7 +76,11 @@ def main() -> None:
     records = [fetch_one(name, spec, data_dir) for name, spec in FILES.items()]
     manifest = {**DATASET, "files": records}
     output = data_dir / "source_manifest.json"
-    output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     print(f"wrote {output}")
 
 

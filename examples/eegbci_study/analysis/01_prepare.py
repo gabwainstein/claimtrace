@@ -123,7 +123,11 @@ def main() -> None:
         ],
     }
     output = results_dir / "preprocessing.json"
-    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     print(f"prepared {x.shape[0]} epochs with shape {x.shape} -> data/prepared_epochs.npz")
     print(f"wrote {output}")
 
