@@ -1,57 +1,58 @@
 {
+  "schema_version": "claimtrace.render-manifest/2",
   "node": "fig:decoding",
   "output": "figures/decoding.svg",
-  "output_sha1": "e5bacb31b5fbd1eb13eb2413a9a1ba226d47f8e9",
+  "output_sha256": "080dc5f363de2e6331b94219d3a62f59d45851dcb36d405c5a241160aa1361e5",
   "backbone": {
     "dataset_version": "PhysioNet EEGMMIDB 1.0.0",
     "analysis_plan": "s001-mi-logo-csp-lda-v1"
   },
   "value": "Observed fold scores, null distribution, observed mean, and null threshold",
-  "locked_at": "2026-07-14T22:29:29+00:00",
+  "locked_at": "2026-07-15T06:13:28+00:00",
   "inputs": [
     {
       "path": "analysis/00_fetch.py",
-      "sha1": "f5f551c0d68f8a6aa2a00b1a515f01e44dc83556"
+      "sha256": "04cc93c46f049eea36cf29f28d472ec8d4b0aa49f70cd927c5c4ba73e9d1e7e9"
     },
     {
       "path": "analysis/01_prepare.py",
-      "sha1": "fd80b00c9cca1746c51868568402eb2bbedd1182"
+      "sha256": "f6eb68689c26f4f72e4df0bf0877e51b3edbf7b2767d91e43fde09e0d110e01a"
     },
     {
       "path": "analysis/02_analyze.py",
-      "sha1": "7860691225eb07613f7d45afd30b1da62d4363b7"
+      "sha256": "08b55d28dc4ad88e528d2041a81960d47465d46f81209a9939cd96f0f6c03273"
     },
     {
       "path": "analysis/03_figure.py",
-      "sha1": "8fdea7b4353f69366cc8983cd7aeb1dca04663e6"
+      "sha256": "8b6f4baba3e7fa4c13e111c78973d92f1ccac756bd99b6fad08e27d8e5fbe946"
     },
     {
       "path": "data/S001R06.edf",
-      "sha1": "44a44328cbc71fbd9b830884ae6b44331965f84c"
+      "sha256": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3"
     },
     {
       "path": "data/S001R10.edf",
-      "sha1": "f101df9c540a4627211a66bb568c18c91114a173"
+      "sha256": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1"
     },
     {
       "path": "data/S001R14.edf",
-      "sha1": "68e7cf0f8655eabebbb6ecf5d390d0b2e5ba6cb5"
+      "sha256": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137"
     },
     {
       "path": "data/prepared_epochs.npz",
-      "sha1": "3a527871e96860619901b8eed22141626e819fbf"
+      "sha256": "b609c7cdbca02229b3d4536bb5861d78283051b848c2a89f4ec19cfaac9ac153"
     },
     {
       "path": "data/source_manifest.json",
-      "sha1": "db0428a3664ea917ef95a9bd1c0d14f804fecb13"
+      "sha256": "2a1e5294f44eaaca458953c1ca700a82d17874de8f4a565601a3d24c6661758e"
     },
     {
       "path": "results/decoding.json",
-      "sha1": "85399bf4efeca79b0486e8e13d94683c93d645bd"
+      "sha256": "18e535f94c14f04af2445171f253ff1cc3922158de9645e8fbc2ea69757a3903"
     },
     {
       "path": "results/preprocessing.json",
-      "sha1": "8c03e1937f02460e5ee12503522d53a0e926e700"
+      "sha256": "d208bcd6034d44dc69632345efb2b8d091ff0de1dc497fb8a4d6c14eb0b4cd95"
     }
   ]
 }

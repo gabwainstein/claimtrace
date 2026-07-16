@@ -1,0 +1,311 @@
+{
+  "attempts": [
+    {
+      "direct_child_returncode": 0,
+      "duration_ns": 90393000,
+      "index": 1,
+      "launch_error": null,
+      "materialized_intermediates": [],
+      "outcome": "succeeded",
+      "outputs": [
+        {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        }
+      ],
+      "stage_trace": {
+        "binding": {
+          "nonce_sha256": "cc9b7a3c4b72a365455247498327ce470897b053dc8c346385ecca0b4190682c",
+          "raw_sha256": "00ceb02e6147e7ce2693fa41c0884d7bc9938383aab9bf5667f05a13fdcba480",
+          "raw_size": 1401,
+          "reporter_pid": 56852,
+          "reporter_scope": "direct_child_process_id_checked",
+          "transport": "controller_created_private_file"
+        },
+        "checkpoint_sequence_sha256": "187f524baf41dc34725e5cdd505d812c09f77749524075df4b0fcc1ef9a481f5",
+        "checkpoints": [
+          {
+            "callsite": {
+              "line": 48,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 1,
+            "stage_id": "select_complete_bills"
+          },
+          {
+            "callsite": {
+              "line": 55,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 2,
+            "stage_id": "group_by_species"
+          },
+          {
+            "callsite": {
+              "line": 70,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 3,
+            "stage_id": "fit_descriptive_ols"
+          },
+          {
+            "callsite": {
+              "line": 102,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 4,
+            "stage_id": "export_slope_profile"
+          }
+        ],
+        "issues": [],
+        "mode": "cooperative_child_checkpoint_log",
+        "required_stage_ids": [
+          "select_complete_bills",
+          "group_by_species",
+          "fit_descriptive_ols",
+          "export_slope_profile"
+        ],
+        "schema_version": "claimtrace.stage-trace/1",
+        "state": "cooperative_report_complete",
+        "trust": "cooperative_child_self_report_not_independent_observation"
+      },
+      "stderr": {
+        "content": "not_stored",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "stdout": {
+        "content": "not_stored",
+        "sha256": "54dbf9ec0e665ec2b52bc644995eaf1177be42d1707b255f4437ab67afdfab17",
+        "size": 79
+      },
+      "undeclared_writes": []
+    },
+    {
+      "direct_child_returncode": 0,
+      "duration_ns": 87094900,
+      "index": 2,
+      "launch_error": null,
+      "materialized_intermediates": [],
+      "outcome": "succeeded",
+      "outputs": [
+        {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        }
+      ],
+      "stage_trace": {
+        "binding": {
+          "nonce_sha256": "0ecdbd388a7a3d2185bf731930345a81a221ecee9c10b7415a1b140711bba911",
+          "raw_sha256": "85bff0831a2404c862a11de937e03e591f5b48b8007ab79b88b40dc847424f34",
+          "raw_size": 1401,
+          "reporter_pid": 19760,
+          "reporter_scope": "direct_child_process_id_checked",
+          "transport": "controller_created_private_file"
+        },
+        "checkpoint_sequence_sha256": "187f524baf41dc34725e5cdd505d812c09f77749524075df4b0fcc1ef9a481f5",
+        "checkpoints": [
+          {
+            "callsite": {
+              "line": 48,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 1,
+            "stage_id": "select_complete_bills"
+          },
+          {
+            "callsite": {
+              "line": 55,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 2,
+            "stage_id": "group_by_species"
+          },
+          {
+            "callsite": {
+              "line": 70,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 3,
+            "stage_id": "fit_descriptive_ols"
+          },
+          {
+            "callsite": {
+              "line": 102,
+              "path": "analysis/02_analyze.py"
+            },
+            "code_node_id": "code:analyze",
+            "observation": "program_emitted_checkpoint_reached",
+            "sequence": 4,
+            "stage_id": "export_slope_profile"
+          }
+        ],
+        "issues": [],
+        "mode": "cooperative_child_checkpoint_log",
+        "required_stage_ids": [
+          "select_complete_bills",
+          "group_by_species",
+          "fit_descriptive_ols",
+          "export_slope_profile"
+        ],
+        "schema_version": "claimtrace.stage-trace/1",
+        "state": "cooperative_report_complete",
+        "trust": "cooperative_child_self_report_not_independent_observation"
+      },
+      "stderr": {
+        "content": "not_stored",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "stdout": {
+        "content": "not_stored",
+        "sha256": "54dbf9ec0e665ec2b52bc644995eaf1177be42d1707b255f4437ab67afdfab17",
+        "size": 79
+      },
+      "undeclared_writes": []
+    }
+  ],
+  "command": {
+    "argv": [
+      "python",
+      "analysis/02_analyze.py"
+    ],
+    "argv_capture": "redacted_best_effort",
+    "cwd": ".",
+    "secret_override_used_not_stored": false,
+    "timeout_seconds": null
+  },
+  "comparison": {
+    "all_declared_outputs_match_source_receipt": true,
+    "all_materialized_intermediates_match_source_receipt": true,
+    "all_stage_traces_complete": true,
+    "all_stage_traces_match_source_receipt": true,
+    "basis": "byte_exact_sha256_size_and_cooperative_stage_sequence",
+    "declared_outputs_equal": true,
+    "materialized_intermediates_equal": true,
+    "minimum_attempts_met": true,
+    "stage_traces_equal": true,
+    "stderr_equal": true,
+    "stdout_equal": true,
+    "undeclared_workspace_deltas_equal": true,
+    "undeclared_workspace_writes_present": false
+  },
+  "computation_id": "computation:sha256:8ca0f8f152b74dfc73538c666f44597d85edb82942fcc76ab251f26d2bab87cb",
+  "coverage": {
+    "cooperative_stage_trace": "program_emitted_checkpoint_sequence_not_independent_observation",
+    "environment": "source_executable_and_root_lockfiles_rechecked_partial_host",
+    "external_filesystem_writes": "not_observed_or_prevented",
+    "filesystem_inputs": "declared_project_files_only",
+    "filesystem_writes": "all_workspace_file_paths_pre_post_scan_unattributed_no_follow",
+    "in_memory_intermediates": "not_observed",
+    "internal_stage_execution": "declared_only_not_observed",
+    "materialized_intermediates": "declared_paths_post_execution_hashed",
+    "method_code_equivalence": "requires_separate_review",
+    "network": "not_isolated",
+    "parameters_and_seeds": "recorded_declarations_not_runtime_injected",
+    "processes": "direct_child_exit_only"
+  },
+  "id": "replay:sha256:72f560d01958bba46f405655b61e95b5668dbc7dd9a99d3bbc1345825b6a26a2",
+  "mode": "declared-project-files-fresh-workspace",
+  "observed_at": "2026-07-15T15:40:22.590455Z",
+  "outcome": "byte_repeatable",
+  "pipeline_contract_id": "pipeline-contract:sha256:058bb94be155e525b242e1a54555b1c330d9adfb5fa178505496e7639ca84b7e",
+  "schema_version": "claimtrace.replay-certificate/3",
+  "source_finish_event_id": "event:sha256:8bcf0194d99358cb9c3256197681af188f39167b797bbb7541d31bc05559df46",
+  "source_materialized_intermediates": [],
+  "source_outputs": [
+    {
+      "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+      "path": "results/slopes.json",
+      "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+      "size": 1098,
+      "state": "stable"
+    }
+  ],
+  "source_run_id": "run:deda38a0-b5df-47f2-b5ed-9d88e599143b",
+  "source_stage_trace": {
+    "binding": {
+      "nonce_sha256": "4baa2c2a3a8b9dbaec10c0f89bc13ff686ef030a471b48cc5daef2643eb55b43",
+      "raw_sha256": "35131d711708ff8126c8088022545fad250c442bc7dd81fbd2ea5c652e1dddb8",
+      "raw_size": 1401,
+      "reporter_pid": 87136,
+      "reporter_scope": "direct_child_process_id_checked",
+      "transport": "controller_created_private_file"
+    },
+    "checkpoint_sequence_sha256": "187f524baf41dc34725e5cdd505d812c09f77749524075df4b0fcc1ef9a481f5",
+    "checkpoints": [
+      {
+        "callsite": {
+          "line": 48,
+          "path": "analysis/02_analyze.py"
+        },
+        "code_node_id": "code:analyze",
+        "observation": "program_emitted_checkpoint_reached",
+        "sequence": 1,
+        "stage_id": "select_complete_bills"
+      },
+      {
+        "callsite": {
+          "line": 55,
+          "path": "analysis/02_analyze.py"
+        },
+        "code_node_id": "code:analyze",
+        "observation": "program_emitted_checkpoint_reached",
+        "sequence": 2,
+        "stage_id": "group_by_species"
+      },
+      {
+        "callsite": {
+          "line": 70,
+          "path": "analysis/02_analyze.py"
+        },
+        "code_node_id": "code:analyze",
+        "observation": "program_emitted_checkpoint_reached",
+        "sequence": 3,
+        "stage_id": "fit_descriptive_ols"
+      },
+      {
+        "callsite": {
+          "line": 102,
+          "path": "analysis/02_analyze.py"
+        },
+        "code_node_id": "code:analyze",
+        "observation": "program_emitted_checkpoint_reached",
+        "sequence": 4,
+        "stage_id": "export_slope_profile"
+      }
+    ],
+    "issues": [],
+    "mode": "cooperative_child_checkpoint_log",
+    "required_stage_ids": [
+      "select_complete_bills",
+      "group_by_species",
+      "fit_descriptive_ols",
+      "export_slope_profile"
+    ],
+    "schema_version": "claimtrace.stage-trace/1",
+    "state": "cooperative_report_complete",
+    "trust": "cooperative_child_self_report_not_independent_observation"
+  },
+  "source_start_event_id": "event:sha256:d39585c1e694d2c568df7e3a8b46fd6412659a1cca84af9a1445586f3132c779"
+}

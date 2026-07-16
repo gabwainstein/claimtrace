@@ -75,9 +75,14 @@ def _coverage_label(run):
         reads = coverage.get("reads")
         writes = coverage.get("writes")
         if reads or writes:
+            materialized = (
+                " Materialized intermediate files are post-process boundary snapshots, "
+                "not stage-attributed writes."
+                if run.get("declared_intermediates") else ""
+            )
             return (
                 "Partial: inputs are declared, not observed reads; "
-                "pre/post changes do not prove write causation."
+                "pre/post changes do not prove write causation." + materialized
             )
     return (
         "Partial: inputs are declared, not observed reads; "
@@ -311,6 +316,27 @@ def _build_payload(report, layout_id):
         for node_id in bindings:
             node_runs[node_id].append(run_id)
 
+    claim_basis_records = list((report.get("claim_basis") or {}).get("items") or [])
+    claim_basis_by_node = defaultdict(list)
+    for item in claim_basis_records:
+        for node_id in (item.get("result_id"), item.get("claim_id")):
+            if node_id in raw_nodes:
+                claim_basis_by_node[node_id].append(copy.deepcopy(item))
+    for node_id in claim_basis_by_node:
+        claim_basis_by_node[node_id].sort(key=lambda item: (
+            str(item.get("claim_id")), str(item.get("result_id")),
+            str(item.get("assessment_id")),
+        ))
+
+    method_projection = report.get("method_assessments") or {}
+    method_assessments_by_node = defaultdict(list)
+    for item in method_projection.get("items") or []:
+        method_id = (item.get("subject") or {}).get("method_id")
+        if method_id in raw_nodes:
+            method_assessments_by_node[method_id].append(copy.deepcopy(item))
+    for node_id in method_assessments_by_node:
+        method_assessments_by_node[node_id].sort(key=lambda item: str(item.get("id")))
+
     if any(
         semantic_layers.get(node_id) == 0
         for bindings in run_bindings.values()
@@ -348,6 +374,57 @@ def _build_payload(report, layout_id):
     for node_id in assessments_by_node:
         assessments_by_node[node_id].sort()
         current_assessments_by_node[node_id].sort()
+
+    semantic_projection = report.get("semantics") or {}
+    active_semantic = semantic_projection.get("active_policy") or {}
+    active_semantic_evaluation = active_semantic.get("evaluation") or {}
+    mapping_history = {
+        item.get("id"): item
+        for item in semantic_projection.get("mapping_history") or []
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    active_semantic_mapping_ids = list(
+        semantic_projection.get("active_mapping_ids") or []
+    )
+    active_semantic_mapping_set = set(active_semantic_mapping_ids)
+    semantic_mapping_records = []
+    for item in semantic_projection.get("current_mapping_evaluations") or []:
+        history = mapping_history.get(item.get("mapping_id")) or {}
+        agent_input = history.get("agent_input") or {}
+        mechanical = history.get("mechanical_snapshot") or {}
+        local_term = (mechanical.get("local_term") or {}).get("term") or {}
+        semantic_mapping_records.append({
+            "mapping_id": item.get("mapping_id"),
+            "subject": copy.deepcopy(item.get("subject") or {}),
+            "local_term": copy.deepcopy(local_term),
+            "relation": agent_input.get("relation"),
+            "target": copy.deepcopy(agent_input.get("target")),
+            "selected_candidate": copy.deepcopy(mechanical.get("selected_candidate")),
+            "rationale": agent_input.get("rationale"),
+            "limitations": copy.deepcopy(agent_input.get("limitations") or []),
+            "provenance": copy.deepcopy(agent_input.get("provenance") or {}),
+            "review": copy.deepcopy(item.get("review") or {}),
+            "current_derived": copy.deepcopy(item.get("current_derived") or {}),
+            "active": item.get("mapping_id") in active_semantic_mapping_set,
+        })
+    semantic_policy = {
+        "integrity": semantic_projection.get("integrity", "unknown"),
+        "require_active_policy": bool(
+            (semantic_projection.get("policy") or {}).get("require_active_policy")
+        ),
+        "current_mappings": semantic_mapping_records,
+        "release_count": len(semantic_projection.get("policies") or []),
+        "active_policy_configured": bool(active_semantic.get("configured")),
+        "configured_policy_id": active_semantic.get("configured_policy_id"),
+        "active_policy_active": bool(active_semantic_evaluation.get("active")),
+        "active_policy_valid": bool(active_semantic_evaluation.get("valid")),
+        "active_policy_findings": copy.deepcopy(active_semantic.get("findings") or []),
+        "active_policy_id": (
+            (active_semantic.get("policy") or {}).get("id")
+            if active_semantic_evaluation.get("active") else None
+        ),
+        "active_mapping_ids": active_semantic_mapping_ids,
+    }
 
     derivation_projection = report.get("derivations") or {}
     derivation_integrity = derivation_projection.get("integrity")
@@ -388,6 +465,10 @@ def _build_payload(report, layout_id):
         )
         projected["active"] = (
             projected["conditional_active"] and projected["claim_level_active"]
+        )
+        projected["execution_basis"] = (
+            copy.deepcopy(active_summary.get("execution_basis"))
+            if active_summary is not None else None
         )
         grouped_records[key] = projected
     derivation_records = list(grouped_records.values())
@@ -555,6 +636,8 @@ def _build_payload(report, layout_id):
                     str(item.get("declared_relation")),
                 ),
             ),
+            "claim_basis": claim_basis_by_node[node_id],
+            "method_assessments": method_assessments_by_node[node_id],
             "coverage": None,
             "layer": semantic_layers.get(node_id, 0),
             "_rank": order_rank[node_id],
@@ -600,6 +683,8 @@ def _build_payload(report, layout_id):
             "default_assessment_id": assessment_id,
             "derivation_ids": [],
             "claim_links": [],
+            "claim_basis": [],
+            "method_assessments": [],
             "coverage": None,
             "layer": layer,
             "_rank": assessment_rank,
@@ -660,6 +745,8 @@ def _build_payload(report, layout_id):
             "default_assessment_id": None,
             "derivation_ids": list(item.get("derivation_ids") or [derivation_id]),
             "claim_links": [],
+            "claim_basis": [],
+            "method_assessments": [],
             "coverage": None,
             "proof": item,
             "layer": layer,
@@ -679,12 +766,24 @@ def _build_payload(report, layout_id):
                 "transition": transition.get("transition"),
                 "produced": bool(transition.get("produced")),
             })
+        intermediate_transitions = []
+        for transition in run.get("intermediate_transitions", []):
+            intermediate_transitions.append({
+                "path": transition.get("path"),
+                "transition": transition.get("transition"),
+                "produced": bool(transition.get("produced")),
+                "before": copy.deepcopy(transition.get("before")),
+                "after": copy.deepcopy(transition.get("after")),
+            })
         visual_nodes.append({
             "key": "receipt:" + run_id,
             "node_id": run_id,
             "kind": "run",
             "type": "run receipt",
-            "status": str(run.get("outcome") or "incomplete"),
+            "status": (
+                str(run.get("outcome") or "incomplete")
+                if run.get("evidence_eligible", True) else "integrity_error"
+            ),
             "label": str(run.get("name") or run_id),
             "path": run.get("cwd"),
             "value": None,
@@ -698,10 +797,44 @@ def _build_payload(report, layout_id):
             "default_assessment_id": None,
             "derivation_ids": [],
             "claim_links": [],
+            "claim_basis": [],
+            "method_assessments": [],
             "coverage": _coverage_label(run),
+            "event_schema_version": run.get("event_schema_version"),
+            "computation_id": run.get("computation_id"),
+            "pipeline_contract_id": run.get("pipeline_contract_id"),
+            "pipeline_contract_state": run.get("pipeline_contract_state"),
+            "current_gate_role": run.get("current_gate_role"),
+            "replacement_run_id": run.get("replacement_run_id"),
+            "replacement_replay_ids": list(
+                run.get("replacement_replay_ids") or []
+            ),
+            "stage_trace_plan": copy.deepcopy(run.get("stage_trace_plan")),
+            "stage_trace": copy.deepcopy(run.get("stage_trace")),
+            "event_store_integrity": run.get("event_store_integrity"),
+            "link_integrity": run.get("link_integrity"),
+            "link_issues": copy.deepcopy(run.get("link_issues") or []),
+            "evidence_eligible": run.get("evidence_eligible"),
+            "replay_conflict": bool(run.get("replay_conflict")),
+            "replay_conflict_certificate_ids": list(
+                run.get("replay_conflict_certificate_ids") or []
+            ),
+            "pipeline_stages": [
+                {
+                    "id": stage.get("id"),
+                    "method_id": stage.get("method_id"),
+                    "method_step_id": stage.get("method_step_id"),
+                    "depends_on": list(stage.get("depends_on") or []),
+                    "execution_observation": stage.get("execution_observation"),
+                }
+                for stage in ((run.get("pipeline_contract") or {}).get("stages") or [])
+            ],
+            "replays": copy.deepcopy(run.get("replays") or []),
             "declared_inputs": list(run.get("declared_inputs", [])),
             "declared_outputs": list(run.get("declared_outputs", [])),
+            "declared_intermediates": list(run.get("declared_intermediates", [])),
             "output_transitions": output_transitions,
+            "intermediate_transitions": intermediate_transitions,
             "bindings": [
                 item for item in run.get("bindings", [])
                 if item.get("node_id") in raw_nodes
@@ -893,21 +1026,28 @@ def _build_payload(report, layout_id):
             ),
         ):
             node_id = binding.get("node_id")
-            if node_id not in raw_nodes or node_id in seen:
-                continue
-            seen.add(node_id)
             binding_kind = binding.get("binding_kind", "output_path")
+            binding_key = (node_id, binding_kind)
+            if node_id not in raw_nodes or binding_key in seen:
+                continue
+            seen.add(binding_key)
+            relation = {
+                "explicit_run_reference": "explicit semantic run reference",
+                "materialized_intermediate_path": "binds materialized intermediate",
+            }.get(binding_kind, "binds declared output")
             edges.append({
                 "key": "receipt:%06d" % receipt_index,
                 "source": "receipt:" + run_id,
                 "target": "graph:" + node_id,
-                "relation": ("explicit semantic run reference"
-                             if binding_kind == "explicit_run_reference"
-                             else "binds declared output"),
+                "relation": relation,
                 "kind": "receipt",
                 "traversable": True,
                 "binding_kind": binding_kind,
                 "declaration_comparison": binding.get("declaration_comparison"),
+                "output_evidence": binding.get("output_evidence"),
+                "stage_attribution": binding.get("stage_attribution"),
+                "current": binding.get("current"),
+                "integrity_state": binding.get("integrity_state"),
             })
             receipt_index += 1
 
@@ -940,23 +1080,49 @@ def _build_payload(report, layout_id):
     height = MARGIN_TOP + max_rows * (NODE_HEIGHT + ROW_GAP) + 28
     summary = report.get("summary") or {}
     return {
-        "schema": "claimtrace.view/3",
+        "schema": "claimtrace.view/5",
         "layout_id": layout_id,
         "scope": report.get("scope") or {},
         "assessment_integrity": assessment_integrity or "unknown",
         "derivation_integrity": derivation_integrity or "unknown",
+        "semantic_policy": semantic_policy,
         "summary": {
             "semantic_nodes": len(raw_nodes),
             "semantic_edges": sum(
                 1 for edge in edges if edge["kind"] in {"dependency", "annotation"}
             ),
             "runs": len(runs),
+            "byte_repeatable_runs": sum(
+                1 for run in runs if any(
+                    item.get("current_derived", {}).get("byte_repeatable_current")
+                    for item in run.get("replays", [])
+                )
+            ),
+            "stage_checkpoint_runs": sum(
+                1 for run in runs if isinstance(run.get("stage_trace"), dict)
+            ),
+            "complete_stage_checkpoint_runs": sum(
+                1 for run in runs
+                if isinstance(run.get("stage_trace"), dict)
+                and run["stage_trace"].get("state") == "cooperative_report_complete"
+            ),
+            "claim_bases": len(claim_basis_records),
+            "ready_claim_bases": sum(
+                item.get("overall") == "ready_under_reviewed_provenance"
+                for item in claim_basis_records
+            ),
+            "method_assessments": sum(
+                len(items) for items in method_assessments_by_node.values()
+            ),
             "assessments": len(assessment_records),
             "current_assessments": len(current_assessments),
             "contested_assessments": sum(
                 1 for item in current_assessments if item.get("current_state") == "contested"
             ),
             "assessment_edges": sum(1 for edge in edges if edge["kind"] == "assessment"),
+            "semantic_mappings": len(semantic_policy["current_mappings"]),
+            "semantic_releases": semantic_policy["release_count"],
+            "active_semantic_mappings": len(semantic_policy["active_mapping_ids"]),
             "derivations": len(derivation_history_records),
             "proof_nodes": len(derivation_records),
             "active_proofs": sum(1 for item in derivation_records if item.get("active")),
@@ -986,9 +1152,18 @@ def _build_payload(report, layout_id):
         "coverage_notice": (
             "Semantic edges are declared lineage. Symbolic proofs show conditional "
             "derivability under named project rules, not truth or scientific support. "
+            "Semantic mappings are attributed review-state normalization under locked local assertions, "
+            "not ontology truth or scientific support. "
             "Run receipts are mechanical records. "
-            "Declared inputs are not observed reads, and pre/post changes do not prove "
-            "write causation."
+            "Fresh-workspace replay tests declared boundary bytes, not universal determinism. "
+            "The replay child is not sandboxed from network or external filesystem writes. "
+            "Materialized intermediate paths are hashed after the process boundary and can be "
+            "source/replay compared, but are not attributed to a stage. Where present, "
+            "cooperative stage checkpoints are program self-report that locked callsites were "
+            "reached, not independent observation of stage computation or in-memory values. "
+            "Pipeline stages without checkpoints remain declared only. Pathless or in-memory "
+            "intermediates remain not runtime-observed even when checkpoints are present; "
+            "pre/post changes do not prove write causation."
         ),
     }
 
@@ -1195,6 +1370,13 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .details dl { margin: 0; display: grid; grid-template-columns: 118px 1fr; gap: 7px 9px; }
 .details dt { color: var(--muted); }
 .details dd { margin: 0; overflow-wrap: anywhere; }
+.detail-run-link {
+  max-width: 100%;
+  padding: 2px 6px;
+  color: var(--selected);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
 .detail-note { color: var(--muted); line-height: 1.4; }
 .assessment-control { margin: 0 0 12px; }
 .assessment-control[hidden] { display: none; }
@@ -1385,6 +1567,11 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 <main>
   <h1>Research trajectory</h1>
   <p id="summary" class="summary"></p>
+  <p id="semantic-policy-summary" class="scope"></p>
+  <details id="semantic-mapping-details">
+    <summary>Semantic mapping decisions</summary>
+    <ul id="semantic-mapping-list"></ul>
+  </details>
   <p id="coverage" class="scope"></p>
   <div class="controls">
     <label for="layer-select">Layer
@@ -2666,13 +2853,82 @@ _HTML_SCRIPT = """
   document.getElementById("summary").textContent =
     data.summary.semantic_nodes + " semantic nodes · " +
     data.summary.semantic_edges + " semantic edges · " +
-    data.summary.runs + " run receipts · " +
+    data.summary.byte_repeatable_runs + "/" + data.summary.runs +
+      " byte-repeatable run boundaries · " +
+    (data.summary.stage_checkpoint_runs
+      ? data.summary.complete_stage_checkpoint_runs + "/" +
+        data.summary.stage_checkpoint_runs +
+        " complete cooperative stage traces · "
+      : "") +
+    data.summary.ready_claim_bases + "/" + data.summary.claim_bases +
+      " reviewed claim provenance paths ready · " +
     data.summary.current_assessments + " current semantic assessments · " +
     data.summary.active_proofs + "/" + data.summary.proof_nodes +
       " claim-level active formal outcomes · " +
     data.summary.claim_conflicts + " claim conflicts · " +
     data.summary.derivations + " derivation submissions · " +
     data.summary.errors + " errors · " + data.summary.warnings + " warnings";
+  const semanticPolicy = data.semantic_policy || {};
+  const semanticActivation = semanticPolicy.active_policy_active
+    ? ("active explicit release with " +
+       (semanticPolicy.active_mapping_ids || []).length + " mapping(s)")
+    : (semanticPolicy.active_policy_configured
+       ? ("configured release is invalid or inactive" +
+          ((semanticPolicy.active_policy_findings || []).length
+           ? " (" + semanticPolicy.active_policy_findings.length + " finding(s))"
+           : ""))
+       : semanticPolicy.require_active_policy
+       ? "required but no valid active release"
+       : "no active release configured");
+  document.getElementById("semantic-policy-summary").textContent =
+    "Semantic normalization: " + (semanticPolicy.integrity || "unknown") +
+    " integrity; " + (data.summary.semantic_mappings || 0) +
+    " current mapping record(s); " + (data.summary.semantic_releases || 0) +
+    " release(s); " + semanticActivation + ".";
+  const semanticMappingList = document.getElementById("semantic-mapping-list");
+  const semanticMappings = semanticPolicy.current_mappings || [];
+  if (!semanticMappings.length) {
+    const item = document.createElement("li");
+    item.textContent = "No semantic mapping review leaves are recorded.";
+    semanticMappingList.appendChild(item);
+  } else {
+    semanticMappings.forEach(function (mapping) {
+      const subject = mapping.subject || {};
+      const review = mapping.review || {};
+      const current = mapping.current_derived || {};
+      const target = mapping.target && mapping.target.iri
+        ? mapping.target.iri : "unmapped";
+      const item = document.createElement("li");
+      const headline = document.createElement("div");
+      headline.textContent =
+        (subject.terminology_id || "?") + "/" + (subject.term_id || "?") +
+        " -> " + (mapping.relation || "?") + " -> " + target +
+        "; review " + (review.state || "?") + " by " + (review.actor || "?") +
+        "; live policy eligibility " +
+        (current.eligible_for_policy ? "yes" : "no") +
+        "; selected in active release " + (mapping.active ? "yes" : "no") + ".";
+      item.appendChild(headline);
+      const meaning = document.createElement("div");
+      meaning.textContent =
+        "Local definition: " + ((mapping.local_term || {}).definition || "not recorded") +
+        "; proposal by " + ((mapping.provenance || {}).agent || "?") +
+        "; rationale: " + (mapping.rationale || "not recorded") + ".";
+      item.appendChild(meaning);
+      if ((mapping.limitations || []).length) {
+        const limitations = document.createElement("div");
+        limitations.textContent = "Limitations: " + mapping.limitations.join("; ") + ".";
+        item.appendChild(limitations);
+      }
+      if ((current.findings || []).length) {
+        const findings = document.createElement("div");
+        findings.textContent = "Live findings: " + current.findings.map(function (finding) {
+          return (finding.code || "finding") + ": " + (finding.detail || "");
+        }).join("; ");
+        item.appendChild(findings);
+      }
+      semanticMappingList.appendChild(item);
+    });
+  }
   document.getElementById("coverage").textContent = data.coverage_notice;
   if (restoredLayout === "restored") {
     layoutStatus.textContent =
@@ -2826,7 +3082,13 @@ _HTML_SCRIPT = """
       : isProof
       ? node.value || "conditional conclusion"
       : node.kind === "run"
-      ? "partial lineage · " + (node.output_transitions || []).filter(function (item) { return item.produced; }).length + " produced"
+      ? (node.current_gate_role === "historical_replaced"
+        ? "historical replacement · stale"
+        : stageTraceSummary(node) ||
+        (((node.replays || []).some(function (item) {
+            return Boolean((item.current_derived || {}).byte_repeatable_current);
+          }) ? "byte-repeatable boundary" : "partial lineage") +
+          " · " + (node.pipeline_stages || []).length + " declared stages"))
       : (node.path || node.value || "");
     group.appendChild(svgElement("text", {
       x: isAssessment ? node.width / 2 : 13, y: 64, "class": "ct-path",
@@ -2918,9 +3180,44 @@ _HTML_SCRIPT = """
     container.appendChild(description);
   }
 
+  function appendRunLinkDetail(container, label, runId) {
+    if (!runId) return;
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const description = document.createElement("dd");
+    const replacementKey = "receipt:" + runId;
+    if (nodes.has(replacementKey)) {
+      const linkButton = document.createElement("button");
+      linkButton.type = "button";
+      linkButton.className = "detail-run-link";
+      linkButton.textContent = runId;
+      linkButton.setAttribute("data-replacement-run-id", runId);
+      linkButton.setAttribute("aria-label", "Open replacement run " + runId);
+      linkButton.addEventListener("click", function () {
+        selectNode(replacementKey);
+      });
+      description.appendChild(linkButton);
+    } else {
+      description.textContent = runId + " (run node unavailable in this view)";
+    }
+    container.appendChild(term);
+    container.appendChild(description);
+  }
+
   function humanLabel(value) {
     return String(value === null || value === undefined ? "not stated" : value)
       .replace(/_/g, " ");
+  }
+
+  function stageTraceSummary(node) {
+    const trace = node && node.stage_trace;
+    if (!trace || typeof trace !== "object") return null;
+    const checkpointCount = Array.isArray(trace.checkpoints)
+      ? trace.checkpoints.length : 0;
+    const requiredCount = Array.isArray(trace.required_stage_ids)
+      ? trace.required_stage_ids.length : 0;
+    const state = humanLabel(trace.state).replace(/^cooperative report /, "");
+    return checkpointCount + "/" + requiredCount + " checkpoints · " + state;
   }
 
   function evidencePlanMode(plan) {
@@ -3222,6 +3519,18 @@ _HTML_SCRIPT = """
           list, "Declaration comparison", humanLabel(edge.declaration_comparison)
         );
       }
+      if (edge.output_evidence) {
+        appendDetail(list, "Boundary evidence", humanLabel(edge.output_evidence));
+      }
+      if (edge.stage_attribution) {
+        appendDetail(list, "Stage attribution", humanLabel(edge.stage_attribution));
+      }
+      if (edge.current !== null && edge.current !== undefined) {
+        appendDetail(list, "Current binding", edge.current ? "yes" : "no");
+      }
+      if (edge.integrity_state) {
+        appendDetail(list, "Binding integrity", humanLabel(edge.integrity_state));
+      }
       const boundary = document.createElement("p");
       boundary.className = "detail-note";
       boundary.textContent = ({
@@ -3255,6 +3564,7 @@ _HTML_SCRIPT = """
       return;
     }
     const node = nodes.get(selected);
+    const proof = node.kind === "proof" ? (node.proof || {}) : null;
     detailContent.className = "";
     detailTitle.textContent = node.label;
     const list = document.createElement("dl");
@@ -3270,11 +3580,57 @@ _HTML_SCRIPT = """
       appendDetail(list, "Plan schema", (node.evidence_plan || {}).schema_version);
       appendDetail(list, "Required bindings", evidencePlanBindings(node.evidence_plan));
       appendDetail(list, "Bound runs", node.run_ids);
+      appendDetail(list, "Claim provenance readiness", (node.claim_basis || []).map(function (item) {
+        return item.result_id + " -> " + item.claim_id + ": " + item.overall +
+          " (execution=" + item.execution_state + ", contract=" + item.contract_state +
+          ", ancestry=" + item.ancestry_state +
+          ", intermediate=" + item.materialized_intermediate_state +
+          ", replay=" + item.replay_state + ", method=" + item.method_state +
+          ", checkpoint=" + (item.stage_checkpoint_state || "not available") + ")";
+      }));
+      appendDetail(list, "Claim cooperative checkpoint state", (node.claim_basis || []).map(function (item) {
+        return item.result_id + " -> " + item.claim_id + ": " +
+          (item.stage_checkpoint_state || "not available");
+      }));
+      appendDetail(list, "Claim stage execution observation", (node.claim_basis || []).map(function (item) {
+        return item.result_id + " -> " + item.claim_id + ": " +
+          (item.stage_execution_observation || "not available");
+      }));
+      appendDetail(list, "Claim producer stages", (node.claim_basis || []).map(function (item) {
+        return item.result_id + " -> " + item.claim_id + ": " +
+          (item.producer_stage_id || "not available");
+      }));
+      appendDetail(list, "Exact method ancestry", (node.claim_basis || []).reduce(function (items, basis) {
+        return items.concat((basis.ancestry_method_steps || []).map(function (step) {
+          return basis.result_id + ": " + step.stage_id + " -> " +
+            step.method_id + "/" + step.method_step_id;
+        }));
+      }, []));
+      appendDetail(list, "Ancestry materialized intermediates", (node.claim_basis || []).reduce(function (items, basis) {
+        return items.concat((basis.ancestry_materialized_intermediates || []).map(function (intermediate) {
+          return basis.result_id + ": " + intermediate.path + " (" +
+            intermediate.binding_state + ")";
+        }));
+      }, []));
+      appendDetail(list, "Missing claim method steps", (node.claim_basis || []).reduce(function (items, basis) {
+        return items.concat((basis.missing_claim_method_steps || []).map(function (step) {
+          return basis.result_id + ": " + step.method_id + "/" + step.method_step_id;
+        }));
+      }, []));
+      appendDetail(list, "Off-ancestry claim method steps", (node.claim_basis || []).reduce(function (items, basis) {
+        return items.concat((basis.off_ancestry_declared_method_steps || []).map(function (step) {
+          return basis.result_id + ": " + step.method_id + "/" + step.method_step_id;
+        }));
+      }, []));
+      appendDetail(list, "Method conformance reviews", (node.method_assessments || []).map(function (item) {
+        const current = item.current_derived || {};
+        return item.id + ": " + current.effective_review_state +
+          ", implementation=" + (current.implementation_current ? "current" : "not current");
+      }));
       appendDetail(list, "Findings", (node.findings || []).map(function (item) {
         return item.severity + ": " + item.code + " — " + item.detail;
       }));
     } else if (node.kind === "proof") {
-      const proof = node.proof || {};
       appendDetail(list, "Target", proof.rendered_target);
       appendDetail(list, "Formal outcome", proof.rendered_outcomes || []);
       appendDetail(list, "Outcome relation", humanLabel(proof.outcome_relation));
@@ -3288,6 +3644,9 @@ _HTML_SCRIPT = """
           (item.current_version || item.current_sha256 || "absent") + ")";
       }));
       appendDetail(list, "Used premise results", proof.used_result_ids || []);
+      appendDetail(list, "Execution basis", (proof.execution_basis || {}).state);
+      appendDetail(list, "Claim-basis semantic reviews", (proof.execution_basis || {}).claim_basis_assessment_ids || []);
+      appendDetail(list, "Symbolic state unchanged by execution basis", (proof.execution_basis || {}).does_not_change_symbolic_proof_state ? "yes" : "not recorded");
       appendDetail(list, "Stored evidence plan", evidencePlanMode(proof.evidence_plan));
       appendDetail(list, "Stored plan schema", (proof.evidence_plan || {}).schema_version);
       appendDetail(list, "Stored required bindings", evidencePlanBindings(proof.evidence_plan));
@@ -3312,15 +3671,109 @@ _HTML_SCRIPT = """
       }));
     } else if (node.kind === "run") {
       appendDetail(list, "Exit code", node.returncode);
+      appendDetail(list, "Event schema", node.event_schema_version);
+      appendDetail(list, "Computation", node.computation_id);
+      appendDetail(list, "Pipeline contract", node.pipeline_contract_id);
+      appendDetail(list, "Contract state", node.pipeline_contract_state);
+      appendDetail(list, "Current gate role", node.current_gate_role
+        ? (node.current_gate_role === "historical_replaced"
+          ? "historical replacement" : humanLabel(node.current_gate_role))
+        : null);
+      appendRunLinkDetail(list, "Replacement run", node.replacement_run_id);
+      appendDetail(list, "Replacement replay certificates",
+        node.replacement_replay_ids || []);
+      appendDetail(list, "Event-store integrity", node.event_store_integrity);
+      appendDetail(list, "Run-link integrity", node.link_integrity);
+      appendDetail(list, "Evidence eligible", node.evidence_eligible ? "yes" : "no");
+      appendDetail(list, "Replay conflict", node.replay_conflict ? "yes" : "no");
+      appendDetail(list, "Conflicting replay certificates",
+        node.replay_conflict_certificate_ids || []);
+      appendDetail(list, "Run-link issues", (node.link_issues || []).map(function (item) {
+        return item.code + ": " + item.detail;
+      }));
+      appendDetail(list, "Declared internal stages", (node.pipeline_stages || []).map(function (item) {
+        const dependencies = (item.depends_on || []).length ? item.depends_on.join(", ") : "entry";
+        return item.id + ": " + item.method_id + "/" + item.method_step_id +
+          "; depends on " + dependencies + "; " + item.execution_observation;
+      }));
+      const stageTrace = node.stage_trace && typeof node.stage_trace === "object"
+        ? node.stage_trace : null;
+      appendDetail(list, "Cooperative checkpoint trace", stageTrace
+        ? humanLabel(stageTrace.state) + " (" +
+          (Array.isArray(stageTrace.checkpoints) ? stageTrace.checkpoints.length : 0) +
+          "/" +
+          (Array.isArray(stageTrace.required_stage_ids)
+            ? stageTrace.required_stage_ids.length : 0) + " checkpoints)"
+        : "not requested or recorded");
+      appendDetail(list, "Program-emitted stage checkpoints", stageTrace
+        ? (stageTrace.checkpoints || []).map(function (item) {
+          const callsite = item.callsite || {};
+          return "#" + item.sequence + " " + item.stage_id + " @ " +
+            (callsite.path || "unknown path") + ":" +
+            (callsite.line || "unknown line") + " (" +
+            (item.code_node_id || "unknown code node") + ")";
+        }) : []);
+      appendDetail(list, "Cooperative checkpoint issues", stageTrace
+        ? (stageTrace.issues || []).map(function (item) {
+          return item.code + ": " + item.detail;
+        }) : []);
       appendDetail(list, "Inputs", node.declared_inputs);
       appendDetail(list, "Outputs", node.output_transitions.map(function (item) {
-        return item.path + " (" + item.transition + (item.produced ? ", produced" : "") + ")";
+        const observation = item.produced
+          ? "; content changed in process window; write causation not proven"
+          : "; no content change observed in process window";
+        return item.path + " (" + item.transition + observation + ")";
+      }));
+      appendDetail(list, "Declared materialized intermediate paths", node.declared_intermediates || []);
+      appendDetail(list, "Materialized intermediate file transitions", (node.intermediate_transitions || []).map(function (item) {
+        const after = item.after || {};
+        const digest = after.sha256 ? "; after sha256=" + after.sha256 : "";
+        const observation = item.produced
+          ? "; content changed in process window; stage causation not proven"
+          : "; no content change observed in process window";
+        return item.path + " (" + item.transition + observation + digest + ")";
+      }));
+      appendDetail(list, "Replay certificates", (node.replays || []).map(function (item) {
+        const current = item.current_derived || {};
+        return item.id + ": " + item.outcome +
+          (current.byte_repeatable_current ? " (boundary current" : " (not current") +
+          (current.review_ready_current ? ", review-ready)" : ", not review-ready)");
+      }));
+      appendDetail(list, "Replay undeclared writes", (node.replays || []).reduce(function (items, replay) {
+        return items.concat(replay.undeclared_write_paths || []);
+      }, []));
+      appendDetail(list, "Replay materialized-intermediate comparison", (node.replays || []).map(function (item) {
+        const comparison = item.comparison || {};
+        if (!("materialized_intermediates_equal" in comparison)) {
+          return item.id + ": not recorded by this legacy replay schema";
+        }
+        return item.id + ": attempts equal=" + comparison.materialized_intermediates_equal +
+          ", all match source receipt=" + comparison.all_materialized_intermediates_match_source_receipt;
+      }));
+      appendDetail(list, "Replay cooperative-stage trace comparison", (node.replays || []).map(function (item) {
+        const comparison = item.comparison || {};
+        if (!("all_stage_traces_complete" in comparison)) {
+          return item.id + ": not recorded by this replay schema";
+        }
+        return item.id + ": all complete=" + comparison.all_stage_traces_complete +
+          ", attempts equal=" + comparison.stage_traces_equal +
+          ", all match source receipt=" +
+          comparison.all_stage_traces_match_source_receipt +
+          ", current=" + Boolean(
+            (item.current_derived || {}).stage_trace_repeatable_current
+          );
       }));
       appendDetail(list, "Bindings", node.bindings.map(function (item) {
         const basis = item.binding_kind === "explicit_run_reference"
           ? "explicit run reference"
           : (item.declaration_comparison || "not compared");
-        return item.node_id + " (" + basis + ")";
+        const evidence = item.output_evidence
+          ? "; boundary evidence=" + item.output_evidence : "";
+        const stage = item.stage_attribution
+          ? "; stage attribution=" + item.stage_attribution : "";
+        const current = item.current === null || item.current === undefined
+          ? "" : "; current=" + (item.current ? "yes" : "no");
+        return item.node_id + " (" + basis + evidence + stage + current + ")";
       }));
       appendDetail(list, "Coverage", node.coverage);
     }
@@ -3336,6 +3789,23 @@ _HTML_SCRIPT = """
         unknown: "Neither the formal target nor its explicit opposite is derivable under the named project rule pack."
       }[proof.proof_state] || "A formal outcome was computed under the named project rule pack.";
       boundary.textContent = stateBoundary + " This is not a certificate of truth, scientific meaning, or evidentiary support.";
+      detailContent.appendChild(boundary);
+    } else if (node.kind === "run") {
+      assessmentControl.hidden = true;
+      const boundary = document.createElement("p");
+      boundary.className = "scope";
+      const checkpointBoundary = node.stage_trace
+        ? "Cooperative checkpoints are child-program self-report that locked callsites were reached. They are not independent observation of stage computation, scientific meaning, or in-memory values. "
+        : "Internal stages and pathless or in-memory intermediates remain declared, not runtime-observed. ";
+      const gateBoundary = node.current_gate_role === "historical_replaced"
+        ? "This stale historical run is retained for audit and replaced at the current evidence gate by the linked later run and replay certificates. Its event-store and run-link integrity remain displayed separately. "
+        : (node.evidence_eligible
+          ? "This run is mechanically eligible under the current event-store and start/finish-link checks. "
+          : "This historical run is quarantined by an event-store or start/finish-link integrity failure and cannot supply current evidence. ");
+      boundary.textContent = gateBoundary +
+        "The receipt and any replay certificate cover declared input/output bytes and visible fresh-workspace effects at the process boundary. A path-bearing internal output is automatically classified as a materialized intermediate and hashed after the process; that file-boundary observation is not attributed to a stage. " +
+        checkpointBoundary +
+        "The child is not sandboxed from network or external filesystem writes; byte-repeatable replay is not proof of universal determinism or scientific validity.";
       detailContent.appendChild(boundary);
     } else {
       const review = configureAssessmentSelector(node);
@@ -3438,15 +3908,32 @@ def render_view(cfg, output_path):
     for asset in [
         *getattr(cfg, "logic_vocabulary_paths", []),
         *getattr(cfg, "logic_rule_pack_paths", []),
+        *getattr(cfg, "semantic_terminology_paths", []),
+        *getattr(cfg, "semantic_ontology_lock_paths", []),
     ]:
         protected.add(Path(asset).resolve(strict=False))
+    for lock in (((report.get("semantics") or {}).get("assets") or {})
+                 .get("ontology_locks") or []):
+        declared_lock_path = Path(lock["path"])
+        lock_path = (
+            declared_lock_path if declared_lock_path.is_absolute()
+            else cfg.base / declared_lock_path
+        ).resolve(strict=False)
+        lock_base = lock_path.parent
+        for item in lock.get("documents") or []:
+            protected.add((lock_base / item["path"]).resolve(strict=False))
+        if isinstance(lock.get("index"), dict) and lock["index"].get("path"):
+            protected.add((lock_base / lock["index"]["path"]).resolve(strict=False))
     for node in (report.get("graph") or {}).get("nodes", []):
         if node.get("path"):
             declared = cfg.resolve(node["path"]).resolve(strict=False)
             protected.add(declared)
             protected.add(Path(str(declared) + ".manifest.json").resolve(strict=False))
     inside_provenance = False
-    for store in (cfg.events_path, cfg.assessments_path, cfg.derivations_path):
+    for store in (
+        cfg.events_path, cfg.assessments_path, cfg.derivations_path,
+        cfg.semantic_mappings_path, cfg.semantic_policies_path,
+    ):
         try:
             inside_store = destination.is_relative_to(store.resolve())
         except AttributeError:  # Python 3.9

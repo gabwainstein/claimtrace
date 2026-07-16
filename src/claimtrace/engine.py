@@ -17,9 +17,8 @@ import hashlib
 import heapq
 import json
 import os
+import re
 import tempfile
-import threading
-import time
 from collections import defaultdict, deque
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,6 +26,9 @@ from pathlib import Path
 from .config import strict_json_loads
 
 SCHEMA_VERSION = "1.0"
+RENDER_MANIFEST_SCHEMA = "claimtrace.render-manifest/2"
+METHOD_SPEC_SCHEMA = "claimtrace.method-spec/1"
+METHOD_REQUIREMENTS_SCHEMA = "claimtrace.method-requirements/1"
 
 # edges whose `to` DEPENDS ON `from` (information flows from -> to)
 DEP_RELS = {"produces", "renders", "supports", "cites", "derives_from", "reads",
@@ -44,15 +46,192 @@ KNOWN_TYPES = {"question", "hypothesis", "prediction", "data", "artifact", "code
                "claim", "conclusion", "doc", "doc_span", "experiment", "method", "decision",
                "reference", "concept"}
 KNOWN_RELS = DEP_RELS | ANNOT_RELS
+CLAIM_LIKE_TYPES = {"claim", "hypothesis", "prediction", "conclusion"}
+METHOD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+MAX_METHOD_STEPS = 2_000
+MAX_CLAIM_METHODS = 2_000
+MAX_CLAIM_METHOD_STEP_REFS = 20_000
 
 TYPE_RANK = {"question": 0, "hypothesis": 1, "prediction": 2, "data": 3, "code": 4,
              "method": 4, "experiment": 5, "artifact": 6, "figure": 7, "claim": 8,
              "conclusion": 9, "decision": 10, "doc_span": 11, "doc": 12}
-_PROCESS_GRAPH_LOCK = threading.Lock()
-
-
 class GraphError(Exception):
     """The graph file is missing, unparseable, or structurally invalid."""
+
+
+def _method_token(value, label, graph_name):
+    if not isinstance(value, str) or not METHOD_TOKEN_RE.fullmatch(value):
+        raise GraphError(
+            f"{graph_name}: {label} must be a 1-256 character identifier using "
+            "letters, digits, . _ : or -"
+        )
+    return value
+
+
+def _validate_method_spec(node, graph_name):
+    """Validate one closed method declaration and return its declared step ids."""
+    node_id = node["id"]
+    if node.get("type") != "method":
+        raise GraphError(
+            f"{graph_name}: node {node_id!r} field 'method_spec' is only valid on method nodes"
+        )
+    spec = node["method_spec"]
+    if not isinstance(spec, dict) or set(spec) != {"schema_version", "steps"}:
+        raise GraphError(
+            f"{graph_name}: method node {node_id!r} field 'method_spec' must contain "
+            "exactly schema_version and steps"
+        )
+    if spec.get("schema_version") != METHOD_SPEC_SCHEMA:
+        raise GraphError(
+            f"{graph_name}: method node {node_id!r} has unsupported method_spec schema "
+            f"{spec.get('schema_version')!r}"
+        )
+    steps = spec.get("steps")
+    if not isinstance(steps, list) or not steps or len(steps) > MAX_METHOD_STEPS:
+        raise GraphError(
+            f"{graph_name}: method node {node_id!r} method_spec.steps must be a "
+            f"non-empty list of at most {MAX_METHOD_STEPS} steps"
+        )
+    step_ids = set()
+    for index, step in enumerate(steps):
+        label = f"method node {node_id!r} method_spec.steps[{index}]"
+        if not isinstance(step, dict) or set(step) != {"id", "statement", "required"}:
+            raise GraphError(
+                f"{graph_name}: {label} must contain exactly id, statement, and required"
+            )
+        step_id = _method_token(step.get("id"), f"{label}.id", graph_name)
+        statement = step.get("statement")
+        if (not isinstance(statement, str) or not statement.strip()
+                or len(statement) > 16_384):
+            raise GraphError(
+                f"{graph_name}: {label}.statement must be non-empty text of at most "
+                "16384 characters"
+            )
+        if not isinstance(step.get("required"), bool):
+            raise GraphError(f"{graph_name}: {label}.required must be a boolean")
+        if step_id in step_ids:
+            raise GraphError(
+                f"{graph_name}: method node {node_id!r} has duplicate method step {step_id!r}"
+            )
+        step_ids.add(step_id)
+    return frozenset(step_ids)
+
+
+def _validate_method_requirements(node, graph_name):
+    """Validate one closed claim-to-method declaration without inferring any relation."""
+    node_id = node["id"]
+    if node.get("type") not in CLAIM_LIKE_TYPES:
+        raise GraphError(
+            f"{graph_name}: node {node_id!r} field 'method_requirements' is only valid on "
+            "claim, hypothesis, prediction, or conclusion nodes"
+        )
+    requirements = node["method_requirements"]
+    if (not isinstance(requirements, dict)
+            or set(requirements) != {"schema_version", "methods"}):
+        raise GraphError(
+            f"{graph_name}: claim-like node {node_id!r} field 'method_requirements' must "
+            "contain exactly schema_version and methods"
+        )
+    if requirements.get("schema_version") != METHOD_REQUIREMENTS_SCHEMA:
+        raise GraphError(
+            f"{graph_name}: claim-like node {node_id!r} has unsupported "
+            f"method_requirements schema {requirements.get('schema_version')!r}"
+        )
+    methods = requirements.get("methods")
+    if not isinstance(methods, list) or not methods or len(methods) > MAX_CLAIM_METHODS:
+        raise GraphError(
+            f"{graph_name}: claim-like node {node_id!r} method_requirements.methods must "
+            f"be a non-empty list of at most {MAX_CLAIM_METHODS} methods"
+        )
+    normalized = []
+    seen_methods = set()
+    total_step_refs = 0
+    for index, method in enumerate(methods):
+        label = f"claim-like node {node_id!r} method_requirements.methods[{index}]"
+        if not isinstance(method, dict) or set(method) != {"method_id", "step_ids"}:
+            raise GraphError(
+                f"{graph_name}: {label} must contain exactly method_id and step_ids"
+            )
+        method_id = _method_token(method.get("method_id"), f"{label}.method_id", graph_name)
+        if method_id in seen_methods:
+            raise GraphError(
+                f"{graph_name}: claim-like node {node_id!r} references method "
+                f"{method_id!r} more than once"
+            )
+        seen_methods.add(method_id)
+        step_ids = method.get("step_ids")
+        if (not isinstance(step_ids, list) or not step_ids
+                or len(step_ids) > MAX_METHOD_STEPS):
+            raise GraphError(
+                f"{graph_name}: {label}.step_ids must be a non-empty list of at most "
+                f"{MAX_METHOD_STEPS} step identifiers"
+            )
+        checked_steps = []
+        seen_steps = set()
+        for step_index, value in enumerate(step_ids):
+            step_id = _method_token(
+                value, f"{label}.step_ids[{step_index}]", graph_name,
+            )
+            if step_id in seen_steps:
+                raise GraphError(
+                    f"{graph_name}: claim-like node {node_id!r} references method step "
+                    f"{method_id!r}/{step_id!r} more than once"
+                )
+            seen_steps.add(step_id)
+            checked_steps.append(step_id)
+        total_step_refs += len(checked_steps)
+        if total_step_refs > MAX_CLAIM_METHOD_STEP_REFS:
+            raise GraphError(
+                f"{graph_name}: claim-like node {node_id!r} exceeds the limit of "
+                f"{MAX_CLAIM_METHOD_STEP_REFS} method step references"
+            )
+        normalized.append((method_id, checked_steps))
+    return normalized
+
+
+def _validate_method_semantics(graph, graph_name):
+    """Validate authored method meaning and exact claim references, without inference."""
+    method_steps = {}
+    for node in graph["nodes"]:
+        if "method_spec" in node:
+            method_steps[id(node)] = _validate_method_spec(node, graph_name)
+        if "method_requirements" in node:
+            _validate_method_requirements(node, graph_name)
+
+    # Match load_graph's documented last-definition-wins view. Duplicate ids are still
+    # reported by structural checking; this pass never guesses between definitions.
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    for claim in graph["nodes"]:
+        if "method_requirements" not in claim:
+            continue
+        for method_id, required_steps in _validate_method_requirements(claim, graph_name):
+            method = nodes.get(method_id)
+            if method is None:
+                raise GraphError(
+                    f"{graph_name}: claim-like node {claim['id']!r} references missing "
+                    f"method node {method_id!r}"
+                )
+            if method.get("type") != "method":
+                raise GraphError(
+                    f"{graph_name}: claim-like node {claim['id']!r} reference {method_id!r} "
+                    "does not identify a method node"
+                )
+            if method.get("status") not in {None, "current", "confirmed"}:
+                raise GraphError(
+                    f"{graph_name}: claim-like node {claim['id']!r} references inactive "
+                    f"method node {method_id!r}"
+                )
+            declared_steps = method_steps.get(id(method))
+            if declared_steps is None:
+                raise GraphError(
+                    f"{graph_name}: referenced method node {method_id!r} needs a method_spec"
+                )
+            for step_id in required_steps:
+                if step_id not in declared_steps:
+                    raise GraphError(
+                        f"{graph_name}: claim-like node {claim['id']!r} references unknown "
+                        f"method step {method_id!r}/{step_id!r}"
+                    )
 
 
 # --------------------------------------------------------------------------- loading
@@ -94,6 +273,7 @@ def load_raw(cfg):
     for name, concept in g.get("concepts", {}).items():
         if not isinstance(name, str) or not isinstance(concept, dict):
             raise GraphError(f"{p.name}: each concept must have a string name and object value")
+    _validate_method_semantics(g, p.name)
     return g
 
 
@@ -120,9 +300,11 @@ def build_adj(edges):
         if r in ANNOT_RELS:
             continue
         if r == "reads":          # code READS artifact => code depends on artifact
-            up[f].append((t, r)); down[t].append((f, r))
+            up[f].append((t, r))
+            down[t].append((f, r))
         else:                      # from PRODUCES/SUPPORTS/... to => to depends on from
-            down[f].append((t, r)); up[t].append((f, r))
+            down[f].append((t, r))
+            up[t].append((f, r))
     for values in down.values():
         values.sort()
     for values in up.values():
@@ -136,7 +318,9 @@ def closure(start, adj):
         x = q.popleft()
         for (nb, r) in adj.get(x, []):
             if nb not in seen:
-                seen.add(nb); order.append((nb, r, x)); q.append(nb)
+                seen.add(nb)
+                order.append((nb, r, x))
+                q.append(nb)
     return order
 
 
@@ -146,7 +330,8 @@ def _ancestors(nid, up):
         x = q.popleft()
         for (u, r) in up.get(x, []):
             if u not in seen:
-                seen.add(u); q.append(u)
+                seen.add(u)
+                q.append(u)
     return seen
 
 
@@ -183,55 +368,41 @@ def _find_cycle(edges, idset):
     return None
 
 
-def _sha1(fp):
-    h = hashlib.sha1()
+def _file_hash(fp, algorithm):
+    """Hash one file with an explicitly selected supported manifest algorithm."""
+    if algorithm not in {"sha1", "sha256"}:
+        raise ValueError(f"unsupported file hash algorithm: {algorithm}")
+    h = hashlib.new(algorithm)
     with open(fp, "rb") as f:
         for b in iter(lambda: f.read(1 << 20), b""):
             h.update(b)
     return h.hexdigest()
 
 
+def _valid_hex_digest(value, length):
+    return (isinstance(value, str) and len(value) == length
+            and all(char in "0123456789abcdef" for char in value))
+
+
 @contextmanager
 def _graph_lock(graph_path):
     """Serialize graph read-modify-write operations across local processes.
 
-    The lock lives in the OS temp directory so using claimtrace does not dirty the research project.
-    Atomic replacement still protects readers from partial JSON; this lock prevents lost updates.
+    Reuse the hardened per-user runtime lock used by event publication: it rejects
+    link/reparse lock paths and verifies descriptor/path identity after acquisition.
+    Atomic replacement still protects readers from partial JSON; this lock prevents
+    lost updates without trusting a shared, predictable temp-directory entry.
     """
+    # Local import keeps the dependency graph engine independent at import time;
+    # events does not import engine and the shared helper is stdlib-only.
+    from .events import EventError, _event_lock
+
     graph_path = Path(graph_path).resolve()
-    lock_root = Path(tempfile.gettempdir()) / "claimtrace-locks"
-    lock_root.mkdir(parents=True, exist_ok=True)
-    lock_key = os.path.normcase(str(graph_path))
-    lock_name = hashlib.sha256(lock_key.encode("utf-8")).hexdigest() + ".lock"
-    lock_path = lock_root / lock_name
-    with _PROCESS_GRAPH_LOCK, lock_path.open("a+b") as handle:
-        handle.seek(0, os.SEEK_END)
-        if handle.tell() == 0:
-            handle.write(b"\0")
-            handle.flush()
-        handle.seek(0)
-        if os.name == "nt":
-            import msvcrt
-            deadline = time.monotonic() + 30
-            while True:
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError(f"timed out waiting for graph lock: {graph_path}")
-                    time.sleep(0.02)
-        else:
-            import fcntl
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
+    try:
+        with _event_lock(graph_path):
             yield
-        finally:
-            handle.seek(0)
-            if os.name == "nt":
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except EventError as exc:
+        raise GraphError(f"cannot acquire graph lock for {graph_path}: {exc}") from exc
 
 
 def backbone_bindings(node, concepts):
@@ -552,7 +723,41 @@ def compute_check(cfg, raw=None):
         if not isinstance(rec, dict) or not isinstance(rec.get("inputs"), list):
             problems.append(("INVALID_MANIFEST", nid, f"{man.name} needs an object with an inputs list"))
             continue
-        if rec.get("node") not in (None, nid):
+
+        # Historical manifests were unversioned and used SHA-1. Keep them readable so an
+        # existing lock can be checked before migration, but never guess when a manifest uses an
+        # explicit unknown schema or mixes legacy and current hash fields.
+        if "schema_version" not in rec:
+            hash_algorithm = "sha1"
+            input_hash_field = "sha1"
+            output_hash_field = "output_sha1"
+            digest_length = 40
+            mixed_output_field = "output_sha256"
+            mixed_input_field = "sha256"
+            legacy_manifest = True
+        elif rec["schema_version"] == RENDER_MANIFEST_SCHEMA:
+            hash_algorithm = "sha256"
+            input_hash_field = "sha256"
+            output_hash_field = "output_sha256"
+            digest_length = 64
+            mixed_output_field = "output_sha1"
+            mixed_input_field = "sha1"
+            legacy_manifest = False
+        else:
+            problems.append(("INVALID_MANIFEST", nid,
+                             f"{man.name} has unsupported schema_version "
+                             f"{rec.get('schema_version')!r}"))
+            continue
+
+        if mixed_output_field in rec or any(
+                isinstance(inp, dict) and mixed_input_field in inp for inp in rec["inputs"]):
+            problems.append(("INVALID_MANIFEST", nid,
+                             f"{man.name} mixes {hash_algorithm} fields with "
+                             f"{mixed_input_field}/{mixed_output_field}"))
+            continue
+
+        allowed_node_ids = (None, nid) if legacy_manifest else (nid,)
+        if rec.get("node") not in allowed_node_ids:
             problems.append(("INVALID_MANIFEST", nid,
                              f"{man.name} belongs to {rec.get('node')}, not {nid}"))
         if rec.get("output") != n["path"]:
@@ -571,13 +776,17 @@ def compute_check(cfg, raw=None):
         recorded = set()
         malformed_input = False
         for inp in rec["inputs"]:
-            if not isinstance(inp, dict) or not isinstance(inp.get("path"), str) or "sha1" not in inp:
+            if (not isinstance(inp, dict) or not isinstance(inp.get("path"), str)
+                    or not _valid_hex_digest(inp.get(input_hash_field), digest_length)):
                 malformed_input = True
                 continue
+            if inp["path"] in recorded:
+                malformed_input = True
             recorded.add(inp["path"])
         if malformed_input:
             problems.append(("INVALID_MANIFEST", nid,
-                             f"{man.name} has an input without path + sha1"))
+                             f"{man.name} has a duplicate input or an input without path + "
+                             f"valid {input_hash_field}"))
         if recorded != expected:
             missing = sorted(expected - recorded)
             extra = sorted(recorded - expected)
@@ -589,15 +798,17 @@ def compute_check(cfg, raw=None):
             problems.append(("MANIFEST_INPUT_MISMATCH", nid, "; ".join(detail)))
 
         output = cfg.resolve(n["path"])
-        if "output_sha1" not in rec:
-            problems.append(("INVALID_MANIFEST", nid, f"{man.name} has no output_sha1"))
-        elif output.exists() and _sha1(output) != rec["output_sha1"]:
+        if not _valid_hex_digest(rec.get(output_hash_field), digest_length):
+            problems.append(("INVALID_MANIFEST", nid,
+                             f"{man.name} has no valid {output_hash_field}"))
+        elif output.exists() and _file_hash(output, hash_algorithm) != rec[output_hash_field]:
             problems.append(("OUTPUT_DRIFT", nid,
                              f"output changed since lock: {n['path']} — re-render + re-snapshot"))
             dirty_roots.setdefault(nid, f"output content changed: {n['path']}")
 
         for inp in rec["inputs"]:
-            if not isinstance(inp, dict) or not isinstance(inp.get("path"), str) or "sha1" not in inp:
+            if (not isinstance(inp, dict) or not isinstance(inp.get("path"), str)
+                    or not _valid_hex_digest(inp.get(input_hash_field), digest_length)):
                 continue
             ip = cfg.resolve(inp["path"]) if not os.path.isabs(inp["path"]) else Path(inp["path"])
             if not Path(ip).exists():
@@ -606,7 +817,7 @@ def compute_check(cfg, raw=None):
                     if inode.get("path") == inp["path"]:
                         dirty_roots.setdefault(candidate, f"locked input missing: {inp['path']}")
                 break
-            if _sha1(ip) != inp["sha1"]:
+            if _file_hash(ip, hash_algorithm) != inp[input_hash_field]:
                 problems.append(("STALE_DATA", nid, f"input changed since lock: {inp['path']} — re-render + re-snapshot"))
                 for candidate, inode in nodes.items():
                     if inode.get("path") == inp["path"]:
@@ -669,7 +880,9 @@ def _log_entry_locked(cfg, entry, update=False):
     for e in new_edges:
         k = (e["from"], e["to"], e["rel"])
         if k not in have:
-            candidate["edges"].append(e); have.add(k); added += 1
+            candidate["edges"].append(e)
+            have.add(k)
+            added += 1
     issues = structural_issues(cfg, raw=candidate)
     if issues:
         kind, nid, detail = issues[0]

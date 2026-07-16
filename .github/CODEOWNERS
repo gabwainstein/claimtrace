@@ -1,0 +1,8 @@
+# Default ownership and explicit review boundaries for release-sensitive files.
+* @gabwainstein
+
+/.github/workflows/ @gabwainstein
+/pyproject.toml @gabwainstein
+/MANIFEST.in @gabwainstein
+/src/claimtrace/ @gabwainstein
+/SECURITY.md @gabwainstein

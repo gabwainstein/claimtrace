@@ -21,6 +21,18 @@ claimtrace.config.json schema (all paths relative to the config file's directory
       "allow_external_packs": false,
       "require_derivations": false,
       "max_provenance_bytes": 68719476736
+    },
+    "semantics": {                            # optional reviewed terminology normalization
+      "terminologies": ["claimtrace/semantics/local-terms.json"],
+      "ontology_locks": ["claimtrace/semantics/example.lock.json"],
+      "mappings": "claimtrace/semantics/mappings",
+      "policies": "claimtrace/semantics/policies",
+      "active_policy": null,
+      "allow_external_sources": false,
+      "require_active_policy": false,
+      "language": "en",
+      "max_candidates": 25,
+      "max_ontology_bytes": 536870912
     }
   }
 Canonical concepts live inside graph.json under "concepts" (so `impact` can read them).
@@ -28,13 +40,39 @@ Canonical concepts live inside graph.json under "concepts" (so `impact` can read
 from __future__ import annotations
 import json
 import os
+import re
+import stat
 from pathlib import Path
 
 CONFIG_NAME = "claimtrace.config.json"
+SEMANTIC_POLICY_ID_RE = re.compile(r"^semantic-policy:sha256:[0-9a-f]{64}$")
+SEMANTIC_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+MAX_SEMANTIC_ONTOLOGY_BYTES = 256 * 1024 * 1024 * 1024
+MAX_CONFIG_BYTES = 2 * 1024 * 1024
 
 DEFAULT_RENDER_TYPES = ["figure"]
 DEFAULT_INPUT_TYPES = ["data", "artifact", "code"]
 DEFAULT_RUN_OUTPUT_TYPES = ["artifact"]
+
+
+def _safe_config_display(value: object) -> str:
+    """Escape terminal controls and invalid Unicode in config diagnostics."""
+    return "".join(
+        f"\\u{ord(char):04x}"
+        if (ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F
+            or 0xD800 <= ord(char) <= 0xDFFF) else char
+        for char in str(value)
+    )
+
+
+def _config_stat_identity(value, *, include_ctime: bool = True) -> tuple:
+    identity = (
+        value.st_dev, value.st_ino, value.st_mode, value.st_size,
+        getattr(value, "st_mtime_ns", int(value.st_mtime * 1e9)),
+    )
+    if include_ctime:
+        identity += (getattr(value, "st_ctime_ns", int(value.st_ctime * 1e9)),)
+    return identity
 
 
 def strict_json_loads(text: str, source: str = "JSON"):
@@ -53,6 +91,40 @@ def strict_json_loads(text: str, source: str = "JSON"):
     return json.loads(text, object_pairs_hook=pairs, parse_constant=invalid_constant)
 
 
+def _read_config_text(path: Path) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("config is not a regular file")
+        if before.st_size > MAX_CONFIG_BYTES:
+            raise ValueError(f"config exceeds the {MAX_CONFIG_BYTES}-byte limit")
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, MAX_CONFIG_BYTES + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > MAX_CONFIG_BYTES:
+                raise ValueError(f"config exceeds the {MAX_CONFIG_BYTES}-byte limit")
+        after = os.fstat(descriptor)
+        current = os.stat(path, follow_symlinks=False)
+        if (total != before.st_size
+                or _config_stat_identity(before) != _config_stat_identity(after)
+                or _config_stat_identity(
+                    before, include_ctime=os.name != "nt",
+                ) != _config_stat_identity(
+                    current, include_ctime=os.name != "nt",
+                )):
+            raise ValueError("config changed while it was being read")
+        return b"".join(chunks).decode("utf-8-sig")
+    finally:
+        os.close(descriptor)
+
+
 def find_config(start: str | os.PathLike | None = None) -> Path | None:
     p = Path(start or os.getcwd()).resolve()
     for d in [p, *p.parents]:
@@ -68,8 +140,8 @@ class Config:
         self.base = self.config_path.parent
         try:
             data = strict_json_loads(
-                self.config_path.read_text(encoding="utf-8-sig"), self.config_path.name)
-        except (json.JSONDecodeError, ValueError) as e:
+                _read_config_text(self.config_path), self.config_path.name)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, RecursionError) as e:
             raise SystemExit(f"claimtrace: {self.config_path.name} is not valid JSON - {e}")
         if not isinstance(data, dict):
             raise SystemExit(f"claimtrace: {self.config_path.name} must contain a JSON object")
@@ -82,6 +154,34 @@ class Config:
                 raise SystemExit(f"claimtrace: config field {key!r} must be a list of strings")
         if "require_assessments" in data and not isinstance(data["require_assessments"], bool):
             raise SystemExit("claimtrace: config field 'require_assessments' must be a boolean")
+        execution = data.get("execution", {})
+        if not isinstance(execution, dict):
+            raise SystemExit("claimtrace: config field 'execution' must be an object")
+        allowed_execution = {
+            "replays", "method_assessments", "require_contracts", "require_replay",
+            "require_method_assessments", "require_stage_checkpoints", "replay_attempts",
+        }
+        unknown_execution = set(execution) - allowed_execution
+        if unknown_execution:
+            raise SystemExit(
+                "claimtrace: unknown execution config field(s): "
+                + ", ".join(_safe_config_display(item) for item in sorted(unknown_execution))
+            )
+        for key in ("replays", "method_assessments"):
+            if key in execution and (
+                    not isinstance(execution[key], str) or not execution[key]):
+                raise SystemExit(f"claimtrace: execution.{key} must be a non-empty string")
+        for key in (
+            "require_contracts", "require_replay", "require_method_assessments",
+            "require_stage_checkpoints",
+        ):
+            if key in execution and not isinstance(execution[key], bool):
+                raise SystemExit(f"claimtrace: execution.{key} must be a boolean")
+        if "replay_attempts" in execution and (
+                not isinstance(execution["replay_attempts"], int)
+                or isinstance(execution["replay_attempts"], bool)
+                or not 2 <= execution["replay_attempts"] <= 10):
+            raise SystemExit("claimtrace: execution.replay_attempts must be an integer from 2 to 10")
         logic = data.get("logic", {})
         if not isinstance(logic, dict):
             raise SystemExit("claimtrace: config field 'logic' must be an object")
@@ -93,7 +193,7 @@ class Config:
         if unknown_logic:
             raise SystemExit(
                 "claimtrace: unknown logic config field(s): "
-                + ", ".join(sorted(unknown_logic))
+                + ", ".join(_safe_config_display(item) for item in sorted(unknown_logic))
             )
         if ("derivations" in logic
                 and (not isinstance(logic["derivations"], str) or not logic["derivations"])):
@@ -113,13 +213,88 @@ class Config:
             raise SystemExit(
                 "claimtrace: logic.max_provenance_bytes must be a positive 64-bit integer"
             )
+        semantics = data.get("semantics", {})
+        if not isinstance(semantics, dict):
+            raise SystemExit("claimtrace: config field 'semantics' must be an object")
+        allowed_semantics = {
+            "terminologies", "ontology_locks", "mappings", "policies", "active_policy",
+            "allow_external_sources", "require_active_policy", "language", "max_candidates",
+            "max_ontology_bytes",
+        }
+        unknown_semantics = set(semantics) - allowed_semantics
+        if unknown_semantics:
+            raise SystemExit(
+                "claimtrace: unknown semantics config field(s): "
+                + ", ".join(
+                    _safe_config_display(item) for item in sorted(unknown_semantics)
+                )
+            )
+        for key in ("terminologies", "ontology_locks"):
+            if key in semantics and (
+                    not isinstance(semantics[key], list)
+                    or not all(isinstance(item, str) and item for item in semantics[key])):
+                raise SystemExit(
+                    f"claimtrace: semantics.{key} must be a list of non-empty strings"
+                )
+        if len(semantics.get("terminologies", [])) > 1_000:
+            raise SystemExit(
+                "claimtrace: semantics.terminologies exceeds the 1000-path limit"
+            )
+        if len(semantics.get("ontology_locks", [])) > 256:
+            raise SystemExit(
+                "claimtrace: semantics.ontology_locks exceeds the 256-path limit"
+            )
+        for key in ("mappings", "policies", "language"):
+            if key in semantics and (
+                    not isinstance(semantics[key], str) or not semantics[key]):
+                raise SystemExit(f"claimtrace: semantics.{key} must be a non-empty string")
+        active_policy = semantics.get("active_policy")
+        if active_policy is not None and (
+                not isinstance(active_policy, str)
+                or not SEMANTIC_POLICY_ID_RE.fullmatch(active_policy)):
+            raise SystemExit(
+                "claimtrace: semantics.active_policy must be null or an exact "
+                "semantic-policy:sha256 ID"
+            )
+        for key in ("allow_external_sources", "require_active_policy"):
+            if key in semantics and not isinstance(semantics[key], bool):
+                raise SystemExit(f"claimtrace: semantics.{key} must be a boolean")
+        if "max_candidates" in semantics and (
+                not isinstance(semantics["max_candidates"], int)
+                or isinstance(semantics["max_candidates"], bool)
+                or not 1 <= semantics["max_candidates"] <= 1000):
+            raise SystemExit(
+                "claimtrace: semantics.max_candidates must be an integer from 1 to 1000"
+            )
+        if "max_ontology_bytes" in semantics and (
+                not isinstance(semantics["max_ontology_bytes"], int)
+                or isinstance(semantics["max_ontology_bytes"], bool)
+                or not 1 <= semantics["max_ontology_bytes"] <= MAX_SEMANTIC_ONTOLOGY_BYTES):
+            raise SystemExit(
+                "claimtrace: semantics.max_ontology_bytes must be a positive integer no "
+                f"larger than {MAX_SEMANTIC_ONTOLOGY_BYTES}"
+            )
+        if "language" in semantics and not SEMANTIC_LANGUAGE_RE.fullmatch(
+                semantics["language"]):
+            raise SystemExit(
+                "claimtrace: semantics.language must be a simple BCP-47-style language tag"
+            )
         self.data = data
         self.root = (self.base / data.get("root", ".")).resolve()
         self.graph_path = (self.base / data.get("graph", "claimtrace/graph.json")).resolve()
-        self.events_path = (self.base / data.get("events", "claimtrace/events")).resolve()
-        self.assessments_path = (
-            self.base / data.get("assessments", "claimtrace/assessments")
-        ).resolve()
+
+        def lexical_path(value: str) -> Path:
+            candidate = Path(value)
+            supplied = candidate if candidate.is_absolute() else self.base / candidate
+            return Path(os.path.abspath(str(supplied)))
+
+        # Provenance-store paths retain their declared lexical path. Resolving
+        # here would erase a symlink or junction before the store loader can
+        # reject it.
+        self.events_path = lexical_path(data.get("events", "claimtrace/events"))
+        self.assessments_path = lexical_path(
+            data.get("assessments", "claimtrace/assessments")
+        )
         v = data.get("verifiers")
         self.verifiers = (self.base / v).resolve() if v else None
         # node types whose render-staleness (mtime / content hash) is checked
@@ -129,6 +304,33 @@ class Config:
         # materialized node types expected to have run receipts under strict checking
         self.run_output_types = set(data.get("run_output_types", DEFAULT_RUN_OUTPUT_TYPES))
         self.require_assessments = bool(data.get("require_assessments", False))
+        self.execution = execution
+        self.require_execution_contracts = bool(execution.get("require_contracts", False))
+        self.require_replay = bool(execution.get("require_replay", False))
+        self.require_method_assessments = bool(
+            execution.get("require_method_assessments", False)
+        )
+        self.require_stage_checkpoints = bool(
+            execution.get("require_stage_checkpoints", False)
+        )
+        self.replay_attempts = execution.get("replay_attempts", 2)
+
+        def execution_path(value: str) -> Path:
+            resolved = lexical_path(value)
+            try:
+                resolved.relative_to(self.base)
+            except ValueError as exc:
+                raise SystemExit(
+                    f"claimtrace: execution path escapes the project config directory: {value}"
+                ) from exc
+            return resolved
+
+        self.replays_path = execution_path(
+            execution.get("replays", "claimtrace/replays")
+        )
+        self.method_assessments_path = execution_path(
+            execution.get("method_assessments", "claimtrace/method-assessments")
+        )
         self.logic = logic
 
         def logic_path(value: str, *, external_allowed: bool) -> Path:
@@ -174,6 +376,138 @@ class Config:
         self.logic_max_provenance_bytes = logic.get(
             "max_provenance_bytes", 64 * 1024 * 1024 * 1024,
         )
+        self.semantics = semantics
+
+        def semantic_path(value: str, *, external_allowed: bool) -> Path:
+            if (len(value) > 4_096
+                    or any(ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F
+                           or 0xD800 <= ord(char) <= 0xDFFF
+                           for char in value)):
+                raise SystemExit(
+                    "claimtrace: semantics paths must be bounded text without controls or "
+                    "lone Unicode surrogates"
+                )
+            try:
+                candidate = Path(value)
+                resolved = (
+                    candidate.resolve() if candidate.is_absolute()
+                    else (self.base / candidate).resolve()
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise SystemExit(f"claimtrace: invalid semantics path: {value!r}") from exc
+            if not external_allowed:
+                try:
+                    resolved.relative_to(self.base)
+                except ValueError as exc:
+                    raise SystemExit(
+                        "claimtrace: semantics path escapes the project config directory: "
+                        f"{value}"
+                    ) from exc
+            return resolved
+
+        allow_external_semantics = bool(semantics.get("allow_external_sources", False))
+        self.semantic_terminology_paths = [
+            semantic_path(item, external_allowed=allow_external_semantics)
+            for item in semantics.get("terminologies", [])
+        ]
+        self.semantic_ontology_lock_paths = [
+            semantic_path(item, external_allowed=allow_external_semantics)
+            for item in semantics.get("ontology_locks", [])
+        ]
+        for label, paths in (
+                ("terminologies", self.semantic_terminology_paths),
+                ("ontology_locks", self.semantic_ontology_lock_paths)):
+            identities = [os.path.normcase(str(path)) for path in paths]
+            if len(identities) != len(set(identities)):
+                raise SystemExit(f"claimtrace: semantics.{label} contains duplicate paths")
+        mappings_value = semantics.get("mappings", "claimtrace/semantics/mappings")
+        mappings_candidate = Path(mappings_value)
+        self.semantic_mappings_declared_path = (
+            mappings_candidate.absolute()
+            if mappings_candidate.is_absolute()
+            else (self.base / mappings_candidate).absolute()
+        )
+        self.semantic_mappings_path = semantic_path(
+            mappings_value, external_allowed=False,
+        )
+        policies_value = semantics.get("policies", "claimtrace/semantics/policies")
+        policies_candidate = Path(policies_value)
+        self.semantic_policies_declared_path = (
+            policies_candidate.absolute()
+            if policies_candidate.is_absolute()
+            else (self.base / policies_candidate).absolute()
+        )
+        self.semantic_policies_path = semantic_path(
+            policies_value, external_allowed=False,
+        )
+        if os.path.normcase(str(self.semantic_mappings_path)) == os.path.normcase(
+                str(self.semantic_policies_path)):
+            raise SystemExit("claimtrace: semantics.mappings and semantics.policies must differ")
+        self.semantic_active_policy = active_policy
+        self.allow_external_semantic_sources = allow_external_semantics
+        self.require_active_semantic_policy = bool(
+            semantics.get("require_active_policy", False)
+        )
+        self.semantic_language = semantics.get("language", "en").lower()
+        self.semantic_max_candidates = semantics.get("max_candidates", 25)
+        self.semantic_max_ontology_bytes = semantics.get(
+            "max_ontology_bytes", 512 * 1024 * 1024,
+        )
+
+        protected_files = {
+            os.path.normcase(str(path))
+            for path in (
+                self.config_path, self.graph_path,
+                *([] if self.verifiers is None else [self.verifiers]),
+                *self.logic_vocabulary_paths, *self.logic_rule_pack_paths,
+            )
+        }
+        semantic_sources = [
+            *self.semantic_terminology_paths, *self.semantic_ontology_lock_paths,
+        ]
+        for source in semantic_sources:
+            if os.path.normcase(str(source)) in protected_files:
+                raise SystemExit(
+                    "claimtrace: semantic source path overlaps a protected config, graph, "
+                    "verifier, or logic asset"
+                )
+        provenance_stores = [
+            self.events_path, self.assessments_path, self.derivations_path,
+            self.semantic_mappings_path, self.semantic_policies_path,
+            self.replays_path, self.method_assessments_path,
+        ]
+        for index, store in enumerate(provenance_stores):
+            for other in provenance_stores[index + 1:]:
+                try:
+                    nested = store == other or store.is_relative_to(other) or other.is_relative_to(store)
+                except AttributeError:  # Python 3.9
+                    nested = store == other
+                    for child, parent in ((store, other), (other, store)):
+                        try:
+                            child.relative_to(parent)
+                            nested = True
+                        except ValueError:
+                            pass
+                if nested:
+                    raise SystemExit(
+                        "claimtrace: event, assessment, derivation, semantic-mapping, "
+                        "semantic-policy, replay, and method-assessment stores must be distinct "
+                        "non-nested directories"
+                    )
+        for source in semantic_sources:
+            for store in provenance_stores:
+                try:
+                    inside = source.is_relative_to(store)
+                except AttributeError:  # Python 3.9
+                    try:
+                        source.relative_to(store)
+                        inside = True
+                    except ValueError:
+                        inside = False
+                if inside:
+                    raise SystemExit(
+                        "claimtrace: semantic source path must not be inside a provenance store"
+                    )
 
     def resolve(self, relpath: str) -> Path:
         """Resolve a node path (relative to project root) to an absolute path."""

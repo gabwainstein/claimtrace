@@ -1,0 +1,12 @@
+{
+  "ontology_id": "penguin-example:ontology",
+  "ontology_iri": "urn:claimtrace:example:penguin-study:ontology",
+  "version": "1.0.0",
+  "version_iri": "urn:claimtrace:example:penguin-study:ontology:1.0.0",
+  "documents": [
+    "ontology.ttl"
+  ],
+  "index": "index.json",
+  "imports": [],
+  "declared_imports_available": true
+}

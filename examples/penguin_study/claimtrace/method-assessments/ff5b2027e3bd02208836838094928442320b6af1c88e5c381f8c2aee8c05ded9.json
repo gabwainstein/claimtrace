@@ -1,0 +1,260 @@
+{
+  "id": "method-assessment:sha256:ff5b2027e3bd02208836838094928442320b6af1c88e5c381f8c2aee8c05ded9",
+  "schema_version": "claimtrace.method-conformance-assessment/1",
+  "recorded_at": "2026-07-15T11:59:04.259Z",
+  "subject": {
+    "method_id": "method:complete-case-ols",
+    "pipeline_contract_id": "pipeline-contract:sha256:2e4ac93d89eb4c771ab0ccb7470b3ccdc566e16b5e37216168c200c65a1a10e9"
+  },
+  "mechanical_snapshot": {
+    "pipeline_contract": {
+      "coverage": {
+        "boundary_files": "declared_paths_and_graph_roles_input_bytes_captured_by_run_receipt",
+        "code": "exact_files_text_anchors_and_declared_entrypoint",
+        "hidden_intermediates": "not_observed",
+        "in_memory_intermediates": "not_observed",
+        "materialized_intermediates": "declared_file_paths_for_process_boundary_capture_not_stage_attributed",
+        "methods": "exact_nodes_and_optional_files",
+        "semantic_equivalence": "requires_separate_review",
+        "stage_execution": "declared_only_not_observed"
+      },
+      "entrypoint_code_node_id": "code:analyze",
+      "id": "pipeline-contract:sha256:2e4ac93d89eb4c771ab0ccb7470b3ccdc566e16b5e37216168c200c65a1a10e9",
+      "name": "penguin-complete-case-ols",
+      "required_parameters": [],
+      "required_seeds": [],
+      "roles": {
+        "code": [
+          {
+            "file": {
+              "file_version_id": "file:sha256:b2f45a0c62f6191dd50b4ac484157aa281967a8806877fbed4d87efa8d869a60",
+              "method": "sha256_stat_before_after",
+              "mtime_ns": 1784067851328149600,
+              "path": "analysis/02_analyze.py",
+              "sha256": "b2f45a0c62f6191dd50b4ac484157aa281967a8806877fbed4d87efa8d869a60",
+              "size": 3745,
+              "state": "stable"
+            },
+            "node_id": "code:analyze",
+            "node_sha256": "2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+            "node_version_id": "node:sha256:2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+            "path": "analysis/02_analyze.py"
+          }
+        ],
+        "inputs": [
+          {
+            "node_id": "data:clean",
+            "node_sha256": "78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+            "node_version_id": "node:sha256:78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+            "path": "data/penguins_clean.csv"
+          }
+        ],
+        "intermediates": [],
+        "methods": [
+          {
+            "method_spec": {
+              "schema_version": "claimtrace.method-spec/1",
+              "steps": [
+                {
+                  "id": "select_complete_bills",
+                  "required": true,
+                  "statement": "Read the curated Palmer Penguins CSV and retain records whose bill length and bill depth are both present, converting those measurements to floats."
+                },
+                {
+                  "id": "group_by_species",
+                  "required": true,
+                  "statement": "Partition complete records by the declared Adelie, Chinstrap, and Gentoo species and fail if that exact species set is not observed."
+                },
+                {
+                  "id": "fit_descriptive_ols",
+                  "required": true,
+                  "statement": "For pooled records and each declared species, compute the ordinary least-squares slope and intercept for bill depth on bill length, Pearson correlation, and R-squared, and also compute the common within-species slope."
+                },
+                {
+                  "id": "export_slope_profile",
+                  "required": true,
+                  "statement": "Classify whether the pooled slope is negative while every species-specific slope is positive, then write the rounded estimates, sample counts, pattern, and interpretation boundary to results/slopes.json."
+                }
+              ]
+            },
+            "node_id": "method:complete-case-ols",
+            "node_sha256": "c2f64de3bb68bc3149d2719e73d23e6948460aeeabe4644878b1abff4aaceeac",
+            "node_version_id": "node:sha256:c2f64de3bb68bc3149d2719e73d23e6948460aeeabe4644878b1abff4aaceeac"
+          }
+        ],
+        "outputs": [
+          {
+            "node_id": "art:slopes",
+            "node_sha256": "f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+            "node_version_id": "node:sha256:f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+            "path": "results/slopes.json"
+          }
+        ]
+      },
+      "schema_version": "claimtrace.pipeline-contract-snapshot/2",
+      "source": {
+        "file_version_id": "file:sha256:17026168578ade30315ad7527dbd9c3289555d9477ef49fa5553b8548fc7f8f9",
+        "path": "claimtrace/analyze.pipeline.json",
+        "sha256": "17026168578ade30315ad7527dbd9c3289555d9477ef49fa5553b8548fc7f8f9",
+        "size": 2650
+      },
+      "stages": [
+        {
+          "code_anchors": [
+            {
+              "code_node_id": "code:analyze",
+              "end_line": 45,
+              "kind": "text_lines",
+              "start_line": 35,
+              "text_sha256": "f973075a67e85eecb30e1f0db3d40851f1bdea374aa1862115a95eff7032d070",
+              "valid": true
+            }
+          ],
+          "consumes_node_ids": [
+            "data:clean"
+          ],
+          "depends_on": [],
+          "execution_observation": "declared_only_not_observed",
+          "id": "select_complete_bills",
+          "method_id": "method:complete-case-ols",
+          "method_step_id": "select_complete_bills",
+          "produces_node_ids": []
+        },
+        {
+          "code_anchors": [
+            {
+              "code_node_id": "code:analyze",
+              "end_line": 51,
+              "kind": "text_lines",
+              "start_line": 47,
+              "text_sha256": "9a6bfc721963c18791a662c18c2bee7878e7e7fef7e5570cd739683368464391",
+              "valid": true
+            }
+          ],
+          "consumes_node_ids": [],
+          "depends_on": [
+            "select_complete_bills"
+          ],
+          "execution_observation": "declared_only_not_observed",
+          "id": "group_by_species",
+          "method_id": "method:complete-case-ols",
+          "method_step_id": "group_by_species",
+          "produces_node_ids": []
+        },
+        {
+          "code_anchors": [
+            {
+              "code_node_id": "code:analyze",
+              "end_line": 32,
+              "kind": "text_lines",
+              "start_line": 14,
+              "text_sha256": "ab328185fdec146d2b47237ebd4e80f3495b63ec010e3ddfd88978a0a9f42ed2",
+              "valid": true
+            },
+            {
+              "code_node_id": "code:analyze",
+              "end_line": 65,
+              "kind": "text_lines",
+              "start_line": 53,
+              "text_sha256": "f87f422565f6a03d4d26215e157ef96543bf0b9454675bc59be4737aeb6a9ac9",
+              "valid": true
+            }
+          ],
+          "consumes_node_ids": [],
+          "depends_on": [
+            "group_by_species"
+          ],
+          "execution_observation": "declared_only_not_observed",
+          "id": "fit_descriptive_ols",
+          "method_id": "method:complete-case-ols",
+          "method_step_id": "fit_descriptive_ols",
+          "produces_node_ids": []
+        },
+        {
+          "code_anchors": [
+            {
+              "code_node_id": "code:analyze",
+              "end_line": 100,
+              "kind": "text_lines",
+              "start_line": 67,
+              "text_sha256": "12cc9c7b5438141ef8d17f471f84af6ab5fc0add1e82d8d3056c2df92b6ed9a1",
+              "valid": true
+            }
+          ],
+          "consumes_node_ids": [],
+          "depends_on": [
+            "fit_descriptive_ols"
+          ],
+          "execution_observation": "declared_only_not_observed",
+          "id": "export_slope_profile",
+          "method_id": "method:complete-case-ols",
+          "method_step_id": "export_slope_profile",
+          "produces_node_ids": [
+            "art:slopes"
+          ]
+        }
+      ]
+    }
+  },
+  "agent_input": {
+    "limitations": [
+      "The internal in-memory stages are declared but were not observed separately at runtime.",
+      "This conformance judgement does not establish that the method is scientifically appropriate or that either claim is true.",
+      "Replay covers declared project files and direct-child behavior but does not isolate the network or external filesystem."
+    ],
+    "provenance": {
+      "agent": "codex:/root/public-demo-regeneration"
+    },
+    "rationale": "The exact declared code spans select complete bill records, enforce the declared species groups, calculate the stated descriptive OLS quantities, classify the sign pattern, and export the stated result fields.",
+    "step_alignments": [
+      {
+        "alignment": "match",
+        "method_step_id": "select_complete_bills",
+        "stage_id": "select_complete_bills"
+      },
+      {
+        "alignment": "match",
+        "method_step_id": "group_by_species",
+        "stage_id": "group_by_species"
+      },
+      {
+        "alignment": "match",
+        "method_step_id": "fit_descriptive_ols",
+        "stage_id": "fit_descriptive_ols"
+      },
+      {
+        "alignment": "match",
+        "method_step_id": "export_slope_profile",
+        "stage_id": "export_slope_profile"
+      }
+    ],
+    "verdict": "implements"
+  },
+  "review": {
+    "state": "proposed",
+    "actor": "codex:/root/public-demo-regeneration",
+    "supersedes_assessment_id": null
+  },
+  "derived": {
+    "effective_review_state": "proposed",
+    "eligible_for_implements": true,
+    "active_verdict": null,
+    "implementation_current": false,
+    "stale": false,
+    "stage_execution_observation": "declared_only_not_observed",
+    "hidden_intermediates": "not_observed",
+    "scientific_validity": "not_assessed",
+    "findings": [
+      {
+        "code": "METHOD_STAGE_EXECUTION_NOT_OBSERVED",
+        "severity": "info",
+        "detail": "internal stage execution remains declared_only_not_observed"
+      },
+      {
+        "code": "METHOD_SCIENTIFIC_VALIDITY_NOT_ASSESSED",
+        "severity": "info",
+        "detail": "method-to-code conformance does not establish scientific validity, result validity, or claim support"
+      }
+    ]
+  }
+}
