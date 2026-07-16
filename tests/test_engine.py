@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 
 from claimtrace import engine
+from claimtrace import events as events_module
+from claimtrace import replay as replay_module
 from claimtrace.config import Config
 from claimtrace.report import build_report
 
@@ -80,12 +82,83 @@ def test_public_science_examples_cover_the_full_claim_trajectory():
         assert all(node.get("path") != "research-map.html" for node in nodes.values())
 
 
-def test_penguin_demo_is_a_green_strict_semantic_and_symbolic_record():
-    report = build_report(Config(PUBLIC_DEMOS[0]), strict=True)
+def test_penguin_demo_integrity_and_environment_relative_strict_state():
+    config = Config(PUBLIC_DEMOS[0])
+    report = build_report(config, strict=True)
 
-    assert report["ok"] is True
-    assert report["exit_code"] == 0
+    problems, pending = engine.compute_check(config)
+    assert problems == []
+    assert pending == []
+    assert report["fatal"] is None
+    assert report["receipts"]["event_store_integrity"] == "ok"
+    assert report["receipts"]["run_link_integrity"] == "ok"
+    assert report["receipts"]["replay_integrity"] == "ok"
     assert report["assessments"]["integrity"] == "ok"
+    assert report["method_assessments"]["integrity"] == "ok"
+    assert report["semantics"]["integrity"] == "ok"
+    assert report["derivations"]["integrity"] == "ok"
+
+    claim_run_ids = {item["run_id"] for item in report["claim_basis"]["items"]}
+    assert len(claim_run_ids) == 1
+    claim_run_id = next(iter(claim_run_ids))
+    records, integrity_issues = events_module.load_events(config.events_path)
+    assert integrity_issues == []
+    start = next(
+        item for item in records
+        if item["run_id"] == claim_run_id and item["type"] == "run.started"
+    )
+    plan = start["payload"]["plan"]
+    assert plan["cwd"] == "."
+    recorded_executable = plan["environment"]["executable"]
+    current_executable = replay_module._executable_identity(
+        plan["argv"], config.root.resolve(),
+    )
+    exact_executable_match = all(
+        recorded_executable.get(key) == current_executable.get(key)
+        for key in ("state", "resolved", "sha256")
+    )
+    run = next(
+        item for item in report["receipts"]["runs"]
+        if item["run_id"] == claim_run_id
+    )
+    assert len(run["replays"]) == 1
+    replay_evaluation = run["replays"][0]["current_derived"]
+
+    if exact_executable_match:
+        assert report["ok"] is True
+        assert report["exit_code"] == 0
+        assert replay_evaluation["review_ready_current"] is True
+        assert {
+            item["overall"] for item in report["claim_basis"]["items"]
+        } == {"ready_under_reviewed_provenance"}
+    else:
+        assert report["ok"] is False
+        assert report["exit_code"] == 1
+        assert replay_evaluation["current"] is False
+        assert replay_evaluation["byte_repeatable_current"] is False
+        assert replay_evaluation["review_ready_current"] is False
+        assert replay_evaluation["stage_trace_repeatable_current"] is False
+        assert replay_evaluation["findings"] == [{
+            "code": "REPLAY_ENVIRONMENT_MISMATCH",
+            "detail": "source executable identity changed",
+        }]
+        assert {
+            (
+                item["replay_state"], item["stage_checkpoint_state"],
+                item["overall"], item["configured_policy_pass"],
+            )
+            for item in report["claim_basis"]["items"]
+        } == {(
+            "present_but_not_current_or_repeatable",
+            "cooperative_report_complete_source_only",
+            "execution_grounded_but_provenance_incomplete",
+            False,
+        )}
+        assert all(
+            item["replay_certificate_ids"] == []
+            for item in report["claim_basis"]["items"]
+        )
+
     assert {
         (item["from"], item["to"], item["rel"])
         for item in report["assessments"]["active_relations"]

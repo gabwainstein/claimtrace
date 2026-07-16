@@ -16,7 +16,7 @@ import claimtrace.cli as cli_module
 import claimtrace.events as events_module
 from claimtrace import engine
 from claimtrace.cli import main
-from claimtrace.config import Config
+from claimtrace.config import Config, MAX_JSON_NESTING_DEPTH, strict_json_loads
 from claimtrace.snapshot import snapshot
 
 
@@ -509,12 +509,25 @@ def test_cli_json_inputs_are_bounded_and_recursion_safe(
     assert main([
         "--config", str(cfg.config_path), "log", str(deep),
     ]) == 2
-    assert "cannot read log entry" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "cannot read log entry" in error
+    assert "JSON nesting exceeds the 256-level limit" in error
     assert main([
         "--config", str(cfg.config_path), "assess", str(deep),
         "--actor", "agent:test",
     ]) == 2
-    assert "cannot read assessment proposal" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "cannot read assessment proposal" in error
+    assert "JSON nesting exceeds the 256-level limit" in error
+
+    shallow_list = tmp_path / "shallow-list.json"
+    shallow_list.write_text("[]", encoding="utf-8")
+    assert main([
+        "--config", str(cfg.config_path), "log", str(shallow_list),
+    ]) == 2
+    error = capsys.readouterr().err
+    assert "log entry must contain one JSON object" in error
+    assert "cannot read log entry" not in error
 
     monkeypatch.setattr(cli_module, "MAX_CLI_JSON_INPUT_BYTES", 1024)
     oversized = tmp_path / "oversized.json"
@@ -523,6 +536,26 @@ def test_cli_json_inputs_are_bounded_and_recursion_safe(
         "--config", str(cfg.config_path), "log", str(oversized),
     ]) == 2
     assert "byte limit" in capsys.readouterr().err
+
+
+def test_strict_json_nesting_limit_is_fixed_and_string_aware():
+    at_limit = "[" * MAX_JSON_NESTING_DEPTH + "0" + "]" * MAX_JSON_NESTING_DEPTH
+    value = strict_json_loads(at_limit)
+    for _ in range(MAX_JSON_NESTING_DEPTH):
+        assert isinstance(value, list) and len(value) == 1
+        value = value[0]
+    assert value == 0
+
+    over_limit = "[" * (MAX_JSON_NESTING_DEPTH + 1) + "0" + "]" * (
+        MAX_JSON_NESTING_DEPTH + 1
+    )
+    with pytest.raises(ValueError, match="JSON nesting exceeds the 256-level limit"):
+        strict_json_loads(over_limit)
+
+    structural_text = "[" * 5000 + "]" * 5000 + '\\"' + "\\\\"
+    assert strict_json_loads(json.dumps({"text": structural_text})) == {
+        "text": structural_text,
+    }
 
 
 def test_logic_config_is_project_scoped_and_requires_explicit_external_opt_in(tmp_path):
@@ -710,7 +743,9 @@ def test_unknown_semantics_key_is_terminal_safe(tmp_path):
 def test_config_read_is_bounded_and_recursion_errors_are_clean(tmp_path):
     config_path = tmp_path / "claimtrace.config.json"
     config_path.write_text("[" * 5000 + "]" * 5000, encoding="utf-8")
-    with pytest.raises(SystemExit, match="not valid JSON"):
+    with pytest.raises(
+        SystemExit, match="not valid JSON.*JSON nesting exceeds the 256-level limit",
+    ):
         Config(config_path)
 
     config_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))

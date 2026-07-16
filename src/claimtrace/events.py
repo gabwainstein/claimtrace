@@ -23,6 +23,8 @@ from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from .config import _check_json_nesting_depth
+
 EVENT_SCHEMA = "claimtrace.event/1"
 LEGACY_CONTRACT_EVENT_SCHEMA = "claimtrace.event/2"
 CONTRACT_EVENT_SCHEMA = "claimtrace.event/3"
@@ -154,6 +156,7 @@ def _strict_json(text: str, source: str):
         raise EventError(f"{source}: non-finite JSON number {value}")
 
     try:
+        _check_json_nesting_depth(text)
         return json.loads(text, object_pairs_hook=pairs, parse_constant=invalid_constant)
     except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise EventError(f"{source}: invalid JSON: {exc}") from exc
@@ -1247,8 +1250,20 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def _path_has_reparse_component(path: Path) -> bool:
-    current = path
+def _path_has_reparse_component(path: Path, *, stop_at: Path | None = None) -> bool:
+    """Return whether a lexical path traverses a link/reparse component.
+
+    ``stop_at`` is an inclusive trusted boundary: the boundary itself and every
+    component below it are checked, while aliases in its parents are outside the
+    scan.  Callers that do not supply it retain the original filesystem-root
+    check.
+    """
+    current = Path(os.path.abspath(path))
+    boundary = None
+    if stop_at is not None:
+        boundary = Path(os.path.abspath(stop_at))
+        if not _is_within(current, boundary):
+            return True
     while True:
         if current.exists() or current.is_symlink():
             try:
@@ -1261,8 +1276,10 @@ def _path_has_reparse_component(path: Path) -> bool:
             reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
             if reparse and attrs & reparse:
                 return True
-        if current.parent == current:
+        if boundary is not None and current == boundary:
             return False
+        if current.parent == current:
+            return boundary is not None
         current = current.parent
 
 

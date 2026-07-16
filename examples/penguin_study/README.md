@@ -208,6 +208,10 @@ The reported OLS estimates are rounded to six decimal places. The checked-in mec
 also retain the executable and working-directory paths observed on the producing machine. That is
 authentic environment provenance but may disclose local workspace layout; audit this boundary
 before republishing a copied ledger, and do not edit content-addressed receipts in place.
+The checked-in replay is therefore current only when the inspecting host resolves the same recorded
+executable bytes and project lockfiles. A different interpreter or operating system correctly emits
+`REPLAY_ENVIRONMENT_MISMATCH` and leaves strict claim provenance incomplete; run and review a fresh
+local receipt and replay instead of weakening or rewriting that historical record.
 
 To submit a new semantic or method assessment, copy the relevant proposal, edit
 `provenance.agent` to your truthful actor ID, and pass that same ID to `--actor`. Do not reuse a

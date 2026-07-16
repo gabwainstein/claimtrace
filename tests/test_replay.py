@@ -583,6 +583,43 @@ def test_empty_directory_is_outside_file_path_write_coverage(tmp_path):
     assert result["review_ready"] is True
 
 
+def test_workspace_scan_checks_links_only_at_or_below_its_boundary(tmp_path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    alias_parent = tmp_path / "aliased-parent"
+    try:
+        alias_parent.symlink_to(real_parent, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    workspace = alias_parent / "attempt"
+    (workspace / "data").mkdir(parents=True)
+    (workspace / "data" / "input.txt").write_text("input\n", encoding="utf-8")
+    outside_directory = tmp_path / "outside-directory"
+    outside_directory.mkdir()
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("outside\n", encoding="utf-8")
+    try:
+        (workspace / "linked-directory").symlink_to(
+            outside_directory, target_is_directory=True,
+        )
+        (workspace / "linked-file.txt").symlink_to(outside_file)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"workspace symlinks are unavailable: {exc}")
+
+    scanned = replay_module._scan_workspace(workspace)
+
+    assert scanned["data/input.txt"]["state"] == "stable"
+    assert "data" not in scanned
+    assert scanned["linked-directory"] == {
+        "path": "linked-directory", "state": "unsupported",
+    }
+    assert scanned["linked-file.txt"] == {
+        "path": "linked-file.txt", "state": "unsupported",
+    }
+    assert not any(path.startswith("linked-directory/") for path in scanned)
+
+
 def test_nondeterministic_stdout_prevents_byte_repeatable_outcome(tmp_path):
     cfg, contract, contract_path = _project(tmp_path)
     code = cfg.root / "analysis" / "pipeline.py"
