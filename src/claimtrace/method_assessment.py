@@ -16,6 +16,7 @@ result, or scientific claim is valid.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -35,7 +36,9 @@ from .events import (
     _stable_bounded_bytes,
 )
 from .pipeline import (
+    PREVIOUS_SNAPSHOT_SCHEMA,
     PipelineError,
+    pipeline_snapshots_equivalent,
     resolve_pipeline_contract,
     validate_pipeline_snapshot,
 )
@@ -816,15 +819,34 @@ def _resolve_current_snapshot(cfg, stored: dict) -> dict:
     )
 
 
+def _role_for_currentness(snapshot: dict, role: str) -> list[dict]:
+    items = copy.deepcopy(snapshot["roles"][role])
+    if snapshot["schema_version"] == PREVIOUS_SNAPSHOT_SCHEMA:
+        for item in items:
+            file_snapshot = item.get("file")
+            if file_snapshot is not None:
+                file_snapshot.pop("mtime_ns")
+    return items
+
+
 def _staleness_details(stored: dict, current: dict, method_id: str) -> list[str]:
+    if pipeline_snapshots_equivalent(stored, current):
+        return []
     details = []
     if stored["source"] != current["source"]:
         details.append("pipeline contract source changed")
-    stored_method = _selected_method(stored, method_id)
-    current_method = _selected_method(current, method_id)
+    stored_method = next(
+        item for item in _role_for_currentness(stored, "methods")
+        if item["node_id"] == method_id
+    )
+    current_method = next(
+        item for item in _role_for_currentness(current, "methods")
+        if item["node_id"] == method_id
+    )
     if stored_method != current_method:
         details.append("method node, specification, or method file changed")
-    if stored["roles"]["code"] != current["roles"]["code"]:
+    if (_role_for_currentness(stored, "code")
+            != _role_for_currentness(current, "code")):
         details.append("code node or code file changed")
     if _selected_stages(stored, method_id) != _selected_stages(current, method_id):
         details.append("method-stage mapping or code anchor changed")

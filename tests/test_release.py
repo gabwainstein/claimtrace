@@ -380,6 +380,22 @@ def test_pre_checkpoint_schema_inventory_remains_valid_across_tool_upgrade(tmp_p
     assert verification["diff"]["changed_metadata_fields"] == ["schemas"]
 
 
+def test_v2_stage_schema_inventory_remains_valid_across_tool_upgrade(tmp_path):
+    cfg = _project(tmp_path)
+    manifest = release.create_release_manifest(cfg)
+    manifest["schemas"] = copy.deepcopy(
+        release._PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS
+    )
+    core = {key: manifest[key] for key in manifest if key != "release_id"}
+    manifest["release_id"] = "release:sha256:" + release.canonical_sha256(core)
+
+    release.validate_release_manifest(manifest)
+    verification = release.verify_release_manifest(cfg, manifest)
+
+    assert verification["valid"] is True
+    assert verification["diff"]["changed_metadata_fields"] == ["schemas"]
+
+
 def test_release_creation_fails_when_project_changes_between_collection_passes(
         tmp_path, monkeypatch):
     cfg = _project(tmp_path)

@@ -413,6 +413,7 @@ def _validate_event_payload(event_type: str, payload: dict, schema_version: str)
         if schema_version in CONTRACT_EVENT_SCHEMAS:
             from .pipeline import (
                 LEGACY_SNAPSHOT_SCHEMA,
+                PREVIOUS_SNAPSHOT_SCHEMA,
                 SNAPSHOT_SCHEMA,
                 PipelineError,
                 validate_pipeline_snapshot,
@@ -422,15 +423,20 @@ def _validate_event_payload(event_type: str, payload: dict, schema_version: str)
                 validate_pipeline_snapshot(plan["pipeline_contract"])
             except PipelineError as exc:
                 raise EventError(f"run.started pipeline contract is invalid: {exc}") from exc
-            expected_snapshot_schema = {
-                LEGACY_CONTRACT_EVENT_SCHEMA: LEGACY_SNAPSHOT_SCHEMA,
-                CONTRACT_EVENT_SCHEMA: SNAPSHOT_SCHEMA,
-                STAGE_CONTRACT_EVENT_SCHEMA: SNAPSHOT_SCHEMA,
+            expected_snapshot_schemas = {
+                LEGACY_CONTRACT_EVENT_SCHEMA: (LEGACY_SNAPSHOT_SCHEMA,),
+                CONTRACT_EVENT_SCHEMA: (PREVIOUS_SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA),
+                STAGE_CONTRACT_EVENT_SCHEMA: (
+                    PREVIOUS_SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA,
+                ),
             }[schema_version]
             if (plan["pipeline_contract"].get("schema_version")
-                    != expected_snapshot_schema):
+                    not in expected_snapshot_schemas):
+                allowed = " or ".join(
+                    f"a {item} contract" for item in expected_snapshot_schemas
+                )
                 raise EventError(
-                    f"{schema_version} requires a {expected_snapshot_schema} contract"
+                    f"{schema_version} requires {allowed}"
                 )
             _validate_pipeline_entrypoint_argv(
                 plan["argv"], plan["cwd"], plan["pipeline_contract"],

@@ -732,6 +732,48 @@ _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS = {
 }
 
 
+_PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS = {
+    "assessment_current": "claimtrace.semantic-assessment/2",
+    "assessment_supported": [
+        "claimtrace.semantic-assessment/1", "claimtrace.semantic-assessment/2",
+    ],
+    "derivation": "claimtrace.symbolic-derivation/1",
+    "event_current": "claimtrace.event/3",
+    "event_stage_checkpoint_current": "claimtrace.event/4",
+    "event_supported": [
+        "claimtrace.event/1", "claimtrace.event/2", "claimtrace.event/3",
+        "claimtrace.event/4",
+    ],
+    "graph": "1.0",
+    "local_terminology": "claimtrace.local-terminology/1",
+    "logic_rule_pack": "claimtrace.symbolic-rules/1",
+    "logic_vocabulary": "claimtrace.symbolic-vocabulary/1",
+    "method_assessment": "claimtrace.method-conformance-assessment/1",
+    "method_requirements": "claimtrace.method-requirements/1",
+    "method_spec": "claimtrace.method-spec/1",
+    "ontology_index": "claimtrace.ontology-index/1",
+    "ontology_lock": "claimtrace.ontology-lock/1",
+    "pipeline_contract": "claimtrace.pipeline-contract/1",
+    "pipeline_contract_snapshot_current": "claimtrace.pipeline-contract-snapshot/2",
+    "pipeline_contract_snapshot_supported": [
+        "claimtrace.pipeline-contract-snapshot/1",
+        "claimtrace.pipeline-contract-snapshot/2",
+    ],
+    "render_manifest": "claimtrace.render-manifest/2",
+    "replay_certificate_current": "claimtrace.replay-certificate/2",
+    "replay_certificate_stage_checkpoint_current": "claimtrace.replay-certificate/3",
+    "replay_certificate_supported": [
+        "claimtrace.replay-certificate/1", "claimtrace.replay-certificate/2",
+        "claimtrace.replay-certificate/3",
+    ],
+    "semantic_mapping": "claimtrace.semantic-mapping/1",
+    "semantic_policy": "claimtrace.semantic-policy/1",
+    "stage_checkpoint_record": "claimtrace.stage-checkpoint/1",
+    "stage_trace": "claimtrace.stage-trace/1",
+    "stage_trace_plan": "claimtrace.stage-trace-plan/1",
+}
+
+
 def _manifest_core(state: dict) -> dict:
     return {
         "schema_version": MANIFEST_SCHEMA,
@@ -779,7 +821,8 @@ def validate_release_manifest(document: object) -> None:
             for key, value in document["schemas"].items()):
         raise ReleaseError("release manifest schema declarations are invalid")
     if document["schemas"] not in (
-            _schema_versions(), _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS):
+            _schema_versions(), _PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS,
+            _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS):
         raise ReleaseError(
             "release manifest schema declarations are not canonical for schema v1"
         )

@@ -1,6 +1,7 @@
 """Fresh-workspace replay is exact at the boundary and honest about its limits."""
 import hashlib
 import json
+import os
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -8,10 +9,11 @@ from pathlib import Path
 import pytest
 
 from claimtrace import events as events_module
+from claimtrace import pipeline as pipeline_module
 from claimtrace import replay as replay_module
 from claimtrace.cli import main as cli_main
 from claimtrace.events import run_command
-from claimtrace.pipeline import resolve_pipeline_contract
+from claimtrace.pipeline import PREVIOUS_SNAPSHOT_SCHEMA, resolve_pipeline_contract
 from claimtrace.replay import (
     LEGACY_REPLAY_SCHEMA,
     LEGACY_WORKSPACE_WRITE_COVERAGE,
@@ -186,6 +188,37 @@ def test_replay_proves_only_boundary_byte_repeatability(tmp_path):
     evaluation = evaluate_replay_certificate(cfg, certificate)
     assert evaluation["byte_repeatable_current"] is True
     assert evaluation["review_ready_current"] is True
+
+
+def test_v2_replay_execution_and_evaluation_ignore_only_source_mtime(
+        tmp_path, monkeypatch):
+    cfg, _contract, _path = _project(tmp_path)
+    original_resolve = pipeline_module.resolve_pipeline_contract
+
+    def resolve_v2(*args, **kwargs):
+        kwargs.setdefault("snapshot_schema", PREVIOUS_SNAPSHOT_SCHEMA)
+        return original_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "resolve_pipeline_contract", resolve_v2)
+    source = _run(cfg)
+    code_path = cfg.root / "analysis" / "pipeline.py"
+    before = code_path.stat()
+    os.utime(
+        code_path,
+        ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000),
+    )
+
+    result = replay_run(cfg, source["run_id"], attempts=2)
+    evaluation = evaluate_replay_certificate(cfg, result["certificate"])
+
+    assert result["exit_code"] == 0
+    assert result["review_ready"] is True
+    assert evaluation["current"] is True
+    assert evaluation["review_ready_current"] is True
+    assert all(
+        finding["code"] != "REPLAY_CONTRACT_DRIFT"
+        for finding in evaluation["findings"]
+    )
 
 
 def test_ordinary_replay_scrubs_inherited_reserved_trace_environment(

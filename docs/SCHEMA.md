@@ -927,11 +927,13 @@ non-input consumed node must have a unique upstream producer, and terminal decla
 produced by the stage DAG.
 
 Before execution, Claimtrace resolves the authored contract to the current
-`claimtrace.pipeline-contract-snapshot/2`. The content-addressed snapshot pins the contract file,
+`claimtrace.pipeline-contract-snapshot/3`. The content-addressed snapshot pins the contract file,
 whole code and method nodes/files, exact anchor bytes, graph roles, required parameter/seed keys,
-and coverage. The event plan and computation identity separately commit the supplied parameter and
-seed values. The snapshot automatically classifies every non-terminal stage output from the
-authored DAG:
+and coverage. Code and method file identities retain stable path, state, SHA-256, size, and file
+version metadata; they deliberately exclude `mtime_ns`, which changes on an otherwise byte-identical
+checkout. The event plan and computation identity separately commit the supplied parameter and seed
+values. The snapshot automatically classifies every non-terminal stage output from the authored
+DAG:
 
 - an internal produced node with a verified project-relative `path` becomes a
   `declared_file_boundary` role in `roles.intermediates`; and
@@ -956,11 +958,16 @@ intermediate transition is a post-process file-boundary observation. It does not
 wrote the bytes, that the declared producer ran, that the file was not later rewritten, or that a
 pathless/in-memory value had a particular value. It also does not establish that code and method
 have the same scientific meaning. Cooperative checkpoint instrumentation can add the narrower
-child-self-report described below; the separate review layer judges method-to-code meaning. Legacy
-`claimtrace.pipeline-contract-snapshot/1` and
-`claimtrace.event/2` records remain strictly readable and are re-evaluated under their stored
-snapshot schema; they contain no materialized-intermediate evidence and cannot be current
-review-ready claim provenance.
+child-self-report described below; the separate review layer judges method-to-code meaning. Stored
+`claimtrace.pipeline-contract-snapshot/1` and `/2` documents remain strictly readable and must first
+validate their original, timestamp-bearing content address. When Claimtrace compares a validated v2
+snapshot with current project files, it excludes only the code/method `mtime_ns` fields from the
+comparison. SHA-256, size, graph nodes, methods, anchors, roles, parameters, seeds, and every other
+field remain exact and fail closed on drift. This prevents a fresh clone from manufacturing
+contract drift while preserving the historical receipt bytes. Snapshot v1 retains its original
+exact comparison; it and `claimtrace.event/2` contain no materialized-intermediate evidence and
+therefore cannot be current review-ready claim provenance. Snapshot v2 retains its
+declared-intermediate coverage.
 
 ### Cooperative stage checkpoints
 

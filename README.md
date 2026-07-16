@@ -877,7 +877,11 @@ The system deliberately keeps nine evidence layers separate:
 - The **pipeline contract** stores an authored stage DAG, exact graph roles, method-step mappings,
   code files and line anchors, and required parameter/seed names. Its stages are declarations, not
   runtime traces. An internal produced node with a path is automatically classified as a
-  materialized intermediate; a pathless internal node remains unobserved.
+  materialized intermediate; a pathless internal node remains unobserved. Snapshot v3 binds stable
+  file content and size but excludes clone-local filesystem timestamps from the contract identity.
+  Stored v2 snapshots still validate their original exact content addresses; compatibility
+  currentness ignores only their code/method `mtime_ns` fields, never bytes or scientific
+  structure. Snapshot v1 retains its original exact comparison and coverage limits.
 - The **mechanical receipt ledger** records declared inputs/outputs, stable pre/post SHA-256 file
   versions, direct-child argv and return code, best-effort Git/lockfile context, and project-window
   deltas. Event-v3 and event-v4 record materialized-intermediate paths and transitions separately
