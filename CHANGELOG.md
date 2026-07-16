@@ -130,6 +130,17 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Make `claimtrace verify` fail closed with exit code 2 when no verifier is configured or a
   configured verifier registers zero checks; exit code 0 now means at least one registered check
   ran and every check passed.
+- Enforce a project-owned 256-level JSON nesting limit before decoding untrusted configuration,
+  CLI, and event documents, so acceptance and diagnostics do not depend on CPython recursion
+  behavior across Python 3.9-3.14.
+- Stop replay workspace link checks at the controlled workspace root while still rejecting links
+  at or below that boundary; this prevents trusted macOS `/var` aliases above the workspace from
+  appearing as undeclared analysis files.
+- Make the Penguins SVG writer Python 3.9-compatible without changing its output bytes, append a
+  fresh producing receipt, and regenerate its render manifest. Keep the checked-in replay's exact
+  executable identity fail-closed and test its strict state relative to the inspecting host.
+- Run branch CI once through the pull-request event while retaining direct push CI on `main`,
+  avoiding duplicate full matrices for the same proposed commit.
 - Pin the release workflow to the current non-yanked `build` frontend release instead of the
   subsequently yanked 1.5.1 archive.
 - Derive claim readiness from the claimed terminal result's unique producer stage and transitive
@@ -272,8 +283,8 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   reinterpreted. A review transition stays on its predecessor's schema, while a changed scientific
   judgement should be submitted as a new v2 proposal.
 - Render manifests are now required for a green `claimtrace check`. Existing projects must re-render
-  if needed and run `claimtrace snapshot` once after upgrading. This fail-closed change is queued for
-  the next release; the checked-in package version remains `0.2.0` until that release is cut.
+  if needed and run `claimtrace snapshot` once after upgrading. This fail-closed change takes effect
+  in version `0.3.0`.
 - New snapshots use versioned SHA-256 render manifests. Existing unversioned SHA-1 manifests remain
   checkable: run `claimtrace check` first, then run `claimtrace snapshot` to migrate only the files
   that passed the legacy lock, and run the check again. The legacy format is never written.

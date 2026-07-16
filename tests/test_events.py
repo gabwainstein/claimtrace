@@ -321,6 +321,22 @@ def test_window_delta_shape_is_closed(tmp_path):
         append_event(tmp_path, finish)
 
 
+def test_event_store_rejects_excessive_json_nesting_with_stable_diagnostic(tmp_path):
+    events_path = tmp_path / "events"
+    fanout = events_path / "00"
+    fanout.mkdir(parents=True)
+    (fanout / ("0" * 64 + ".json")).write_text(
+        "[" * 5000 + "0" + "]" * 5000, encoding="utf-8",
+    )
+
+    loaded, issues = load_events(events_path)
+
+    assert loaded == []
+    assert len(issues) == 1
+    assert issues[0]["code"] == "EVENT_INTEGRITY"
+    assert "JSON nesting exceeds the 256-level limit" in issues[0]["detail"]
+
+
 def test_malformed_active_marker_is_a_structured_integrity_issue(tmp_path):
     project = tmp_path / "project"
     project.mkdir()

@@ -236,6 +236,7 @@ def _copy_declared_inputs(source_root: Path, temp_root: Path,
 
 def _scan_workspace(root: Path) -> dict[str, dict]:
     """Hash every fresh-workspace file without following links or ignoring build paths."""
+    root = Path(os.path.abspath(root))
     result = {}
     entries = 0
     for current, dirs, files in os.walk(root, topdown=True, followlinks=False):
@@ -246,7 +247,7 @@ def _scan_workspace(root: Path) -> dict[str, dict]:
             if entries > MAX_REPLAY_SCAN_ENTRIES:
                 raise ReplayError("fresh replay workspace exceeds its scan-entry limit")
             candidate = current_path / name
-            if _path_has_reparse_component(candidate):
+            if _path_has_reparse_component(candidate, stop_at=root):
                 rel = candidate.relative_to(root).as_posix()
                 result[rel] = {"path": rel, "state": "unsupported"}
             else:
@@ -258,7 +259,10 @@ def _scan_workspace(root: Path) -> dict[str, dict]:
                 raise ReplayError("fresh replay workspace exceeds its scan-entry limit")
             path = current_path / name
             rel = path.relative_to(root).as_posix()
-            result[rel] = snapshot_file(path, rel)
+            if _path_has_reparse_component(path, stop_at=root):
+                result[rel] = {"path": rel, "state": "unsupported"}
+            else:
+                result[rel] = snapshot_file(path, rel)
     return result
 
 

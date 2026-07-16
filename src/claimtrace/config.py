@@ -49,6 +49,7 @@ SEMANTIC_POLICY_ID_RE = re.compile(r"^semantic-policy:sha256:[0-9a-f]{64}$")
 SEMANTIC_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
 MAX_SEMANTIC_ONTOLOGY_BYTES = 256 * 1024 * 1024 * 1024
 MAX_CONFIG_BYTES = 2 * 1024 * 1024
+MAX_JSON_NESTING_DEPTH = 256
 
 DEFAULT_RENDER_TYPES = ["figure"]
 DEFAULT_INPUT_TYPES = ["data", "artifact", "code"]
@@ -75,8 +76,37 @@ def _config_stat_identity(value, *, include_ctime: bool = True) -> tuple:
     return identity
 
 
+def _check_json_nesting_depth(text: str) -> None:
+    """Reject excessive structural nesting without depending on the JSON decoder stack."""
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_JSON_NESTING_DEPTH:
+                raise ValueError(
+                    "JSON nesting exceeds the "
+                    f"{MAX_JSON_NESTING_DEPTH}-level limit"
+                )
+        elif char in "]}" and depth:
+            depth -= 1
+
+
 def strict_json_loads(text: str, source: str = "JSON"):
-    """Parse standards-compliant JSON, rejecting duplicate keys and non-finite numbers."""
+    """Parse bounded standards-compliant JSON with strict scalar and key handling."""
+    _check_json_nesting_depth(text)
+
     def pairs(items):
         out = {}
         for key, value in items:

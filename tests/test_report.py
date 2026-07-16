@@ -39,7 +39,8 @@ def _project(tmp_path, nodes, edges=()):
 
 def _write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(value, indent=2) + "\n")
 
 
 def _configure_semantics(cfg, semantics):

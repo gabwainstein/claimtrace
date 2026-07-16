@@ -815,7 +815,10 @@ def test_store_path_swap_after_config_load_cannot_escape_project(tmp_path):
             append_mapping(cfg, proposal)
         assert list(external.iterdir()) == []
     finally:
-        os.rmdir(store_parent)
+        if store_parent.is_symlink():
+            store_parent.unlink()
+        else:
+            os.rmdir(store_parent)
 
 
 def test_concurrent_cross_process_reviews_leave_one_linear_successor(tmp_path):

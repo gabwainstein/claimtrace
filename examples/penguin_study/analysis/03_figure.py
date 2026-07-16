@@ -117,7 +117,10 @@ def main() -> None:
         ]
     )
     Path("figures").mkdir(exist_ok=True)
-    Path("figures/bill_slopes.svg").write_text("\n".join(svg), encoding="utf-8", newline="\n")
+    with Path("figures/bill_slopes.svg").open(
+        "w", encoding="utf-8", newline="\n",
+    ) as handle:
+        handle.write("\n".join(svg))
     print("wrote figures/bill_slopes.svg")
 
 
