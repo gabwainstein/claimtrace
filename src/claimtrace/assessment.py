@@ -26,6 +26,12 @@ from pathlib import Path
 
 from . import engine
 from .config import strict_json_loads
+from .events import (
+    EventError,
+    _ensure_directory_durable,
+    _path_has_reparse_component,
+    _stable_bounded_bytes,
+)
 
 
 LEGACY_SCHEMA_VERSION = "claimtrace.semantic-assessment/1"
@@ -80,6 +86,7 @@ ALIGNMENT_DIMENSIONS = (
 CLAIM_TYPES = {"claim", "hypothesis", "prediction", "conclusion"}
 RESULT_TYPES = {"artifact", "figure", "experiment", "data"}
 _PROCESS_ASSESSMENT_LOCK = threading.Lock()
+MAX_ASSESSMENT_DOCUMENT_BYTES = 16 * 1024 * 1024
 
 
 class AssessmentError(Exception):
@@ -728,11 +735,10 @@ def validate_assessment_document(document: object) -> None:
 
 
 def assessments_path(cfg) -> Path:
-    configured = cfg.data.get("assessments", "claimtrace/assessments")
-    if not isinstance(configured, str) or not configured:
-        raise AssessmentError("config field 'assessments' must be a non-empty string")
-    path = Path(configured)
-    return path.resolve() if path.is_absolute() else (cfg.base / path).resolve()
+    configured = getattr(cfg, "assessments_path", None)
+    if configured is None:
+        raise AssessmentError("config does not define an assessment store")
+    return Path(configured)
 
 
 @contextmanager
@@ -774,23 +780,42 @@ def _append_assessment_unlocked(root: Path, document: dict) -> Path:
     match = ASSESSMENT_ID_RE.fullmatch(document["id"])
     assert match is not None  # already checked by validate_assessment_document
     destination = root / f"{match.group(1)}.json"
-    root.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
+    try:
+        _ensure_directory_durable(root)
+    except EventError as exc:
+        raise AssessmentError(f"assessment store is not trustworthy: {exc}") from exc
+    if destination.exists() or destination.is_symlink():
         try:
-            existing = strict_json_loads(destination.read_text(encoding="utf-8"), destination.name)
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            if _path_has_reparse_component(destination) or not destination.is_file():
+                raise AssessmentError("assessment entry is not a stable regular file")
+            existing = strict_json_loads(
+                _stable_bounded_bytes(
+                    destination, MAX_ASSESSMENT_DOCUMENT_BYTES,
+                ).decode("utf-8-sig"),
+                destination.name,
+            )
+            validate_assessment_document(existing)
+        except (
+            OSError, UnicodeError, json.JSONDecodeError, ValueError,
+            RecursionError, EventError, AssessmentError,
+        ) as exc:
             raise AssessmentError(f"existing assessment is unreadable: {destination.name}: {exc}") from exc
         if _canonical_bytes(existing) != _canonical_bytes(document):
             raise AssessmentError(f"refusing to overwrite conflicting assessment: {destination.name}")
         return destination
     payload = json.dumps(document, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    if len(payload.encode("utf-8")) > MAX_ASSESSMENT_DOCUMENT_BYTES:
+        raise AssessmentError("assessment document exceeds the 16 MiB limit")
     fd, temporary_name = tempfile.mkstemp(prefix=".assessment-", suffix=".tmp", dir=root)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_name, destination)
+        try:
+            os.link(temporary_name, destination)
+        except FileExistsError:
+            return _append_assessment_unlocked(root, document)
     finally:
         try:
             Path(temporary_name).unlink()
@@ -810,17 +835,45 @@ def append_assessment(cfg, document: dict) -> Path:
 def load_assessments(cfg) -> tuple[list[dict], list[dict]]:
     """Load valid assessment documents plus fail-closed integrity issues."""
     root = assessments_path(cfg)
-    if not root.exists():
+    if not root.exists() and not root.is_symlink():
         return [], []
+    if _path_has_reparse_component(root) or not root.is_dir():
+        return [], [{
+            "code": "ASSESSMENT_INTEGRITY",
+            "path": ".",
+            "detail": "assessment store must be a non-link directory",
+        }]
     documents, issues = [], []
-    for path in sorted(root.glob("*.json")):
+    try:
+        paths = sorted(root.iterdir(), key=lambda item: item.name)
+    except OSError as exc:
+        return [], [{
+            "code": "ASSESSMENT_INTEGRITY", "path": ".", "detail": str(exc),
+        }]
+    for path in paths:
+        if path.suffix != ".json":
+            issues.append({
+                "code": "ASSESSMENT_INTEGRITY", "path": path.name,
+                "detail": "unexpected non-JSON entry in append-only store",
+            })
+            continue
         try:
-            document = strict_json_loads(path.read_text(encoding="utf-8-sig"), path.name)
+            if _path_has_reparse_component(path) or not path.is_file():
+                raise AssessmentError("assessment entry is not a stable regular file")
+            document = strict_json_loads(
+                _stable_bounded_bytes(
+                    path, MAX_ASSESSMENT_DOCUMENT_BYTES,
+                ).decode("utf-8-sig"),
+                path.name,
+            )
             validate_assessment_document(document)
             if path.name != ASSESSMENT_ID_RE.fullmatch(document["id"]).group(1) + ".json":
                 raise AssessmentError("filename does not match assessment id")
             documents.append(document)
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, AssessmentError) as exc:
+        except (
+            OSError, UnicodeError, json.JSONDecodeError, ValueError,
+            RecursionError, EventError, AssessmentError,
+        ) as exc:
             issues.append({"code": "ASSESSMENT_INTEGRITY", "path": path.name, "detail": str(exc)})
     documents.sort(key=lambda item: (item["recorded_at"], item["id"]))
     by_id = {item["id"]: item for item in documents}

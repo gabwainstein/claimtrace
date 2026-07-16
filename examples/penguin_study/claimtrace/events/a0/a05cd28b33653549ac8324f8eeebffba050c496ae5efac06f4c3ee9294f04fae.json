@@ -1,0 +1,131 @@
+{
+  "id": "event:sha256:a05cd28b33653549ac8324f8eeebffba050c496ae5efac06f4c3ee9294f04fae",
+  "payload": {
+    "capture_scope": {
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "writes": "declared_snapshots_plus_unattributed_project_window"
+    },
+    "name": null,
+    "plan": {
+      "argv": [
+        "python",
+        "analysis/03_figure.py"
+      ],
+      "argv_capture": "redacted_best_effort",
+      "control_plane_before": {
+        "event_ledger": {
+          "event_count": 16,
+          "event_ids_sha256": "9121094bc9950ce8d436bcc42093cbdda904407ecd1000bbe33ff2f4cd0b35d8",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "cwd": ".",
+      "declared_inputs": [
+        {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784128085379845500,
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:c0abd6faacc731b4ec76f0338bef1926c3350e05d5727474e3714ca45106020c",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851328149600,
+          "path": "analysis/03_figure.py",
+          "sha256": "c0abd6faacc731b4ec76f0338bef1926c3350e05d5727474e3714ca45106020c",
+          "size": 5108,
+          "state": "stable"
+        }
+      ],
+      "declared_outputs": [
+        "figures/bill_slopes.svg"
+      ],
+      "environment": {
+        "capture": "partial_no_environment_variables",
+        "controller_implementation": "CPython",
+        "controller_python": "3.13.9",
+        "executable": {
+          "requested": "python",
+          "resolved": "C:\\Users\\gwbez\\anaconda3\\python.exe",
+          "sha256": "7679e53fa969789309e81fdad0d52b8cda5f83c9abf7cb31a3c58bf24b31e264",
+          "state": "stable"
+        },
+        "platform": "Windows-11-10.0.26200-SP0",
+        "root_lockfiles": []
+      },
+      "git": {
+        "branch": "main",
+        "head": "7dd3ee37c92c3551559c6d7c3fcc825cb0f422ae",
+        "state": "captured",
+        "tracked_dirty": true,
+        "tracked_patch_sha256": "ed92d270619b18af877fb0c6ca69a4b8e8244976e92ecfee6f562ddaee9e443e",
+        "untracked_files": "not_captured"
+      },
+      "parameters": {},
+      "seeds": {}
+    },
+    "plan_id": "recipe:sha256:b74eab1e5606e2de73bf28b92e334c764508e1e0b8f64436e7667c76acd6b650"
+  },
+  "recorded_at": "2026-07-15T15:11:53.951Z",
+  "run_id": "run:0235db6b-4775-4d96-aa3e-608fe74cd481",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.started"
+}

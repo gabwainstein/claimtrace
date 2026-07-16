@@ -8,11 +8,34 @@
   "input_types": ["data", "artifact", "code"],
   "run_output_types": ["data", "artifact"],
   "require_assessments": true,
+  "execution": {
+    "replays": "claimtrace/replays",
+    "method_assessments": "claimtrace/method-assessments",
+    "require_contracts": true,
+    "require_replay": true,
+    "require_method_assessments": true,
+    "require_stage_checkpoints": true,
+    "replay_attempts": 2
+  },
   "logic": {
     "derivations": "claimtrace/derivations",
     "vocabularies": ["claimtrace/logic/vocabulary.json"],
     "rule_packs": ["claimtrace/logic/rules.json"],
     "allow_external_packs": false,
     "require_derivations": true
+  },
+  "semantics": {
+    "terminologies": ["claimtrace/semantics/local-terms.json"],
+    "ontology_locks": [
+      "claimtrace/semantics/penguin-example-ontology/ontology.lock.json"
+    ],
+    "mappings": "claimtrace/semantics/mappings",
+    "policies": "claimtrace/semantics/policies",
+    "active_policy": null,
+    "allow_external_sources": false,
+    "require_active_policy": false,
+    "language": "en",
+    "max_candidates": 25,
+    "max_ontology_bytes": 536870912
   }
 }

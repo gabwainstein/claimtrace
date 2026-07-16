@@ -7,5 +7,5 @@ authors:
     given-names: Gabriel
 repository-code: "https://github.com/gabwainstein/claimtrace"
 url: "https://github.com/gabwainstein/claimtrace"
-version: 0.2.0
+version: 0.3.0
 license: MIT

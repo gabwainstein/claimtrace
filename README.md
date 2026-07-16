@@ -15,9 +15,20 @@ retractions), captures content-addressed mechanical receipts around analysis com
 For the part that cannot be reduced to hashes, an external agent can submit a schema-constrained
 semantic assessment that compares what a result means with what a claim says. Claimtrace pins the
 exact nodes and evidence bytes, applies deterministic policy, and leaves acceptance to a separate
-review step. For formalizable claims, a separate data-only symbolic layer grounds complete typed
-facts from result artifacts and computes whether a pinned target is derivable under project-owned
-rules, without presenting that conditional proof as scientific truth.
+review step. A separate normalization ledger lets projects define local terms, search only exact
+matches in locally locked ontology indexes, review an attributed SKOS mapping, and activate an
+explicit release made from exact accepted mapping IDs. For formalizable claims, a separate
+data-only symbolic layer grounds complete typed
+  facts from result artifacts and computes whether a pinned target is derivable under project-owned
+  rules, without presenting that conditional proof as scientific truth. Opaque scripts can be
+  wrapped in an exact multistage contract: Claimtrace pins their input, code, method, anchor,
+  parameter, seed, and output declarations; a fresh-workspace replay then tests byte repeatability
+  at the process boundary. Path-bearing internal outputs are automatically hashed as materialized
+  intermediates. For code that can import Claimtrace, an optional cooperative checkpoint API can
+  record that the child program reached every locked stage callsite in dependency order, and replay
+  can compare that self-reported sequence. Pathless or in-memory values remain unobserved. A
+  separately reviewed assessment checks whether the cited code anchors actually implement the
+  written method steps.
 
 It was extracted from the system used to harden a neuroscience manuscript end-to-end — where a
 single un-propagated "use dataset version B, not A" decision had quietly left several figures and
@@ -43,10 +54,35 @@ tracks the **semantic** layer they don't:
 - **Portable symbolic claims.** Project-owned JSON vocabularies, complete result-to-fact bindings,
   and finite rules let users or agents compute conditional claim states without executable policy
   plugins or agent-authored proof steps.
+- **Reviewed semantic normalization.** Local terminology, exact-byte ontology/index locks,
+  deterministic exact candidate sets, immutable mapping reviews, and explicit releases make the
+  chosen meaning inspectable without letting an agent silently invent or activate an identifier.
+- **Reviewable opaque-script provenance.** Closed pipeline contracts map written method steps to
+  exact code line anchors. Contract-bound receipts and fresh-workspace replay test the declared
+  input-to-output boundary, including path-bearing internal outputs. Optional cooperative
+  checkpoints add a fail-closed, replayable record that program control reached each locked
+  callsite, without pretending a child self-report independently observes the computation or hidden
+  in-memory values.
 
 No database, daemon, or cloud is required. The mutable semantic graph is plain JSON; run receipts,
-semantic assessments, and symbolic derivations use separate content-addressed JSON stores. All
-remain readable, diffable, and Git-auditable.
+semantic assessments, semantic mappings/releases, and symbolic derivations use separate
+content-addressed JSON stores. All remain readable, diffable, and Git-auditable.
+
+## Beta capability boundary
+
+Claimtrace is usable today for local, regular-file research workflows, but it is not a universal
+execution monitor or a scientific-truth oracle. This matrix states the current trust boundary:
+
+| Area | Beta status | Current boundary |
+| --- | --- | --- |
+| Child commands | **Supported now** | Any language or tool that can be launched as a child CLI can be wrapped at its process boundary. |
+| Graph, receipts, and replay | **Supported now** | Deterministic project graph, content-addressed receipts, staleness checks, and repeated comparison of declared regular-file outputs. |
+| Stage checkpoints | **Supported now, scoped** | The Python API accepts cooperative reports only from the exact launched direct-child PID. |
+| Semantic and symbolic policy | **Supported with review** | Humans or agents may submit constrained proposals; separate review, pinned vocabularies/rules, and deterministic policy decide what becomes active or derivable. |
+| Actual I/O and isolation | **Not provided** | Pre/post file bytes do not prove actual reads or write causation; replay is not hermetic against network or external-filesystem access. |
+| Notebooks and distributed work | **Partial** | Materialized outputs can be wrapped, but persistent kernels and worker processes cannot report protocol-v1 stage checkpoints directly. |
+| Databases, object stores, and directory datasets | **Partial** | Export regular files or a reviewed deterministic manifest/adapter; these stores are not first-class captured inputs. |
+| Identity and scientific validity | **Not provided** | Actor labels are self-asserted, and no receipt, review, normalization, or proof certificate authenticates a person or establishes scientific truth. |
 
 ---
 
@@ -76,11 +112,20 @@ git clone https://github.com/gabwainstein/claimtrace && cd claimtrace && pip ins
 
 ```bash
 cd my-analysis-project
-claimtrace init                       # scaffold claimtrace.config.json + claimtrace/graph.json
+claimtrace init                       # empty planning-safe config + graph; strict checks pass now
+# claimtrace init --example           # optional runnable toy CSV + verifier instead
 claimtrace install-skill --dir .      # optional: install agent + Claude project-local skills
-# ... edit claimtrace/graph.json to describe your data → code → figures → claims ...
+# ... author and review the graph; agents use graph-propose/graph-apply as described below ...
 claimtrace run --input data/raw.csv --input analysis/fit.py --output results/fit.json \
   -- python analysis/fit.py           # execute + capture a mechanical receipt
+# for an opaque multistep script, add a reviewed claimtrace.pipeline-contract/1 file;
+# --stage-checkpoints also requires one instrumented stage_checkpoint("<id>") call per stage:
+claimtrace run --pipeline-contract claimtrace/fit.pipeline.json --stage-checkpoints \
+  --input data/raw.csv --input analysis/fit.py --output results/fit.json \
+  --param model=ols --seed numpy=7 -- python analysis/fit.py
+claimtrace replay <run-id>             # >=2 fresh workspaces; exact output-byte comparison
+claimtrace assess-method method-proposal.json --actor analysis-agent
+claimtrace review-method <assessment-id> --state accepted --actor methods-reviewer
 claimtrace check                      # paths exist? nothing stale? nothing on a retired branch?
 claimtrace check --strict --json      # deterministic graph + receipt reconciliation gate
 claimtrace impact --set model=v2      # what must change if I switch the canonical model?
@@ -88,6 +133,12 @@ claimtrace downstream art:clean_data  # what depends on this artifact?
 claimtrace verify                     # do my headline numbers still reproduce from disk?
 claimtrace assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
 claimtrace assessments --json        # inspect proposals, reviews, findings, and staleness
+# optional normalization, after adding project terminology + locked ontology/index assets:
+claimtrace ontology-candidates "memory score" --language en --limit 25 --json  # exact matches only
+claimtrace map-term mapping.json --actor analysis-agent --language en --limit 25  # reuse that profile
+claimtrace review-mapping <mapping-id> --state accepted --actor reviewer
+claimtrace compile-semantic-policy policy.json --actor policy-owner  # still inactive
+claimtrace semantic-status --json    # recheck locks, reviews, release, and explicit activation
 claimtrace evidence-plan claim:gate --json  # inspect the claim-owned exact required bindings
 claimtrace derive plan-request.json --actor analysis-agent  # request automatic all-of materialization
 claimtrace derivations --json        # inspect conditional proof states and current validity
@@ -95,6 +146,213 @@ claimtrace explain <derivation-or-proof-id> --json  # inspect one composite proo
 claimtrace journal --status dead_end  # show me everything I already tried that didn't work
 claimtrace view --output research-map.html  # semantic trajectory + mechanical receipt overlay
 ```
+
+Default `claimtrace init` creates an empty valid graph, configures no executable verifier, and
+invents no dataset or analysis path. It therefore can accompany a study before data, code, claims,
+or terminology policy exist, and `claimtrace check --strict` is green immediately. Add graph nodes
+only as their real project objects are planned or created. Use explicit `--example` when you want
+the small runnable CSV and row-count verifier instead. Both modes deliberately leave semantic
+assets empty. The
+[Penguins normalization walkthrough](examples/penguin_study/SEMANTICS.md) shows the complete
+proposal, separate review, inactive release, and explicit activation lifecycle.
+
+## Opaque or multistep scripts
+
+Many real analyses clean data, transform variables, fit models, and export results inside one
+script without materializing or printing every intermediate. Claimtrace handles that case as five
+separate evidence questions instead of treating one successful exit code as proof of everything:
+
+1. A method node declares small, stable steps in `claimtrace.method-spec/1`. A claim explicitly
+   names the method steps it relies on with `claimtrace.method-requirements/1`; that set may be a
+   subset of the full method specification but must exactly equal its selected producer ancestry.
+2. A `claimtrace.pipeline-contract/1` document maps each method step to exact code nodes and
+   SHA-256-pinned text-line anchors, declares a stage DAG, and gives every declared input/output an
+   exact graph role. Parameters and seed names are an exact allow-list.
+3. `claimtrace run --pipeline-contract ...` records an event-v3 receipt and a portable computation
+   identity. Any non-terminal stage output whose existing graph node has a path is automatically a
+   materialized intermediate: its pre/post process-boundary bytes are captured separately from the
+   terminal outputs. `claimtrace replay` repeats that successful computation at least twice in
+   newly created workspaces populated only with the declared project inputs, compares every
+   terminal output and materialized intermediate with the original and other attempts by SHA-256
+   plus size, compares stdout/stderr and visible undeclared workspace file-path deltas across
+   attempts, and reports undeclared workspace file writes.
+4. When cooperative instrumentation is explicitly enabled, project code calls
+   `stage_checkpoint("<contract-stage-id>")` once after each stage body. The controller requires the
+   exact contract stage set, dependency order, uniqueness, execution binding, and a caller path and
+   line inside that stage's locked anchor. Each record also carries `reporter_pid`, which must equal
+   the exact PID returned when Claimtrace launched the direct child. Such a run uses event-v4;
+   replay-v3 repeats the checkpoint protocol with fresh bindings and compares the normalized
+   callsite sequence with the source run and every attempt.
+
+   ```python
+   from claimtrace.pipeline import stage_checkpoint
+
+   # Run and validate the declared stage body first.
+   stage_checkpoint("fit")
+   ```
+
+   The call returns `False` and writes nothing outside a checkpoint-enabled Claimtrace child. It
+   returns `True` after appending the bound record inside one. Recompute the code-anchor line range
+   and digest after adding the call, and keep the call itself inside that stage's anchor. Claimtrace
+   always removes all reserved checkpoint environment variables before launching a run/replay child,
+   then adds a fresh controller-created binding only for a traced run or replay attempt.
+5. An agent may submit a bounded `assess-method` proposal over the exact method, contract, code, and
+   anchors. Claimtrace computes the mechanical snapshot and drift checks; a different self-asserted
+   actor must accept, reject, or contest the semantic judgement.
+
+This intentionally produces five distinct statements:
+
+- **Boundary byte-repeatable:** the declared outputs matched in fresh-workspace attempts under the
+  recorded partial environment scope. For event-v3/replay-v2 evidence, every materialized
+  intermediate also matched the source receipt and all attempts.
+- **Intermediate file observed:** a declared path had exact pre/post whole-process fingerprints.
+  This does not show which stage wrote it, whether an earlier stage produced the final bytes, or
+  whether it was rewritten later.
+- **Stages declared:** the contract says which code spans correspond to which method steps; it does
+  not prove those branches ran. Pathless, ephemeral, or in-memory intermediates remain unobserved.
+- **Cooperative checkpoint reached:** when enabled, the child reported that program control reached
+  every required locked callsite once and after its declared dependencies. This is child self-report,
+  not independent observation of the computation, intermediate values, method meaning, or scientific
+  support. Only the launched direct child PID is accepted: a subprocess, multiprocessing worker, or
+  persistent notebook kernel cannot satisfy checkpoint protocol v1 through the API. Join workers and
+  validate their results first, then emit the stage checkpoint from the launched parent process.
+- **Method conformance reviewed:** an attributed reviewer accepted that the pinned code anchors
+  implement the written method. This remains a semantic judgement, not proof that the method is
+  scientifically appropriate or that the claim is true.
+
+Replay does not isolate network access, external filesystem paths, databases, GPUs, clocks,
+schedulers, or every host-library and kernel detail. A child with an absolute path or inherited
+environment value can still write outside the fresh workspace; Claimtrace neither observes nor
+prevents that write. It observes the direct child and workspace file-path pre/post state, not write
+causation or background descendants. Ordinary directory-only changes, including empty directories,
+are not recorded. Seeds and parameters are exact recorded declarations; Claimtrace does not
+magically inject them into arbitrary code. If a script depends on hidden external state, either
+materialize and declare that state, wrap it in a deterministic adapter, or leave the result marked
+as only partially covered. A child can emit a cooperative checkpoint without performing the
+intended computation, so the trace is not an adversarial attestation. Legacy event-v2 receipts and
+replay-v1 certificates remain readable as historical evidence, but contain no materialized-
+intermediate evidence; Claimtrace does not infer it from a matching terminal output. Current
+review-ready claim provenance requires an event-v3 source, or event-v4 when stage checkpoints are
+required.
+A replay-v1 certificate can retain eligibility only when its source is event-v3 and declares no
+materialized intermediate; otherwise its terminal-output repeatability remains historical scope.
+
+The controller caps the raw cooperative JSONL trace at 1 MiB so the source plus repeated attempt
+traces remain representable inside the bounded replay-certificate document. The normalized
+`result_id` deliberately excludes per-execution nonce, raw-journal hash/size, and reporter PID so an
+otherwise identical result has a stable identity. The content-addressed finish event still commits
+the complete stored trace, including those binding fields. Direct-child PID checking and fresh
+bindings prevent accidental or stale mixing, not raw protocol forgery: cooperating code that knows
+the inherited binding can bypass the API and name the expected direct-child PID in raw JSON.
+
+For an unredacted source run, replayed argv, cwd, and argv-capture mode must exactly match the
+content-addressed start plan. A redacted source argv instead requires a caller-supplied command that
+matches the stored non-secret shape. The current certificate deliberately stores neither the secret
+values nor a guessable digest of them, so it cannot later prove that this override was the original
+command. Such a replay may retain its attempt-level byte outcome, but returns non-review-ready with
+exit code 3 and must be described only as replay of the supplied override.
+
+Projects can adopt this gradually. The four execution policy switches default to `false` so an
+empty or existing project remains usable; enable them only after its contracts, instrumentation,
+and review records exist. Unlike the other gates, `require_stage_checkpoints` also turns on
+checkpoint capture for subsequent contract-bound runs:
+
+```json
+{
+  "execution": {
+    "replays": "claimtrace/replays",
+    "method_assessments": "claimtrace/method-assessments",
+    "require_contracts": true,
+    "require_replay": true,
+    "require_method_assessments": true,
+    "require_stage_checkpoints": true,
+    "replay_attempts": 2
+  }
+}
+```
+
+The report and interactive map deterministically start at the exact stage that declares the claimed
+terminal result and follow its transitive stage dependencies. The claim's method requirements must
+equal the method/step pairs on that producer ancestry, and accepted current method-conformance
+reviews must cover each exact stage. Every path-bearing intermediate on that ancestry must also have
+a current receipt binding. Producer-ancestry selection, claim requirement equality, and ancestry
+intermediate binding are branch-local. Replay is deliberately whole-command: any terminal output
+or materialized intermediate in the producing contract can block the replay. Method conformance is
+also whole-method within that contract, so an off-ancestry stage that reuses the same method ID can
+block that method assessment. Use separate commands/contracts and method IDs when branches need
+independent readiness. The projection then joins those facts with the accepted result-to-claim
+semantic relation, producing receipt, current contract, and review-ready replay.
+`ready_under_reviewed_provenance` means those reviewed provenance layers are current under the
+documented partial boundary coverage. When `require_stage_checkpoints` is true, it additionally
+requires a complete source cooperative trace whose normalized stage/callsite sequence repeats in a
+current replay-v3 certificate. It explicitly does **not** mean scientific validity.
+Strict report schema 1.7 exposes `stage_checkpoint_state` and keeps
+`stage_execution_observation` explicitly labeled as cooperative self-report rather than independent
+observation.
+
+Readiness also fails closed on ledger integrity. An unreadable or invalid event file quarantines
+all runs because the event store is no longer established; a start/finish link or snapshot mismatch
+quarantines only that run. An invalid replay-store sibling suppresses current/review-ready status
+for every replay certificate in that store. Semantic- and method-assessment stores use the same
+flat, non-link, fail-closed boundary. If current replay certificates for one source run disagree on
+review readiness, the positive certificate is suppressed and the run exposes a replay conflict;
+fix or materialize the hidden state so the old computation, contract, inputs, or recorded lock
+environment is no longer current, then record a new source run. An identical new run does not erase
+the immutable contradiction. The records and issues remain visible in reports and the map, but
+quarantined evidence cannot create a current claim binding.
+
+Natural drift in an older contract-bound receipt, its replay, or its method assessment remains
+visible but can become nonblocking historical information only after a genuine replacement exists.
+For run/replay drift, Claimtrace requires a strictly later successful run with the exact same
+pipeline output-role set, a current contract, current exact graph-output bindings, and a
+review-ready replay; when checkpoint policy is enabled, that replacement must be event-v4 with a
+current repeatable replay-v3 checkpoint trace. Method drift also needs a current accepted
+implementation assessment for the same method. Merely re-running without replay is insufficient.
+Integrity failures, replay non-repeatability or conflict, undeclared workspace writes, and capture
+contract failures are not demoted by this historical-replacement rule.
+
+## Reviewable graph changes and release commitments
+
+Agents should not edit `graph.json` opportunistically. `graph-propose` accepts a closed, bounded
+`claimtrace.graph-change-request/1` containing the exact current `base_graph_hash` and explicit
+node, edge, and concept operations. It normalizes the request, validates the complete result graph,
+and creates a content-addressed proposal without changing the graph. `graph-apply` holds the graph
+lock, rechecks the proposal and base hash, and atomically writes only that reviewed result. If the
+graph moved since proposal, application fails instead of rebasing or guessing.
+
+Graph proposal v1 records content and base/result identities, not an authenticated approval or an
+immutable in-tool reviewer chain. The human-review evidence therefore lives in the repository's PR,
+commit-signing, or equivalent governance system. Proposal output paths are caller-chosen and are
+not automatically discovered by the release manifest; retain a reviewed proposal in Git or model
+it as an explicit graph-backed document when that artifact must be part of the published record.
+
+`release-create` performs two complete collections and emits `claimtrace.project-release/1` only
+when both inventories match. The manifest pins exact bytes, sizes, roles, and logical IDs for the
+configured graph, graph-backed artifacts, render locks, the current files at pipeline-contract
+source paths referenced by included records,
+event and review stores, semantic assets, symbolic assets, replay certificates, and method
+assessments. `release-verify` recollects the
+project and fails on changed, missing, or newly in-scope files; `release-diff` gives an exact change
+set between two valid manifests.
+
+Release schema v1 remains compatible with both its canonical pre-checkpoint schema inventory and
+the current inventory. Newly created manifests use the current inventory, which now also names
+`claimtrace.stage-checkpoint/1`, `claimtrace.stage-trace-plan/1`, and
+`claimtrace.stage-trace/1`; validation still accepts an otherwise canonical release-v1 manifest
+created before those inventory keys existed.
+
+The content-addressed `release_id` is the correct object to sign, place in a transparency log, or
+anchor on a blockchain. That external commitment can make later substitution or omission
+detectable relative to the anchored manifest. It does not authenticate Claimtrace's self-asserted
+actor strings, prove that the committed release was complete before anchoring, or validate any
+scientific interpretation.
+
+Pipeline snapshots preserve the normalized historical contract plus its exact source fingerprint.
+The release role `pipeline_contract_current_source` means only the file currently at a referenced
+path; it is not a retained copy of every prior raw contract document. Use versioned contract paths,
+Git history, or an external content-addressed archive when those historical JSON bytes must remain
+recoverable. Manifest entries for explicitly configured external assets contain absolute paths;
+they are host-specific and can expose usernames or workspace layout in a public release.
 
 ## Try the real-data demo
 
@@ -178,7 +436,17 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace check --strict --json` | deterministic graph/receipt report; also blocks on lint, stale nodes, missing receipts, and declaration mismatches |
 | `claimtrace lint` | warn on non-standard vocabulary + load-bearing nodes with no `backbone` (`--strict` to fail) |
 | `claimtrace run ... -- COMMAND` | execute a direct child with explicit inputs/outputs and append content-addressed pre/post SHA-256 receipts |
-| `claimtrace view --output FILE` | render a standalone interactive trajectory with semantic and receipt layers |
+| `claimtrace run --pipeline-contract FILE ... -- COMMAND` | bind an opaque command to exact code/method/stage/input/output declarations and write event-v3 receipts with path-bearing intermediate capture |
+| `claimtrace run --pipeline-contract FILE --stage-checkpoints ... -- COMMAND` | additionally require one cooperative child checkpoint per locked contract stage; complete traces use event-v4 |
+| `claimtrace replay RUN_ID [--repeat N]` | repeat a successful contract-bound run in fresh workspaces and compare terminal/intermediate bytes plus any event-v4 cooperative sequence |
+| `claimtrace assess-method ENTRY --actor ID` | append a bounded external method-to-code conformance proposal over exact anchors |
+| `claimtrace method-assessments [--json]` / `review-method ID ...` | inspect immutable method-review leaves or append a distinct review decision |
+| `claimtrace view --output FILE` | render a standalone interactive trajectory with semantic, proof, contract, replay, method, and receipt details |
+| `claimtrace graph-hash` | print the canonical current graph hash for review or external anchoring |
+| `claimtrace graph-propose REQUEST --output FILE` | compile a bounded change request into a content-addressed proposal without mutating the graph |
+| `claimtrace graph-apply PROPOSAL` | atomically apply a reviewed proposal only if its exact base graph still matches |
+| `claimtrace release-create [--output FILE]` | collect a stable, exact-byte release manifest across configured graph and provenance stores |
+| `claimtrace release-verify MANIFEST` / `release-diff BEFORE AFTER` | recollect and verify a release, or compare two valid manifests |
 | `claimtrace impact --set concept=value` | ordered propagation to-do list for a canonical change |
 | `claimtrace downstream <id>` / `upstream <id>` | transitive dependents / dependencies |
 | `claimtrace node <id>` | a node and its edges |
@@ -187,15 +455,29 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `claimtrace assess ENTRY --actor ID` | append an external-agent semantic proposal; claimtrace computes evidence snapshots and policy output |
 | `claimtrace assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
 | `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append a separate-actor acceptance, rejection, contest, or supersession decision |
+| `claimtrace lock-ontology ENTRY --output FILE` | pin exact local ontology document and project-supplied index bytes; performs no fetch or OWL parsing |
+| `claimtrace ontology-candidates QUERY [--language TAG] [--limit N] [--json]` | return a content-addressed set of exact IRI, preferred-label, or synonym matches from configured locks |
+| `claimtrace map-term ENTRY --actor ID [--language TAG] [--limit N]` | append an attributed, inactive mapping proposal using the same candidate-search profile |
+| `claimtrace mappings [--state ...] [--all] [--json]` | list mapping history, current review leaves, drift, conflicts, and release eligibility |
+| `claimtrace review-mapping MAPPING_ID --state ... --actor ID` | append a separate-actor mapping review successor |
+| `claimtrace compile-semantic-policy ENTRY --actor ID` | compile exact accepted current mapping leaf IDs into an immutable inactive release |
+| `claimtrace semantic-status [--policy ID] [--json]` | recheck semantic assets, mappings, the active release, and optionally one exact inactive release |
 | `claimtrace evidence-plan CLAIM_ID [--json]` | show the claim-owned exact all-of binding plan and its pinned vocabulary/rule pack |
 | `claimtrace derive ENTRY --actor ID` | materialize a claim-owned evidence plan (preferred), select bindings for an unplanned claim, or import explicit typed facts |
 | `claimtrace derivations [--state ...] [--json]` | list derivations reevaluated against the current graph, artifacts, vocabulary, and rules |
 | `claimtrace explain DERIVATION_OR_PROOF_ID [--json]` | show one composite proof certificate, premises, assumptions, equivalent submissions, and effective state |
-| `claimtrace snapshot` | lock each render's input content-hashes into a manifest |
+| `claimtrace snapshot` | lock each render and its declared inputs into a versioned SHA-256 manifest |
 | `claimtrace verify` | run your project-specific numeric checks |
 | `claimtrace summary` | node/edge/concept counts |
-| `claimtrace init` | scaffold a config in a project |
+| `claimtrace init [--example]` | scaffold an empty planning-safe project, or explicitly install a runnable toy dataset and verifier |
 | `claimtrace install-skill [--target ...]` | install the packaged `claimtrace-log` skill without silently overwriting project customizations |
+
+New render locks use schema `claimtrace.render-manifest/2` and lowercase SHA-256 for the output and
+every declared transitive input. Unversioned SHA-1 manifests from earlier releases remain readable
+so their existing locks can be checked, but Claimtrace never writes that legacy form. To migrate
+without silently blessing changed files, first run `claimtrace check`; only after the legacy lock
+passes, run `claimtrace snapshot` and check again. Explicit unknown schemas, mixed SHA-1/SHA-256
+fields, and malformed digests fail closed as `INVALID_MANIFEST`.
 
 The standalone trajectory is also a navigable canvas: use the mouse wheel or the visible controls
 to zoom around the pointer, drag empty background to pan, and use **Fit** to recover the full view.
@@ -210,6 +492,11 @@ localhost port has separate storage. Edges follow orthogonal lanes with rounded 
 moving any node reroutes the graph so unrelated relationships cannot remain hidden underneath it.
 Click an edge, its label, or choose it under **Relationship** to highlight exactly that edge and its
 direct source and target, with the full relation and traversal status shown in the details panel.
+The header distinguishes no selector, a configured-but-invalid selector, and a valid active
+release. Its mapping drilldown shows the local definition, proposed relation and rationale,
+limitations, reviewer, live findings, release eligibility, and whether the exact mapping leaf is
+selected in the active release. Mapping policy remains a separate context layer rather than being
+drawn as a scientific-support edge.
 
 ## Grounded semantic assessments
 
@@ -267,6 +554,141 @@ There is no direct support edge from the fit to that hypothesis.
 
 Staleness pins the exact claim node, result node, and result artifact. It does not snapshot every
 upstream graph edge or canonical concept; those remain the separate graph/receipt integrity layer.
+
+## Reviewed semantic normalization
+
+Scientific projects rarely use one vocabulary. Claimtrace now provides an optional normalization
+layer that keeps the flexible judgement small and reviewable while making discovery, identity,
+drift, conflict, and activation deterministic. A project declares its own terminology and one or
+more local ontology locks:
+
+```json
+{
+  "semantics": {
+    "terminologies": ["claimtrace/semantics/local-terms.json"],
+    "ontology_locks": ["claimtrace/semantics/domain.lock.json"],
+    "mappings": "claimtrace/semantics/mappings",
+    "policies": "claimtrace/semantics/policies",
+    "active_policy": null,
+    "allow_external_sources": false,
+    "require_active_policy": false,
+    "language": "en",
+    "max_candidates": 25,
+    "max_ontology_bytes": 536870912
+  }
+}
+```
+
+Normal operation is offline. Candidate search uses only configured local locks and accepts exact
+IRI identity or exact preferred-label/synonym text after a versioned Unicode/case/whitespace
+normalization. IRI identity remains case-sensitive. There is no fuzzy search, embedding search,
+remote resolver, or agent-generated fallback IRI. No match and ambiguity are records to preserve,
+not errors to hide.
+
+If discovery uses `--language` or `--limit`, pass the same flags to `map-term`. The proposal pins
+the candidate-set ID, and Claimtrace rejects a proposal whose recomputed profile does not reproduce
+that ID. Candidate JSON also carries the fixed project-supplied-index assertion and explicit
+limitations, so exact-byte integrity is not mistaken for verified RDF/OWL extraction.
+The candidate profile pins the runtime Unicode data version used for NFC, case folding, and
+whitespace classification. A runtime upgrade therefore makes the changed profile visible and
+requires affected mappings to be re-evaluated instead of silently changing their meaning.
+
+An ontology lock content-addresses its identity/version metadata and pins the SHA-256 and size of
+every supplied source document and the supplied term index. The index is a bounded,
+project-supplied, unverified assertion used for deterministic search; v1 does **not** parse OWL/RDF or prove
+that each indexed label, definition, parent, or IRI was extracted from the locked ontology bytes.
+Likewise, declared imports are checked only against configured lock identities. Claimtrace does not
+discover or prove a complete `owl:imports` closure. Generate and review the index outside this
+trust boundary, record its generator/version in project provenance, and do not describe a green
+lock as ontology-semantic validation.
+
+`lock-ontology` only creates the exact project-local output path already declared in
+`semantics.ontology_locks`. It never replaces differing lock bytes, even on request; configure a
+new path for a new ontology release. This prevents a lock-creation command from overwriting the
+graph, config, another policy asset, or a provenance ledger.
+
+The lock request is path-based and differs from the stored lock document. Source paths are resolved
+relative to the configured `--output` file's directory. Place `domain.owl` and a reviewed
+`index.json` beside the future lock, declare
+`claimtrace/semantics/domain/domain.lock.json` in `semantics.ontology_locks`, and submit:
+
+```json
+{
+  "ontology_id": "project:domain-ontology",
+  "ontology_iri": "https://example.org/domain/",
+  "version": "2026-07-15",
+  "version_iri": "https://example.org/domain/releases/2026-07-15",
+  "license_iri": "https://creativecommons.org/licenses/by/4.0/",
+  "documents": ["domain.owl"],
+  "index": "index.json",
+  "imports": [],
+  "declared_imports_available": false
+}
+```
+
+```bash
+claimtrace lock-ontology lock-request.json \
+  --output claimtrace/semantics/domain/domain.lock.json --json
+```
+
+`max_ontology_bytes` bounds all configured locked ontology and index bytes hashed by one semantic
+operation. It defaults to 536,870,912 bytes (512 MiB); larger projects must opt in explicitly, up
+to the hard 274,877,906,944-byte (256 GiB) ceiling. Raising it increases worst-case validation time.
+
+The mapping proposal contains only a local-term identity and agent-authored input. Claimtrace
+recomputes the bounded candidate set and snapshots the local term and selected candidate. An
+untruncated set contains every exact match; a truncated set preserves only the visible prefix plus
+the total count/truncation evidence and is never policy-eligible. The
+allowed decisions are `skos:exactMatch`, `skos:closeMatch`, `skos:broadMatch`,
+`skos:narrowMatch`, `skos:relatedMatch`, and `unmapped`. Here, broad/narrow are read from the local
+term toward the external target: `broadMatch` means the target is broader; `narrowMatch` means the
+target is narrower. `exactMatch` requires scope-level interchangeability, not merely the same
+label. Incompatible entity kinds and truncated candidate sets cannot enter a policy.
+
+```json
+{
+  "terminology_id": "study:terms",
+  "term_id": "study:memory-score",
+  "agent_input": {
+    "relation": "skos:closeMatch",
+    "target": {
+      "ontology_lock_id": "ontology-lock:sha256:<64-hex-digest>",
+      "iri": "<IRI copied exactly from ontology-candidates output>"
+    },
+    "candidate_query": "memory score",
+    "candidate_set_id": "candidates:sha256:<64-hex-digest>",
+    "rationale": "Concise definition-level comparison.",
+    "limitations": ["The project instrument is narrower than the indexed definition."],
+    "provenance": {"agent": "analysis-agent"}
+  }
+}
+```
+
+The first reviewer string must differ from the proposer string, but both are self-asserted
+attribution, not authentication. Acceptance still does not activate a mapping. A release request
+must enumerate exact accepted, current, non-stale mapping leaf IDs:
+
+```json
+{
+  "mapping_ids": ["mapping:sha256:<64-hex-digest>"],
+  "note": "Reviewed terminology release for this analysis."
+}
+```
+
+`claimtrace compile-semantic-policy` stores that release without activating it. Check an inactive
+release explicitly with
+`claimtrace semantic-status --policy semantic-policy:sha256:<digest> --json`. Activation is a
+separate reviewed edit that pins the returned ID in `semantics.active_policy`; Claimtrace never
+chooses “latest” or collects every accepted mapping implicitly. `semantic-status` and the strict
+report then re-evaluate the active release against current terminology, locked bytes, candidate
+sets, review leaves, conflicts, and store integrity. Set `require_active_policy` only after the
+project is ready to make absence or invalidation blocking.
+
+This v1 release is a terminology-policy ledger. It does not rewrite graph nodes, create scientific
+support edges, assert `owl:sameAs`, or change a symbolic proof. The current symbolic-derivation
+schema still pins its vocabulary/rule assets separately; binding those assets to an active semantic
+release requires a future proof-schema migration so historical certificates cannot be silently
+reinterpreted.
 
 ## Portable symbolic derivations
 
@@ -366,8 +788,9 @@ They do not establish that the rules are scientifically valid, that a premise is
 formal target accurately expresses the prose claim, or that a binding accurately expresses the
 artifact's scientific construct. Semantic assessments cover result-to-prose meaning only. The
 prose-to-target and binding-to-predicate mappings remain repository policy that needs separate
-review; call that review independent only when the surrounding workflow establishes it. Claimtrace
-does not yet store a dedicated review record for either mapping. Set
+review; call that review independent only when the surrounding workflow establishes it. The
+semantic-normalization ledger can review term-to-ontology mappings, but symbolic proof schema v1
+does not yet bind those mapping releases to a proof. Set
 `logic.require_derivations` only when a project wants strict checks to require an active
 `derivable` certificate for each configured claim target.
 
@@ -411,6 +834,15 @@ Claimtrace automates integrity, grounding, conditional inference, reconciliation
 policy checks, and display. Claimtrace itself enforces only that the first reviewer actor string
 differs from the proposer string; it does not authenticate people or establish independence.
 
+The skill has two explicit modes. Routine analysis mode may log work, assess result-to-claim
+meaning, and submit premises under already configured policy, but it cannot edit meaning-bearing
+semantic assets. Semantic-authoring mode is entered only when the user asks for it. There an agent
+may inspect locked candidates, preserve ambiguity or no-match, and submit a concise mapping,
+vocabulary, or restricted-rule proposal. It still cannot invent an IRI, review its own proposal,
+activate a mapping release, or describe accepted normalization as scientific truth. The bundled
+`references/semantic-authoring.md` contains that operational boundary and is installed with the
+skill.
+
 An exact plan prevents the requesting agent from cherry-picking within that reviewed list. It does
 not establish that the list includes every scientifically relevant result; that remains repository
 policy and review.
@@ -427,7 +859,9 @@ cp hooks/pre-commit .git/hooks/pre-commit   # runs `claimtrace check` (blocking)
 the project and writes the explicitly requested HTML output. `claimtrace run` executes exactly the
 argv after `--` as a direct child with `shell=False`; `claimtrace verify` **executes your project's
 `verifiers.py`** (a plugin model, like `conftest.py` or a `Makefile`). Run executable commands only
-in projects you trust, and do not auto-run them on untrusted pull requests.
+in projects you trust, and do not auto-run them on untrusted pull requests. `verify` exits 0 only
+after at least one registered check ran and all registered checks passed; it exits 2 with
+`NOT_CONFIGURED` or `NO_CHECKS` when no numeric verification actually occurred.
 
 `claimtrace` verifies that the *machinery* is internally consistent — paths exist, no cycles or
 dangling edges, claims cite on-backbone artifacts, headline numbers reproduce. It deliberately does
@@ -435,17 +869,46 @@ dangling edges, claims cite on-backbone artifacts, headline numbers reproduce. I
 coherent, not that the conclusion is right. That boundary is the point — it tells you what has *not*
 been re-derived, so a human still does the judging.
 
-The system deliberately has four evidence layers:
+The system deliberately keeps nine evidence layers separate:
 
 - The **semantic graph** contains declared scientific assertions: hypotheses, predictions,
   methods, claims, conclusions, and their declared dependencies. A generic command wrapper must not
   invent or silently mutate those assertions.
+- The **pipeline contract** stores an authored stage DAG, exact graph roles, method-step mappings,
+  code files and line anchors, and required parameter/seed names. Its stages are declarations, not
+  runtime traces. An internal produced node with a path is automatically classified as a
+  materialized intermediate; a pathless internal node remains unobserved. Snapshot v3 binds stable
+  file content and size but excludes clone-local filesystem timestamps from the contract identity.
+  Stored v2 snapshots still validate their original exact content addresses; compatibility
+  currentness ignores only their code/method `mtime_ns` fields, never bytes or scientific
+  structure. Snapshot v1 retains its original exact comparison and coverage limits.
 - The **mechanical receipt ledger** records declared inputs/outputs, stable pre/post SHA-256 file
   versions, direct-child argv and return code, best-effort Git/lockfile context, and project-window
-  deltas.
+  deltas. Event-v3 and event-v4 record materialized-intermediate paths and transitions separately
+  from terminal outputs, after the whole process rather than at a stage boundary.
+- The optional **cooperative stage trace** in event-v4 records a nonce-bound child report that every
+  contract stage callsite was reached exactly once, inside its locked anchor and after its DAG
+  dependencies. Reserved trace environment variables are scrubbed before launch and freshly bound;
+  `reporter_pid` must match the exact launched direct child. A missing, duplicate, unknown,
+  out-of-order, wrong-process, or unanchored checkpoint fails the run contract. Descendant processes
+  cannot report through protocol v1, while the cooperative child can still forge raw records, so
+  this is not independent execution observation, value capture, semantic validation, or scientific
+  support.
+- The **replay-certificate ledger** records multiple fresh-workspace attempts and exact output-byte
+  comparisons against each other and the original receipt. Replay-v2 includes materialized
+  intermediates; replay-v3 also requires complete matching cooperative stage/callsite sequences. It
+  tests repeatability within its stated partial environment coverage, not stage attribution,
+  adversarial attestation, or universal determinism.
+- The **method-conformance ledger** stores an agent's bounded comparison of written method steps with
+  exact contract/code anchors plus a distinct actor's immutable decision. It cannot observe hidden
+  runtime stages or establish that the method is scientifically appropriate.
 - The **semantic assessment ledger** stores an external agent's schema-constrained interpretation,
   exact evidence anchors, claimtrace-computed hashes and policy findings, and a separate actor's
   immutable decision. It can detect drift and disagreement; it cannot make the interpretation true.
+- The **semantic normalization ledger** stores local-term definitions, exact locked source/index
+  identities, attributed mapping proposals, immutable review leaves, and explicit policy releases.
+  It can make normalization reproducible under those declarations; it cannot prove that a supplied
+  index reflects OWL/RDF source semantics or that an accepted mapping is scientifically correct.
 - The **symbolic derivation ledger** stores typed premises grounded through project-owned complete
   fact profiles, the pinned vocabulary and rule pack, and a Claimtrace-computed composite proof.
   It establishes conditional derivability only; it cannot certify premise truth, scientific
@@ -494,12 +957,31 @@ independent runtime proof. `check --strict` is a deterministic gate within that 
 capture scope. Existing projects with render nodes must also run `claimtrace snapshot` once after a
 trusted render so manifest checks can pass.
 
-Event, assessment, review, and derivation files are append-only through the Claimtrace API, and
+Event, replay-certificate, semantic-assessment, method-assessment, mapping, policy-release, review,
+and derivation files are create-only or append-only through the Claimtrace API, and
 content addressing detects modification of surviving files and broken surviving references. Their
 local directories have no independently anchored head: deleting or omitting a complete event pair,
-assessment/review chain, or derivation may be invisible unless a separate coverage policy happens to
-require it. Use Git or another external ledger commitment when completeness or deletion evidence is
-required.
+replay certificate, assessment/review chain, mapping/review chain, semantic release, or derivation
+may be invisible
+unless a separate coverage policy happens to require it. Use Git, signed release manifests, a
+transparency log, or another external ledger commitment when completeness or deletion evidence is
+required. A blockchain anchor can commit to such a release/root hash, but putting hashes on-chain
+does not validate the scientific meaning, restore omitted records, or make self-asserted actor
+strings authenticated.
+
+Path checks reject static symbolic-link, junction, and reparse-point escapes, and cooperative local
+writers are serialized. Claimtrace does not defend a privileged process against an untrusted
+same-identity process that actively swaps workspace directories between individual filesystem
+operations; do not run it elevated over an attacker-controlled checkout. Create-only publication
+also requires local hardlink support and fails closed with an actionable error when the filesystem
+cannot provide that atomic primitive.
+
+Runtime locks coordinate cooperating Claimtrace processes on one host; they are not distributed
+locks for a shared network workspace. Direct concurrent edits to terminology, ontology, or index
+files are also outside the mapping/policy store lock. Such a race can publish an immediately stale
+record, but status, reports, and activation reload the assets and suppress stale policy rather than
+silently activating it. Quiesce semantic-asset edits while publishing a reviewed mapping release,
+and commit the assets and release selector together through the project's normal review workflow.
 
 The current stores, reconciliation report, and standalone view use project-local JSON and in-memory
 aggregation. They are intended for ordinary research-project graphs, not Arkham/MetaSleuth-scale

@@ -1,0 +1,45 @@
+{
+  "pipeline_contract": "claimtrace/analyze.pipeline.json",
+  "method_id": "method:complete-case-ols",
+  "declared_inputs": [
+    "data/penguins_clean.csv",
+    "analysis/02_analyze.py"
+  ],
+  "declared_outputs": ["results/slopes.json"],
+  "parameters": {},
+  "seeds": {},
+  "agent_input": {
+    "verdict": "implements",
+    "step_alignments": [
+      {
+        "method_step_id": "select_complete_bills",
+        "stage_id": "select_complete_bills",
+        "alignment": "match"
+      },
+      {
+        "method_step_id": "group_by_species",
+        "stage_id": "group_by_species",
+        "alignment": "match"
+      },
+      {
+        "method_step_id": "fit_descriptive_ols",
+        "stage_id": "fit_descriptive_ols",
+        "alignment": "match"
+      },
+      {
+        "method_step_id": "export_slope_profile",
+        "stage_id": "export_slope_profile",
+        "alignment": "match"
+      }
+    ],
+    "rationale": "The exact declared code spans select complete bill records, enforce the declared species groups, calculate the stated descriptive OLS quantities, classify the sign pattern, and export the stated result fields.",
+    "limitations": [
+      "The program emitted run-bound checkpoints at the locked stage callsites, but this cooperative self-report is not an independent observation of the computations or in-memory values.",
+      "This conformance judgement does not establish that the method is scientifically appropriate or that either claim is true.",
+      "Replay covers declared project files and direct-child behavior but does not isolate the network or external filesystem."
+    ],
+    "provenance": {
+      "agent": "codex:/root/stage-checkpoint-regeneration"
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "id": "event:sha256:8bcf0194d99358cb9c3256197681af188f39167b797bbb7541d31bc05559df46",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 16,
+          "event_ids_sha256": "66406433dd2def1fe6be6d3e1c712203f7f1eedf92f912c32111dabe10a47ddd",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 16,
+          "event_ids_sha256": "66406433dd2def1fe6be6d3e1c712203f7f1eedf92f912c32111dabe10a47ddd",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 101979500,
+    "git_after": {
+      "branch": "main",
+      "head": "7dd3ee37c92c3551559c6d7c3fcc825cb0f422ae",
+      "state": "captured",
+      "tracked_dirty": true,
+      "tracked_patch_sha256": "c95f4453808de302bf9afc0d742eeb76cfcce2a7be3a78e0c42ee9e1b312368a",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "path": "data/penguins_clean.csv",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784127968165720200,
+          "path": "analysis/02_analyze.py",
+          "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "size": 3971,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784127968165720200,
+          "path": "analysis/02_analyze.py",
+          "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "size": 3971,
+          "state": "stable"
+        },
+        "path": "analysis/02_analyze.py",
+        "transition": "unchanged"
+      }
+    ],
+    "intermediate_transitions": [],
+    "launch_error": null,
+    "lineage_coverage": {
+      "cooperative_stage_trace": "cooperative_child_self_report",
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_intermediates": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784130015067363700,
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        },
+        "before": {
+          "method": "sha256_stat_before_after",
+          "path": "results/slopes.json",
+          "state": "missing"
+        },
+        "path": "results/slopes.json",
+        "produced": true,
+        "transition": "created"
+      }
+    ],
+    "plan_id": "recipe:sha256:41e527f5eddd783b3b716febe63349b6ecc637e2f109ac08bd2ffb0ec0c2f881",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:d8cf5db6ab896040b6ad3bf6655eb7fee7ad755615c215e3445047ffacfa4e13",
+    "stage_trace": {
+      "binding": {
+        "nonce_sha256": "4baa2c2a3a8b9dbaec10c0f89bc13ff686ef030a471b48cc5daef2643eb55b43",
+        "raw_sha256": "35131d711708ff8126c8088022545fad250c442bc7dd81fbd2ea5c652e1dddb8",
+        "raw_size": 1401,
+        "reporter_pid": 87136,
+        "reporter_scope": "direct_child_process_id_checked",
+        "transport": "controller_created_private_file"
+      },
+      "checkpoint_sequence_sha256": "187f524baf41dc34725e5cdd505d812c09f77749524075df4b0fcc1ef9a481f5",
+      "checkpoints": [
+        {
+          "callsite": {
+            "line": 48,
+            "path": "analysis/02_analyze.py"
+          },
+          "code_node_id": "code:analyze",
+          "observation": "program_emitted_checkpoint_reached",
+          "sequence": 1,
+          "stage_id": "select_complete_bills"
+        },
+        {
+          "callsite": {
+            "line": 55,
+            "path": "analysis/02_analyze.py"
+          },
+          "code_node_id": "code:analyze",
+          "observation": "program_emitted_checkpoint_reached",
+          "sequence": 2,
+          "stage_id": "group_by_species"
+        },
+        {
+          "callsite": {
+            "line": 70,
+            "path": "analysis/02_analyze.py"
+          },
+          "code_node_id": "code:analyze",
+          "observation": "program_emitted_checkpoint_reached",
+          "sequence": 3,
+          "stage_id": "fit_descriptive_ols"
+        },
+        {
+          "callsite": {
+            "line": 102,
+            "path": "analysis/02_analyze.py"
+          },
+          "code_node_id": "code:analyze",
+          "observation": "program_emitted_checkpoint_reached",
+          "sequence": 4,
+          "stage_id": "export_slope_profile"
+        }
+      ],
+      "issues": [],
+      "mode": "cooperative_child_checkpoint_log",
+      "required_stage_ids": [
+        "select_complete_bills",
+        "group_by_species",
+        "fit_descriptive_ols",
+        "export_slope_profile"
+      ],
+      "schema_version": "claimtrace.stage-trace/1",
+      "state": "cooperative_report_complete",
+      "trust": "cooperative_child_self_report_not_independent_observation"
+    },
+    "start_event_id": "event:sha256:d39585c1e694d2c568df7e3a8b46fd6412659a1cca84af9a1445586f3132c779",
+    "window_deltas": [
+      {
+        "after_sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+        "declared_output": true,
+        "evidence_basis": "unattributed_pre_post_window",
+        "path": "results/slopes.json",
+        "transition": "created"
+      }
+    ]
+  },
+  "recorded_at": "2026-07-15T15:40:15.448Z",
+  "run_id": "run:deda38a0-b5df-47f2-b5ed-9d88e599143b",
+  "schema_version": "claimtrace.event/4",
+  "type": "run.finished"
+}

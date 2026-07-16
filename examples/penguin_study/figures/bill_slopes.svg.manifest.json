@@ -1,42 +1,43 @@
 {
+  "schema_version": "claimtrace.render-manifest/2",
   "node": "fig:bill-slopes",
   "output": "figures/bill_slopes.svg",
-  "output_sha1": "b496478fc8729d6cd96b177e3afeb6f8c8eec2a6",
+  "output_sha256": "c745d3e6e5e1b22dd8c76e09cfb4175ed3b7befbc0feb0a60b431a825951ec88",
   "backbone": "palmerpenguins-v0.1.0",
   "value": "Pooled versus within-species bill-length and bill-depth associations.",
-  "locked_at": "2026-07-14T11:12:54+00:00",
+  "locked_at": "2026-07-16T02:41:24+00:00",
   "inputs": [
     {
       "path": "analysis/00_fetch.py",
-      "sha1": "9539ca2a26797f0897b11acc1a1dbdd483648ebd"
+      "sha256": "30812bc0ca85cf900c26718304ba44fd7178312a05dc9d9ec31cdf0d63f69fda"
     },
     {
       "path": "analysis/01_prepare.py",
-      "sha1": "13f9723accc714e7aed631f7100a687568a36d33"
+      "sha256": "e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548"
     },
     {
       "path": "analysis/02_analyze.py",
-      "sha1": "32300bd83eb43b1d7f4615b10a37ce1ffb88fbcd"
+      "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a"
     },
     {
       "path": "analysis/03_figure.py",
-      "sha1": "4a308c0173b22c77caf48aeb4078be49b17cec2d"
+      "sha256": "05e3ec739e25296ff37e1fdd88e2ff86b149e31ace698e1502eaddaad735b466"
     },
     {
       "path": "data/penguins_clean.csv",
-      "sha1": "4f2df5edf9e7cf52ff257aed983fc5f6410bd81a"
+      "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93"
     },
     {
       "path": "data/source/penguins.csv",
-      "sha1": "4f2df5edf9e7cf52ff257aed983fc5f6410bd81a"
+      "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93"
     },
     {
       "path": "data/source/penguins_raw.csv",
-      "sha1": "ad51d0448bf1410baae87fe7b07b0725272ff102"
+      "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd"
     },
     {
       "path": "results/slopes.json",
-      "sha1": "ad31f35261822fbd34b463d61bd2b62f9b3ea6b0"
+      "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d"
     }
   ]
 }

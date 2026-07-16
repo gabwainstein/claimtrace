@@ -1,34 +1,35 @@
 {
+  "schema_version": "claimtrace.render-manifest/2",
   "node": "fig:fit",
   "output": "figures/fit.svg",
-  "output_sha1": "6f42f42b9b72d51e463c9767c7ab14dc66b47778",
+  "output_sha256": "5c8eecff6535f1abb06084ae395e341adbf9b12b752247045cdffabbce50f7ca",
   "backbone": "v2",
   "value": "scatter + fit line",
-  "locked_at": "2026-07-13T17:45:17+00:00",
+  "locked_at": "2026-07-15T06:13:27+00:00",
   "inputs": [
     {
       "path": "analysis/01_clean.py",
-      "sha1": "370279f1e1d2312d2119d5a75a47b0375f7d603f"
+      "sha256": "d11f6c6bb2d0f470d35320264f41ec63db32dd01b8c8707fdae251c1c04a8fa2"
     },
     {
       "path": "analysis/02_fit.py",
-      "sha1": "b7fea60356009f2684636883bf7f9677b12e7505"
+      "sha256": "f487c4b7762868b14e529466d365b0c8f58a4b95cd6ba75af396507c5c13e0ef"
     },
     {
       "path": "analysis/03_figure.py",
-      "sha1": "c60174f6b48190a2f1355502aa24466c8a72960d"
+      "sha256": "48e1928be3520bc0ff501845bf9f9a6acec4f7dd9e3f0e83c13bbe13db4746cf"
     },
     {
       "path": "data/clean.csv",
-      "sha1": "6888f58f2d34169a803f3500013355187735ea51"
+      "sha256": "ed5a5b183a6e7dc351d78bcb4fad37513738117d2dfb1910ac3858964def262e"
     },
     {
       "path": "data/raw_measurements.csv",
-      "sha1": "4bdcf4b828d031cbea1eb0e8888a52b4f19ae741"
+      "sha256": "b5bcbf5f76c1320ad1c3118a514943e204d9f9f0e70caa3b71fd36927a95f3d4"
     },
     {
       "path": "results/fit.json",
-      "sha1": "d867b173b1a25573e742265715e61ad11a75f34b"
+      "sha256": "704622b679cf79f42e7c69733899542af36011415c7657b68294454cfb0d5a1b"
     }
   ]
 }

@@ -21,13 +21,30 @@ from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
                          evaluate_assessment, load_assessments)
 from .engine import (_ordered_subset, build_adj, compute_check, direct_inputs,
                      lint_issues, load_graph, load_raw)
-from .events import (EVENT_SCHEMA, RUN_ID_RE, load_active_markers, load_events,
-                     materialize_runs, snapshot_file)
+from .events import (CONTRACT_EVENT_SCHEMA, CONTRACT_EVENT_SCHEMAS, EVENT_SCHEMA,
+                     STAGE_CONTRACT_EVENT_SCHEMA,
+                     SUPPORTED_EVENT_SCHEMAS, RUN_ID_RE, load_active_markers,
+                     load_events, materialize_runs, snapshot_file)
 from .logic import (DERIVATION_SCHEMA, LogicError, derivations_path,
                     evaluate_derivation, load_derivations, load_logic_asset, load_rule_pack,
                     load_vocabulary, validate_graph_logic_declarations)
+from .semantics import (MAPPING_SCHEMA, POLICY_SCHEMA, SemanticError,
+                        configured_semantic_assets, current_mapping_leaves,
+                        detect_mapping_conflicts,
+                        evaluate_active_semantic_policy,
+                        _evaluate_active_semantic_policy_from_snapshot,
+                        _evaluate_mappings_from_assets, evaluate_mappings,
+                        load_mappings, load_policies)
+from .method_assessment import (SCHEMA_VERSION as METHOD_ASSESSMENT_SCHEMA,
+                                evaluate_method_assessment, load_method_assessments)
+from .pipeline import (LEGACY_SNAPSHOT_SCHEMA, PipelineError,
+                       pipeline_snapshots_equivalent, resolve_pipeline_contract,
+                       validate_pipeline_snapshot,
+                       validate_stage_trace_against_snapshot)
+from .replay import (REPLAY_SCHEMA, STAGE_REPLAY_SCHEMA, SUPPORTED_REPLAY_SCHEMAS,
+                     evaluate_replay_certificate, load_replay_certificates)
 
-REPORT_SCHEMA_VERSION = "1.3"
+REPORT_SCHEMA_VERSION = "1.7"
 _SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2, "info": 3}
 
 
@@ -56,6 +73,15 @@ def _base_report(strict):
             "scientific_validity": "not-assessed",
             "semantic_assessment": "external-agent-judgement-policy-checked-not-truth",
             "symbolic_logic": "conditional_derivability_under_project_rules_not_truth",
+            "semantic_normalization": (
+                "attributed_mapping_review_states_under_pinned_local_snapshots_not_support"
+            ),
+            "execution_repeatability": (
+                "fresh_workspace_declared_file_boundary_not_universal_determinism"
+            ),
+            "method_conformance": (
+                "external_agent_judgement_distinct_review_exact_code_and_method_bytes"
+            ),
         },
         "policy": {"strict": bool(strict), "blocking_severities": blocking},
     }
@@ -179,14 +205,38 @@ def _compact_run(run):
             "before": _compact_snapshot(item.get("before")),
             "after": _compact_snapshot(item.get("after")),
         })
+    intermediate_transitions = []
+    for item in finish_payload.get("intermediate_transitions", []):
+        intermediate_transitions.append({
+            "path": item.get("path"),
+            "transition": item.get("transition"),
+            "produced": bool(item.get("produced")),
+            "before": _compact_snapshot(item.get("before")),
+            "after": _compact_snapshot(item.get("after")),
+        })
     return {
         "run_id": run["run_id"],
+        "event_schema_version": (
+            start.get("schema_version") if start else finish.get("schema_version") if finish else None
+        ),
         "start_event_id": start.get("id") if start else None,
         "finish_event_id": finish.get("id") if finish else None,
         "started_at": start.get("recorded_at") if start else None,
         "finished_at": finish.get("recorded_at") if finish else None,
         "name": start.get("payload", {}).get("name") if start else None,
         "plan_id": (start.get("payload", {}).get("plan_id") if start else None),
+        "computation_id": plan.get("computation_id"),
+        "pipeline_contract_id": (
+            plan.get("pipeline_contract", {}).get("id")
+            if isinstance(plan.get("pipeline_contract"), dict) else None
+        ),
+        "pipeline_contract": copy.deepcopy(plan.get("pipeline_contract")),
+        "stage_trace_plan": copy.deepcopy(plan.get("stage_trace_plan")),
+        "stage_trace_binding": copy.deepcopy(
+            start.get("payload", {}).get("stage_trace_binding") if start else None
+        ),
+        "stage_trace": copy.deepcopy(finish_payload.get("stage_trace")),
+        "pipeline_contract_state": "not_evaluated",
         "result_id": finish_payload.get("result_id"),
         "argv": copy.deepcopy(plan.get("argv", [])),
         "argv_capture": plan.get("argv_capture"),
@@ -195,22 +245,120 @@ def _compact_run(run):
         "seeds": copy.deepcopy(plan.get("seeds", {})),
         "declared_inputs": [item.get("path") for item in plan.get("declared_inputs", [])],
         "declared_outputs": copy.deepcopy(plan.get("declared_outputs", [])),
+        "declared_intermediates": copy.deepcopy(plan.get("declared_intermediates", [])),
         "outcome": finish_payload.get("outcome"),
         "direct_child_returncode": finish_payload.get("direct_child_returncode"),
         "contract_errors": copy.deepcopy(finish_payload.get("contract_errors", [])),
         "input_transitions": input_transitions,
         "output_transitions": transitions,
+        "intermediate_transitions": intermediate_transitions,
         "window_deltas": copy.deepcopy(finish_payload.get("window_deltas", [])),
         "receipt_integrity": finish_payload.get("receipt_integrity"),
         "lineage_coverage": copy.deepcopy(finish_payload.get("lineage_coverage")),
+        "replays": [],
         "bindings": [],
     }
+
+
+def _pipeline_state(cfg, start):
+    if not start:
+        return "missing_receipt", "run start event is missing"
+    if start.get("schema_version") not in CONTRACT_EVENT_SCHEMAS:
+        return "legacy_uncontracted", None
+    plan = start.get("payload", {}).get("plan", {})
+    snapshot = plan.get("pipeline_contract")
+    try:
+        validate_pipeline_snapshot(snapshot)
+        current = resolve_pipeline_contract(
+            cfg, snapshot["source"]["path"],
+            declared_inputs=[item["path"] for item in plan.get("declared_inputs", [])],
+            declared_outputs=list(plan.get("declared_outputs", [])),
+            parameters=dict(plan.get("parameters", {})),
+            seeds=dict(plan.get("seeds", {})),
+            snapshot_schema=snapshot["schema_version"],
+        )
+    except (KeyError, PipelineError, TypeError, ValueError) as exc:
+        return "stale_or_invalid", str(exc)
+    if not pipeline_snapshots_equivalent(snapshot, current):
+        return "stale_or_invalid", "current pipeline snapshot has a different content ID"
+    return "current", None
+
+
+def _pipeline_output_role_key(run):
+    snapshot = run.get("pipeline_contract")
+    if not isinstance(snapshot, dict):
+        return ()
+    roles = snapshot.get("roles")
+    if not isinstance(roles, dict):
+        return ()
+    outputs = roles.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        return ()
+    key = []
+    for item in outputs:
+        if (not isinstance(item, dict)
+                or not isinstance(item.get("node_id"), str)
+                or not isinstance(item.get("path"), str)):
+            return ()
+        key.append((item["node_id"], item["path"]))
+    return tuple(sorted(key))
+
+
+def _run_has_current_output_role_bindings(run, output_role_key):
+    bound = {
+        (item.get("node_id"), item.get("path"))
+        for item in run.get("bindings", [])
+        if item.get("binding_kind") == "output_path"
+        and item.get("current") is True
+        and item.get("declaration_comparison") == "declarations_agree"
+    }
+    return bool(output_role_key) and bound == set(output_role_key)
+
+
+def _replacement_ready_run(cfg, run):
+    if (run.get("event_schema_version") not in {
+            CONTRACT_EVENT_SCHEMA, STAGE_CONTRACT_EVENT_SCHEMA}
+            or not run.get("evidence_eligible")
+            or run.get("outcome") != "succeeded"
+            or run.get("pipeline_contract_state") != "current"
+            or run.get("replay_conflict")):
+        return False
+    output_role_key = _pipeline_output_role_key(run)
+    if not _run_has_current_output_role_bindings(run, output_role_key):
+        return False
+    ready_replays = [
+        item for item in run.get("replays", [])
+        if item.get("current_derived", {}).get("review_ready_current") is True
+    ]
+    if not ready_replays:
+        return False
+    if cfg.require_stage_checkpoints:
+        return (
+            run.get("event_schema_version") == STAGE_CONTRACT_EVENT_SCHEMA
+            and any(
+                item.get("current_derived", {}).get(
+                    "stage_trace_repeatable_current"
+                ) is True
+                for item in ready_replays
+            )
+        )
+    return True
+
+
+def _parse_recorded_at(value):
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return None
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return None
 
 
 def _receipt_projection(cfg, raw):
     events, event_issues = load_events(cfg.events_path)
     runs, run_issues = materialize_runs(events)
     markers, marker_issues = load_active_markers(cfg.root)
+    replay_documents, replay_issues = load_replay_certificates(cfg.replays_path)
     nodes, edges, _concepts = load_graph(cfg, raw=raw)
     extra = []
 
@@ -223,6 +371,11 @@ def _receipt_projection(cfg, raw):
     for issue in marker_issues:
         extra.append({"severity": "error", "code": issue["code"], "node_id": None,
                       "detail": f"{issue['marker']}: {issue['detail']}"})
+    for issue in replay_issues:
+        extra.append({
+            "severity": "error", "code": issue["code"], "node_id": None,
+            "detail": f"{issue['path']}: {issue['detail']}", "source": "replays",
+        })
     for marker in markers:
         extra.append({"severity": "pending", "code": "RUN_INCOMPLETE", "node_id": None,
                       "detail": f"{marker['run_id']} has an active out-of-worktree start marker"})
@@ -243,6 +396,166 @@ def _receipt_projection(cfg, raw):
     projected_runs = [_compact_run(run) for run in runs]
     projected_by_id = {run["run_id"]: run for run in projected_runs}
     raw_by_id = {run["run_id"]: run for run in runs}
+    run_issues_by_id = defaultdict(list)
+    for issue in run_issues:
+        run_issues_by_id[issue["run_id"]].append({
+            "code": issue["code"], "detail": issue["detail"],
+        })
+    event_store_integrity = "error" if event_issues else "ok"
+    for projected_run in projected_runs:
+        link_issues = run_issues_by_id.get(projected_run["run_id"], [])
+        projected_run.update({
+            "event_store_integrity": event_store_integrity,
+            "link_integrity": "error" if link_issues else "ok",
+            "link_issues": copy.deepcopy(link_issues),
+            "evidence_eligible": not event_issues and not link_issues,
+        })
+    for raw_run in runs:
+        state, detail = _pipeline_state(cfg, raw_run.get("start"))
+        projected_by_id[raw_run["run_id"]]["pipeline_contract_state"] = state
+        if state == "stale_or_invalid":
+            extra.append({
+                "severity": "warning", "code": "RUN_PIPELINE_CONTRACT_STALE",
+                "node_id": None,
+                "detail": f"{raw_run['run_id']}: {detail}", "source": "receipts",
+                "_related_run_id": raw_run["run_id"],
+                "_natural_historical_drift": (
+                    detail == "current pipeline snapshot has a different content ID"
+                ),
+            })
+
+    for certificate in replay_documents:
+        raw_run = raw_by_id.get(certificate["source_run_id"])
+        if raw_run is None:
+            evaluation = evaluate_replay_certificate(cfg, certificate)
+        else:
+            evaluation = evaluate_replay_certificate(
+                cfg, certificate, start=raw_run.get("start"), finish=raw_run.get("finish"),
+            )
+        suppression_findings = []
+        if event_issues:
+            suppression_findings.append({
+                "code": "REPLAY_EVENT_STORE_INTEGRITY",
+                "detail": "event-store integrity is not established",
+            })
+        if replay_issues:
+            suppression_findings.append({
+                "code": "REPLAY_STORE_INTEGRITY",
+                "detail": "replay-store integrity is not established",
+            })
+        source_link_issues = run_issues_by_id.get(certificate["source_run_id"], [])
+        if source_link_issues:
+            suppression_findings.append({
+                "code": "REPLAY_SOURCE_RUN_LINK_INTEGRITY",
+                "detail": "source run has materialization/link integrity issues: "
+                + ", ".join(item["code"] for item in source_link_issues),
+            })
+        if suppression_findings:
+            evaluation = copy.deepcopy(evaluation)
+            evaluation.update({
+                "current": False,
+                "byte_repeatable_current": False,
+                "review_ready_current": False,
+                "stage_trace_repeatable_current": False,
+                "findings": sorted(
+                    [*evaluation["findings"], *suppression_findings],
+                    key=lambda item: (item["code"], item["detail"]),
+                ),
+            })
+        projected = {
+            "id": certificate["id"],
+            "schema_version": certificate.get("schema_version"),
+            "observed_at": certificate["observed_at"],
+            "outcome": certificate["outcome"],
+            "attempt_count": len(certificate["attempts"]),
+            "comparison": copy.deepcopy(certificate["comparison"]),
+            "coverage": copy.deepcopy(certificate["coverage"]),
+            "current_derived": evaluation,
+            "undeclared_write_paths": sorted({
+                item["path"] for attempt in certificate["attempts"]
+                for item in attempt["undeclared_writes"]
+            }),
+            "source_materialized_intermediates": [
+                _compact_snapshot(item)
+                for item in certificate.get("source_materialized_intermediates", [])
+            ],
+            "source_stage_trace": copy.deepcopy(
+                certificate.get("source_stage_trace")
+            ),
+        }
+        if raw_run is not None:
+            projected_by_id[certificate["source_run_id"]]["replays"].append(projected)
+        else:
+            extra.append({
+                "severity": "error", "code": "REPLAY_SOURCE_STALE", "node_id": None,
+                "detail": f"{certificate['id']}: source run is absent", "source": "replays",
+            })
+        for finding in evaluation["findings"]:
+            extra.append({
+                "severity": "warning" if cfg.require_replay else "info",
+                "code": finding["code"], "node_id": None,
+                "detail": f"{certificate['id']}: {finding['detail']}", "source": "replays",
+                "_related_run_id": certificate["source_run_id"],
+            })
+        if projected["undeclared_write_paths"]:
+            extra.append({
+                "severity": "warning" if cfg.require_replay else "info",
+                "code": "REPLAY_UNDECLARED_WORKSPACE_WRITE", "node_id": None,
+                "detail": (
+                    f"{certificate['id']}: fresh attempts wrote undeclared workspace paths: "
+                    + ", ".join(projected["undeclared_write_paths"])
+                ),
+                "source": "replays",
+            })
+        if certificate["outcome"] != "byte_repeatable":
+            extra.append({
+                "severity": "warning" if cfg.require_replay else "info",
+                "code": "REPLAY_NOT_BYTE_REPEATABLE", "node_id": None,
+                "detail": f"{certificate['id']}: outcome is {certificate['outcome']}",
+                "source": "replays",
+            })
+    for run in projected_runs:
+        current_replays = [
+            item for item in run["replays"]
+            if item["current_derived"]["current"]
+        ]
+        contradictory = [
+            item for item in current_replays
+            if not item["current_derived"]["review_ready_current"]
+        ]
+        positive = [
+            item for item in current_replays
+            if item["current_derived"]["review_ready_current"]
+        ]
+        conflict_ids = sorted({
+            item["id"] for item in [*contradictory, *positive]
+        }) if contradictory and positive else []
+        run["replay_conflict"] = bool(conflict_ids)
+        run["replay_conflict_certificate_ids"] = conflict_ids
+        if conflict_ids:
+            detail = (
+                "current replay certificates for the same source run disagree on "
+                "review readiness: " + ", ".join(conflict_ids)
+            )
+            for item in positive:
+                evaluation = item["current_derived"]
+                evaluation["review_ready_current"] = False
+                evaluation["findings"] = sorted(
+                    [*evaluation["findings"], {
+                        "code": "REPLAY_CURRENT_EVIDENCE_CONFLICT",
+                        "detail": detail,
+                    }],
+                    key=lambda finding: (finding["code"], finding["detail"]),
+                )
+            extra.append({
+                "severity": "error",
+                "code": "REPLAY_CURRENT_EVIDENCE_CONFLICT",
+                "node_id": None,
+                "detail": f"{run['run_id']}: {detail}",
+                "source": "replays",
+            })
+    for run in projected_runs:
+        run["replays"].sort(key=lambda item: (item["observed_at"], item["id"]))
 
     # A failed scientific/analytic command is legitimate historical evidence. A provenance
     # contract failure is different: strict checking must surface it, and mutation of claimtrace's
@@ -298,6 +611,11 @@ def _receipt_projection(cfg, raw):
                 "path": node.get("path"),
                 "declaration_comparison": None,
                 "output_evidence": None,
+                "current": projected_by_id[run_id]["evidence_eligible"],
+                "integrity_state": (
+                    "current" if projected_by_id[run_id]["evidence_eligible"]
+                    else "quarantined"
+                ),
             })
             finish = raw_run.get("finish")
             outcome = finish.get("payload", {}).get("outcome") if finish else None
@@ -310,10 +628,12 @@ def _receipt_projection(cfg, raw):
                 })
     producing_receipts = {}
     validation_receipts = {}
+    materialized_receipts = {}
     for raw_run in runs:
         start, finish = raw_run.get("start"), raw_run.get("finish")
         if not start or not finish:
             continue
+        evidence_eligible = projected_by_id[raw_run["run_id"]]["evidence_eligible"]
         payload = finish["payload"]
         outcome = payload.get("outcome")
         for item in payload.get("output_transitions", []):
@@ -321,7 +641,8 @@ def _receipt_projection(cfg, raw):
             if not isinstance(path, str):
                 continue
             identity = _path_identity(cfg, path)
-            if outcome == "succeeded" and item.get("after", {}).get("state") == "stable":
+            if (evidence_eligible and outcome == "succeeded"
+                    and item.get("after", {}).get("state") == "stable"):
                 key = (finish.get("recorded_at", ""), finish["id"])
                 if (item.get("produced") is True
                         and item.get("transition") in {"created", "content_changed"}):
@@ -331,6 +652,19 @@ def _receipt_projection(cfg, raw):
                     validation_receipts.setdefault(identity, []).append((key, raw_run, item))
             if not item.get("declared_output", True):
                 continue
+        for item in payload.get("intermediate_transitions", []):
+            path = item.get("path")
+            if not isinstance(path, str):
+                continue
+            identity = _path_identity(cfg, path)
+            if (evidence_eligible and outcome == "succeeded"
+                    and item.get("after", {}).get("state") == "stable"
+                    and item.get("produced") is True
+                    and item.get("transition") in {"created", "content_changed"}):
+                key = (finish.get("recorded_at", ""), finish["id"])
+                materialized_receipts.setdefault(identity, []).append(
+                    (key, raw_run, item)
+                )
         for delta in payload.get("window_deltas", []):
             if not delta.get("declared_output"):
                 extra.append({
@@ -382,13 +716,23 @@ def _receipt_projection(cfg, raw):
         start_plan = raw_run["start"]["payload"].get("plan", {})
         declared = {item.get("path") for item in start_plan.get("declared_inputs", [])
                     if isinstance(item.get("path"), str)}
-        expected = set(direct_inputs(cfg, nodes, edges, node_id))
+        pipeline_snapshot = start_plan.get("pipeline_contract")
+        if (isinstance(pipeline_snapshot, dict)
+                and isinstance(pipeline_snapshot.get("roles"), dict)):
+            expected = {
+                item.get("path")
+                for role in ("code", "inputs")
+                for item in pipeline_snapshot["roles"].get(role, [])
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
+            }
+        else:
+            expected = set(direct_inputs(cfg, nodes, edges, node_id))
         declared_ids = {_path_identity(cfg, path): path for path in declared}
         expected_ids = {_path_identity(cfg, path): path for path in expected}
         missing = sorted(expected_ids[key] for key in set(expected_ids) - set(declared_ids))
         extra_declared = sorted(declared_ids[key] for key in set(declared_ids) - set(expected_ids))
         agreement = "declarations_agree" if not missing and not extra_declared else "declarations_differ"
-        projected_by_id[raw_run["run_id"]]["bindings"].append({
+        binding = {
             "binding_kind": "output_path",
             "node_id": node_id,
             "path": nodes[node_id].get("path"),
@@ -396,17 +740,21 @@ def _receipt_projection(cfg, raw):
             "output_evidence": "content_transition_detected",
             "graph_declared_inputs": sorted(expected),
             "run_declared_inputs": sorted(declared),
-        })
+            "current": True,
+        }
+        projected_by_id[raw_run["run_id"]]["bindings"].append(binding)
         if missing:
             extra.append({
                 "severity": "warning", "code": "RUN_DECLARATION_INCOMPLETE", "node_id": node_id,
                 "detail": "graph inputs absent from run declaration: " + ", ".join(missing),
             })
+            binding["current"] = False
         if extra_declared:
             extra.append({
                 "severity": "warning", "code": "GRAPH_DECLARATION_INCOMPLETE", "node_id": node_id,
                 "detail": "run inputs absent from graph declaration: " + ", ".join(extra_declared),
             })
+            binding["current"] = False
         for captured in start_plan.get("declared_inputs", []):
             path = captured.get("path")
             if not isinstance(path, str):
@@ -423,13 +771,67 @@ def _receipt_projection(cfg, raw):
                            f"output receipt {raw_run['run_id']} "
                            f"(captured={captured.get('state')}, current={current_input.get('state')})"),
             })
+            binding["current"] = False
         after = output_item.get("after", {})
         current_path = cfg.resolve(nodes[node_id]["path"])
         current = snapshot_file(current_path, nodes[node_id]["path"])
-        if after.get("state") == "stable" and current.get("state") == "stable" and after.get("sha256") != current.get("sha256"):
+        output_current = (
+            after.get("state") == current.get("state") == "stable"
+            and after.get("sha256") == current.get("sha256")
+            and after.get("size") == current.get("size")
+        )
+        if not output_current:
+            binding["current"] = False
             extra.append({
                 "severity": "error", "code": "RUN_OUTPUT_DRIFT", "node_id": node_id,
                 "detail": f"{nodes[node_id]['path']} differs from latest successful output receipt {raw_run['run_id']}",
+            })
+
+    # A materialized intermediate is a separately declared file boundary. Its post-process
+    # bytes can bind to the graph path and satisfy file-receipt coverage, but this does not
+    # attribute the write to the authored producing stage or make it a terminal claim result.
+    for identity, candidates in sorted(materialized_receipts.items()):
+        candidates.sort(key=lambda item: item[0])
+        _key, raw_run, intermediate_item = candidates[-1]
+        node_ids = active_by_path.get(identity, [])
+        if not node_ids:
+            extra.append({
+                "severity": "warning", "code": "UNBOUND_MATERIALIZED_INTERMEDIATE",
+                "node_id": None,
+                "detail": (
+                    f"{raw_run['run_id']} has materialized intermediate "
+                    f"{intermediate_item.get('path')} with no active graph node"
+                ),
+            })
+            continue
+        if len(node_ids) != 1:
+            continue
+        node_id = node_ids[0]
+        bound_nodes.add(node_id)
+        binding = {
+            "binding_kind": "materialized_intermediate_path",
+            "node_id": node_id,
+            "path": nodes[node_id].get("path"),
+            "declaration_comparison": "contract_role_agrees",
+            "output_evidence": "post_process_content_transition_detected",
+            "receipt_snapshot": _compact_snapshot(intermediate_item.get("after")),
+            "stage_attribution": "not_observed",
+            "current": True,
+        }
+        projected_by_id[raw_run["run_id"]]["bindings"].append(binding)
+        after = intermediate_item.get("after", {})
+        current = snapshot_file(cfg.resolve(nodes[node_id]["path"]), nodes[node_id]["path"])
+        if not (
+                after.get("state") == current.get("state") == "stable"
+                and after.get("sha256") == current.get("sha256")
+                and after.get("size") == current.get("size")):
+            binding["current"] = False
+            extra.append({
+                "severity": "error", "code": "RUN_INTERMEDIATE_DRIFT", "node_id": node_id,
+                "detail": (
+                    f"{nodes[node_id]['path']} differs from latest successful materialized-"
+                    f"intermediate receipt {raw_run['run_id']}"
+                ),
             })
 
     expected_types = set(cfg.render_types) | set(cfg.run_output_types)
@@ -442,12 +844,77 @@ def _receipt_projection(cfg, raw):
             "detail": f"{node['path']} has no successful finalized producing run receipt",
         })
 
+    replacement_candidates = [
+        run for run in projected_runs if _replacement_ready_run(cfg, run)
+    ]
+    historical_replacements = {}
+    for historical in projected_runs:
+        if historical.get("pipeline_contract_state") != "stale_or_invalid":
+            continue
+        output_role_key = _pipeline_output_role_key(historical)
+        finished_at = _parse_recorded_at(historical.get("finished_at"))
+        if not output_role_key or finished_at is None:
+            continue
+        eligible = []
+        for candidate in replacement_candidates:
+            started_at = _parse_recorded_at(candidate.get("started_at"))
+            if (started_at is not None and started_at > finished_at
+                    and _pipeline_output_role_key(candidate) == output_role_key):
+                eligible.append(candidate)
+        if not eligible:
+            continue
+        replacement = max(
+            eligible,
+            key=lambda item: (item.get("started_at") or "", item["run_id"]),
+        )
+        historical_replacements[historical["run_id"]] = replacement
+        ready_replay_ids = sorted(
+            item["id"] for item in replacement.get("replays", [])
+            if item.get("current_derived", {}).get("review_ready_current") is True
+        )
+        historical["current_gate_role"] = "historical_replaced"
+        historical["replacement_run_id"] = replacement["run_id"]
+        historical["replacement_replay_ids"] = ready_replay_ids
+        for replay in historical.get("replays", []):
+            replay["current_gate_role"] = "historical_replaced"
+            replay["replacement_run_id"] = replacement["run_id"]
+            replay["replacement_replay_ids"] = ready_replay_ids
+
+    natural_historical_drift_codes = {
+        "RUN_PIPELINE_CONTRACT_STALE",
+        "REPLAY_INPUT_DRIFT",
+        "REPLAY_CONTRACT_DRIFT",
+        "REPLAY_ENVIRONMENT_MISMATCH",
+    }
+    for finding in extra:
+        if (finding.get("code") in natural_historical_drift_codes
+                and finding.get("_related_run_id") in historical_replacements
+                and (
+                    finding.get("code") != "RUN_PIPELINE_CONTRACT_STALE"
+                    or finding.get("_natural_historical_drift") is True
+                )):
+            finding["severity"] = "info"
+
     for run in projected_runs:
         run["bindings"].sort(key=lambda item: (item["node_id"], item.get("binding_kind", "")))
     projected_runs.sort(key=lambda item: (item.get("finished_at") or item.get("started_at") or "", item["run_id"]))
     return {
         "event_schema_version": EVENT_SCHEMA,
-        "integrity": "error" if event_issues or run_issues or marker_issues else "ok",
+        "supported_event_schema_versions": sorted(SUPPORTED_EVENT_SCHEMAS),
+        "contract_event_schema_version": CONTRACT_EVENT_SCHEMA,
+        "stage_contract_event_schema_version": STAGE_CONTRACT_EVENT_SCHEMA,
+        "replay_schema_version": REPLAY_SCHEMA,
+        "stage_replay_schema_version": STAGE_REPLAY_SCHEMA,
+        "supported_replay_schema_versions": sorted(SUPPORTED_REPLAY_SCHEMAS),
+        "integrity": "error" if event_issues or run_issues or marker_issues or replay_issues else "ok",
+        "event_store_integrity": event_store_integrity,
+        "run_link_integrity": "error" if run_issues else "ok",
+        "replay_integrity": "error" if replay_issues else "ok",
+        "policy": {
+            "require_contracts": cfg.require_execution_contracts,
+            "require_replay": cfg.require_replay,
+            "replay_attempts": cfg.replay_attempts,
+        },
         "active_runs": [marker["run_id"] for marker in markers],
         "runs": projected_runs,
     }, extra
@@ -716,12 +1183,829 @@ def _assessment_projection(cfg, raw):
     }, extra
 
 
+def _method_assessment_projection(cfg):
+    documents, integrity_issues = load_method_assessments(cfg)
+    snapshots_by_id = {
+        item["id"]: item["mechanical_snapshot"]["pipeline_contract"]
+        for item in documents
+    }
+    extra = []
+    for issue in integrity_issues:
+        extra.append({
+            "severity": "error", "code": issue["code"], "node_id": None,
+            "detail": f"{issue['path']}: {issue['detail']}",
+            "source": "method_assessments",
+        })
+    superseded = {
+        item["review"].get("supersedes_assessment_id") for item in documents
+        if item["review"].get("supersedes_assessment_id")
+    }
+    items = []
+    for document in sorted(documents, key=lambda item: item["id"]):
+        is_current = (
+            document["id"] not in superseded
+            and document["review"]["state"] != "superseded"
+        )
+        evaluation = evaluate_method_assessment(
+            cfg, document, assessments=documents, store_issues=integrity_issues,
+        )
+        items.append({
+            "id": document["id"],
+            "recorded_at": document["recorded_at"],
+            "subject": copy.deepcopy(document["subject"]),
+            "review": copy.deepcopy(document["review"]),
+            "agent_verdict": document["agent_input"]["verdict"],
+            "step_alignments": copy.deepcopy(document["agent_input"]["step_alignments"]),
+            "current_derived": copy.deepcopy(evaluation),
+            "is_current": is_current,
+        })
+
+    current_implementation_methods = {
+        item["subject"]["method_id"]
+        for item in items
+        if item["is_current"]
+        and item["current_derived"]["implementation_current"]
+    }
+    for item in items:
+        if not item["is_current"]:
+            continue
+        method_id = item["subject"]["method_id"]
+        evaluation = item["current_derived"]
+        historical_replaced = (
+            evaluation["stale"]
+            and method_id in current_implementation_methods
+        )
+        if historical_replaced:
+            item["current_gate_role"] = "historical_replaced"
+        if evaluation["effective_review_state"] == "proposed":
+            extra.append({
+                "severity": "info" if historical_replaced else "pending",
+                "code": "METHOD_ASSESSMENT_REVIEW_PENDING",
+                "node_id": method_id,
+                "detail": f"{item['id']} awaits a distinct review decision",
+                "source": "method_assessments",
+            })
+        for finding in evaluation["findings"]:
+            if finding["severity"] == "info":
+                continue
+            natural_historical_drift = (
+                historical_replaced
+                and finding["code"] == "METHOD_CONFORMANCE_STALE"
+            )
+            extra.append({
+                "severity": (
+                    "info" if natural_historical_drift
+                    else "warning" if cfg.require_method_assessments
+                    else "info"
+                ),
+                "code": finding["code"], "node_id": method_id,
+                "detail": f"{item['id']}: {finding['detail']}",
+                "source": "method_assessments",
+            })
+    projection = {
+        "schema_version": METHOD_ASSESSMENT_SCHEMA,
+        "integrity": "error" if integrity_issues else "ok",
+        "policy": {"require_method_assessments": cfg.require_method_assessments},
+        "items": items,
+    }
+    return projection, extra, snapshots_by_id
+
+
+def _claim_stage_ancestry(snapshot, result_id):
+    """Return the exact declared stage ancestry for one terminal result node."""
+    stages = snapshot.get("stages", [])
+    producers = [
+        stage for stage in stages if result_id in stage.get("produces_node_ids", [])
+    ]
+    if len(producers) != 1:
+        return [], (
+            f"terminal result {result_id} has {len(producers)} producing stages in the "
+            "current pipeline snapshot"
+        )
+    by_id = {stage["id"]: stage for stage in stages}
+    ancestry_ids = set()
+    stack = [producers[0]["id"]]
+    while stack:
+        stage_id = stack.pop()
+        if stage_id in ancestry_ids:
+            continue
+        stage = by_id.get(stage_id)
+        if stage is None:
+            return [], f"pipeline ancestry references missing stage {stage_id}"
+        ancestry_ids.add(stage_id)
+        stack.extend(stage["depends_on"])
+    return [stage for stage in stages if stage["id"] in ancestry_ids], None
+
+
+def _method_assessment_covers_stage(item, stage):
+    """Check one current implementation assessment against one exact stage mapping."""
+    return bool(
+        item["subject"]["method_id"] == stage["method_id"]
+        and item["current_derived"]["implementation_current"]
+        and any(
+            alignment["stage_id"] == stage["id"]
+            and alignment["method_step_id"] == stage["method_step_id"]
+            and alignment["alignment"] == "match"
+            for alignment in item["step_alignments"]
+        )
+    )
+
+
+def _claim_ancestry_intermediates(run, ancestry_stages, nodes):
+    """Project current file-boundary evidence only for intermediates on ancestry."""
+    snapshot = run["pipeline_contract"]
+    roles = {
+        item["node_id"]: item
+        for item in snapshot["roles"].get("intermediates", [])
+        if item.get("materialization") == "declared_file_boundary"
+    }
+    produced_on_ancestry = {
+        node_id for stage in ancestry_stages
+        for node_id in stage["produces_node_ids"]
+    }
+    if snapshot.get("schema_version") == LEGACY_SNAPSHOT_SCHEMA:
+        terminal_ids = {
+            item["node_id"] for item in snapshot["roles"].get("outputs", [])
+        }
+        unavailable = []
+        for node_id in sorted(produced_on_ancestry - terminal_ids):
+            node = nodes.get(node_id, {})
+            if not node.get("path"):
+                continue
+            unavailable.append({
+                "node_id": node_id,
+                "path": node["path"],
+                "binding_state": "legacy_capture_unavailable",
+                "receipt_snapshot": None,
+            })
+        if unavailable:
+            return "legacy_capture_unavailable", unavailable
+    required = [roles[node_id] for node_id in sorted(produced_on_ancestry & set(roles))]
+    bindings = {
+        item["node_id"]: item for item in run["bindings"]
+        if item.get("binding_kind") == "materialized_intermediate_path"
+    }
+    projected = []
+    for role in required:
+        binding = bindings.get(role["node_id"])
+        receipt_snapshot = binding.get("receipt_snapshot") if binding else None
+        digest = (
+            receipt_snapshot.get("sha256")
+            if isinstance(receipt_snapshot, dict) else None
+        )
+        size = (
+            receipt_snapshot.get("size")
+            if isinstance(receipt_snapshot, dict) else None
+        )
+        snapshot_present = bool(
+            isinstance(receipt_snapshot, dict)
+            and receipt_snapshot.get("state") == "stable"
+            and receipt_snapshot.get("path") == role["path"]
+            and isinstance(digest, str) and len(digest) == 64
+            and all(character in "0123456789abcdef" for character in digest)
+            and not isinstance(size, bool) and isinstance(size, int) and size >= 0
+            and receipt_snapshot.get("file_version_id") == f"file:sha256:{digest}"
+        )
+        current = bool(
+            binding and binding.get("path") == role["path"]
+            and binding.get("current") and snapshot_present
+        )
+        projected.append({
+            "node_id": role["node_id"],
+            "path": role["path"],
+            "binding_state": "current" if current else "missing_or_stale",
+            "receipt_snapshot": copy.deepcopy(receipt_snapshot),
+        })
+    if not projected:
+        return "not_required", projected
+    if all(item["binding_state"] == "current" for item in projected):
+        return "current", projected
+    return "missing_or_stale", projected
+
+
+def _claim_basis_projection(
+        cfg, raw, receipts, assessments, method_assessments,
+        method_snapshots_by_id):
+    """Join semantic meaning to current execution/replay/method evidence without inference."""
+    nodes, _edges, _concepts = load_graph(cfg, raw=raw)
+    producing_by_node = {}
+    for run in receipts["runs"]:
+        for binding in run["bindings"]:
+            if binding.get("binding_kind") == "output_path":
+                producing_by_node[binding["node_id"]] = (run, binding)
+    method_items = [
+        item for item in method_assessments["items"] if item["is_current"]
+    ]
+    method_run_match_cache = {}
+
+    def assessment_matches_run(item, run):
+        key = (item["id"], run["run_id"])
+        if key in method_run_match_cache:
+            return method_run_match_cache[key]
+        assessment_snapshot = method_snapshots_by_id.get(item["id"])
+        run_snapshot = run.get("pipeline_contract")
+        try:
+            matches = (
+                isinstance(assessment_snapshot, dict)
+                and pipeline_snapshots_equivalent(
+                    assessment_snapshot, run_snapshot,
+                )
+            )
+        except (PipelineError, TypeError, ValueError):
+            matches = False
+        method_run_match_cache[key] = matches
+        return matches
+
+    items = []
+    extra = []
+    for relation in assessments["active_relations"]:
+        result_id, claim_id = relation["from"], relation["to"]
+        run_binding = producing_by_node.get(result_id)
+        run = run_binding[0] if run_binding else None
+        binding = run_binding[1] if run_binding else None
+        execution_current = bool(
+            run and run.get("evidence_eligible") and binding
+            and binding.get("current") and run.get("outcome") == "succeeded"
+        )
+        if not run:
+            execution_state = "missing_producing_receipt"
+        elif not execution_current:
+            execution_state = "producing_receipt_stale_or_incomplete"
+        elif run.get("event_schema_version") in CONTRACT_EVENT_SCHEMAS:
+            execution_state = "current_contract_bound_producing_receipt"
+        else:
+            execution_state = "current_legacy_uncontracted_producing_receipt"
+
+        contract_current = bool(
+            run and run.get("event_schema_version") in CONTRACT_EVENT_SCHEMAS
+            and run.get("pipeline_contract_state") == "current"
+        )
+        if not run or run.get("event_schema_version") not in CONTRACT_EVENT_SCHEMAS:
+            contract_state = "missing_or_legacy"
+        else:
+            contract_state = run.get("pipeline_contract_state")
+        current_replays = [
+            item for item in (run.get("replays", []) if run else [])
+            if item["current_derived"]["review_ready_current"]
+        ]
+        if current_replays:
+            replay_state = "byte_repeatable_current"
+        elif run and any(
+                item["current_derived"]["byte_repeatable_current"]
+                and item.get("undeclared_write_paths")
+                for item in run.get("replays", [])):
+            replay_state = "byte_repeatable_with_undeclared_workspace_writes"
+        elif run and run.get("replays"):
+            replay_state = "present_but_not_current_or_repeatable"
+        elif contract_current:
+            replay_state = "missing"
+        else:
+            replay_state = "unavailable_without_current_contract"
+
+        if not contract_current:
+            stage_checkpoint_state = "unavailable_without_current_contract"
+        elif run.get("event_schema_version") != STAGE_CONTRACT_EVENT_SCHEMA:
+            stage_checkpoint_state = "cooperative_not_requested"
+        else:
+            stage_trace = run.get("stage_trace")
+            try:
+                validate_stage_trace_against_snapshot(
+                    stage_trace, run["pipeline_contract"],
+                )
+            except (PipelineError, TypeError, ValueError):
+                stage_checkpoint_state = "cooperative_report_invalid"
+            else:
+                if stage_trace["state"] != "cooperative_report_complete":
+                    stage_checkpoint_state = stage_trace["state"]
+                elif any(
+                        item["current_derived"].get(
+                            "stage_trace_repeatable_current", False,
+                        )
+                        for item in run.get("replays", [])):
+                    stage_checkpoint_state = "cooperative_report_repeatable_current"
+                else:
+                    stage_checkpoint_state = "cooperative_report_complete_source_only"
+
+        ancestry_stages = []
+        ancestry_error = None
+        if contract_current:
+            ancestry_stages, ancestry_error = _claim_stage_ancestry(
+                run["pipeline_contract"], result_id,
+            )
+        ancestry_state = (
+            "current"
+            if contract_current and ancestry_error is None
+            else "invalid" if contract_current
+            else "unavailable_without_current_contract"
+        )
+        producer_stage_id = next((
+            stage["id"] for stage in ancestry_stages
+            if result_id in stage["produces_node_ids"]
+        ), None)
+        ancestry_method_steps = [{
+            "stage_id": stage["id"],
+            "method_id": stage["method_id"],
+            "method_step_id": stage["method_step_id"],
+        } for stage in ancestry_stages]
+        ancestry_pairs = {
+            (item["method_id"], item["method_step_id"])
+            for item in ancestry_method_steps
+        }
+        if contract_current and ancestry_error is None:
+            intermediate_state, ancestry_intermediates = (
+                _claim_ancestry_intermediates(run, ancestry_stages, nodes)
+            )
+        else:
+            intermediate_state, ancestry_intermediates = "unavailable", []
+        intermediate_current = intermediate_state in {"not_required", "current"}
+
+        claim = nodes.get(claim_id, {})
+        requirements = claim.get("method_requirements")
+        declared_pairs = set()
+        if isinstance(requirements, dict):
+            declared_pairs = {
+                (requirement["method_id"], step_id)
+                for requirement in requirements["methods"]
+                for step_id in requirement["step_ids"]
+            }
+        missing_claim_pairs = sorted(ancestry_pairs - declared_pairs)
+        off_ancestry_declared_pairs = sorted(declared_pairs - ancestry_pairs)
+        missing_assessment_steps = []
+        method_assessment_ids = []
+        if not isinstance(requirements, dict):
+            method_state = "claim_method_requirements_missing"
+        elif not contract_current:
+            method_state = "unavailable_without_current_contract"
+        elif ancestry_error is not None:
+            method_state = "unavailable_without_valid_result_ancestry"
+        elif missing_claim_pairs:
+            method_state = "claim_requirements_missing_ancestry_steps"
+        elif off_ancestry_declared_pairs:
+            method_state = "claim_requirements_include_off_ancestry_steps"
+        else:
+            relevant_method_items = [
+                item for item in method_items
+                if assessment_matches_run(item, run)
+            ]
+            for stage in ancestry_stages:
+                matches = [
+                    item for item in relevant_method_items
+                    if _method_assessment_covers_stage(item, stage)
+                ]
+                if matches:
+                    method_assessment_ids.extend(item["id"] for item in matches)
+                else:
+                    missing_assessment_steps.append({
+                        "stage_id": stage["id"],
+                        "method_id": stage["method_id"],
+                        "method_step_id": stage["method_step_id"],
+                    })
+            method_state = (
+                "accepted_current_conformance"
+                if not missing_assessment_steps
+                else "method_conformance_missing_or_not_current"
+            )
+
+        directional = relation["rel"] in {"supports", "refutes"}
+        complete = (
+            directional and execution_current and contract_current
+            and ancestry_state == "current" and intermediate_current
+            and replay_state == "byte_repeatable_current"
+            and method_state == "accepted_current_conformance"
+            and (
+                not cfg.require_stage_checkpoints
+                or stage_checkpoint_state == "cooperative_report_repeatable_current"
+            )
+        )
+        policy_pass = directional and execution_current
+        if cfg.require_execution_contracts:
+            policy_pass = policy_pass and contract_current
+        if contract_current:
+            policy_pass = (
+                policy_pass and ancestry_state == "current" and intermediate_current
+            )
+        if cfg.require_replay:
+            policy_pass = policy_pass and replay_state == "byte_repeatable_current"
+        if cfg.require_method_assessments:
+            policy_pass = policy_pass and method_state == "accepted_current_conformance"
+        if cfg.require_stage_checkpoints:
+            policy_pass = (
+                policy_pass
+                and stage_checkpoint_state == "cooperative_report_repeatable_current"
+            )
+        if complete:
+            overall = "ready_under_reviewed_provenance"
+        elif not directional:
+            overall = "semantic_context_only"
+        elif execution_current:
+            overall = "execution_grounded_but_provenance_incomplete"
+        else:
+            overall = "semantic_only_not_execution_grounded"
+        item = {
+            "assessment_id": relation["assessment_id"],
+            "result_id": result_id,
+            "claim_id": claim_id,
+            "semantic_state": f"accepted_current_{relation['rel']}",
+            "execution_state": execution_state,
+            "run_id": run.get("run_id") if run else None,
+            "computation_id": run.get("computation_id") if run else None,
+            "pipeline_contract_id": run.get("pipeline_contract_id") if run else None,
+            "contract_state": contract_state,
+            "producer_stage_id": producer_stage_id,
+            "ancestry_state": ancestry_state,
+            "ancestry_stage_ids": [stage["id"] for stage in ancestry_stages],
+            "ancestry_method_steps": ancestry_method_steps,
+            "materialized_intermediate_state": intermediate_state,
+            "ancestry_materialized_intermediates": ancestry_intermediates,
+            "replay_state": replay_state,
+            "replay_certificate_ids": [item["id"] for item in current_replays],
+            "method_state": method_state,
+            "required_method_ids": sorted({
+                item["method_id"] for item in ancestry_method_steps
+            }),
+            "missing_claim_method_steps": [
+                {"method_id": method_id, "method_step_id": step_id}
+                for method_id, step_id in missing_claim_pairs
+            ],
+            "missing_method_assessment_steps": missing_assessment_steps,
+            "off_ancestry_declared_method_steps": [
+                {"method_id": method_id, "method_step_id": step_id}
+                for method_id, step_id in off_ancestry_declared_pairs
+            ],
+            "method_assessment_ids": sorted(set(method_assessment_ids)),
+            "stage_checkpoint_state": stage_checkpoint_state,
+            "stage_execution_observation": (
+                "cooperative_checkpoint_self_report_not_independent_observation"
+                if run and run.get("event_schema_version") == STAGE_CONTRACT_EVENT_SCHEMA
+                else "declared_only_not_observed" if contract_current else "not_available"
+            ),
+            "overall": overall,
+            "configured_policy_pass": bool(policy_pass),
+            "scientific_validity": "not_assessed",
+            "limitations": [
+                (
+                    "cooperative checkpoints show program control flow reached locked "
+                    "callsites; stage computation and in-memory values were not independently "
+                    "observed"
+                    if run and run.get("event_schema_version")
+                    == STAGE_CONTRACT_EVENT_SCHEMA
+                    else "internal stages and in-memory intermediates were not runtime-observed"
+                ),
+                (
+                    "replay does not isolate network access, prevent writes outside the fresh "
+                    "workspace, or capture all host environment state"
+                ),
+                "method conformance and semantic review do not establish scientific truth",
+            ],
+        }
+        items.append(item)
+        if not execution_current:
+            extra.append({
+                "severity": "warning", "code": "CLAIM_EXECUTION_BASIS_INCOMPLETE",
+                "node_id": claim_id,
+                "detail": f"{result_id} -> {claim_id} has accepted semantics but no current producing receipt",
+                "source": "claim_basis",
+            })
+        if not contract_current:
+            extra.append({
+                "severity": "warning" if cfg.require_execution_contracts else "info",
+                "code": "EXECUTION_CONTRACT_MISSING_OR_STALE", "node_id": claim_id,
+                "detail": f"{result_id} -> {claim_id}: contract state is {contract_state}",
+                "source": "claim_basis",
+            })
+        elif ancestry_error is not None:
+            extra.append({
+                "severity": "warning", "code": "CLAIM_RESULT_ANCESTRY_INVALID",
+                "node_id": claim_id,
+                "detail": f"{result_id} -> {claim_id}: {ancestry_error}",
+                "source": "claim_basis",
+            })
+        if contract_current and not intermediate_current:
+            incomplete_paths = [
+                item["path"] for item in ancestry_intermediates
+                if item["binding_state"] != "current"
+            ]
+            extra.append({
+                "severity": "warning",
+                "code": "CLAIM_ANCESTRY_INTERMEDIATE_INCOMPLETE",
+                "node_id": claim_id,
+                "detail": (
+                    f"{result_id} -> {claim_id}: ancestry intermediate coverage is "
+                    f"{intermediate_state} for: " + ", ".join(incomplete_paths)
+                ),
+                "source": "claim_basis",
+            })
+        if replay_state != "byte_repeatable_current":
+            extra.append({
+                "severity": "warning" if cfg.require_replay else "info",
+                "code": "REPLAY_MISSING_OR_NOT_CURRENT", "node_id": claim_id,
+                "detail": f"{result_id} -> {claim_id}: replay state is {replay_state}",
+                "source": "claim_basis",
+            })
+        if method_state != "accepted_current_conformance":
+            extra.append({
+                "severity": "warning" if cfg.require_method_assessments else "info",
+                "code": "CLAIM_METHOD_BASIS_INCOMPLETE", "node_id": claim_id,
+                "detail": f"{result_id} -> {claim_id}: method state is {method_state}",
+                "source": "claim_basis",
+            })
+        if (cfg.require_stage_checkpoints
+                and stage_checkpoint_state != "cooperative_report_repeatable_current"):
+            extra.append({
+                "severity": "warning",
+                "code": "CLAIM_STAGE_CHECKPOINT_BASIS_INCOMPLETE",
+                "node_id": claim_id,
+                "detail": (
+                    f"{result_id} -> {claim_id}: cooperative stage checkpoint state is "
+                    f"{stage_checkpoint_state}"
+                ),
+                "source": "claim_basis",
+            })
+    items.sort(key=lambda item: (
+        item["claim_id"], item["result_id"], item["semantic_state"], item["assessment_id"],
+    ))
+    return {
+        "schema_version": "claimtrace.claim-basis-projection/1",
+        "policy": {
+            "require_contracts": cfg.require_execution_contracts,
+            "require_replay": cfg.require_replay,
+            "require_method_assessments": cfg.require_method_assessments,
+            "require_stage_checkpoints": cfg.require_stage_checkpoints,
+        },
+        "readiness_meaning": (
+            "reviewed current provenance under partial runtime coverage; not scientific truth"
+        ),
+        "items": items,
+    }, extra
+
+
 def _logic_asset_path(cfg, path):
     """Return a stable project-relative asset label when possible."""
     try:
         return Path(path).resolve(strict=False).relative_to(cfg.base).as_posix()
     except ValueError:
         return str(Path(path).resolve(strict=False))
+
+
+def _semantic_projection(cfg):
+    """Project reviewed term mappings without turning them into scientific evidence.
+
+    Mapping acceptance and explicit policy activation are separate.  A valid active
+    policy makes selected normalizations available to consumers; it neither creates a
+    result-to-claim support edge nor changes the symbolic derivability projection.
+    """
+    extra = []
+    integrity_error = False
+    loaded_assets = None
+    assets = {
+        "configured_terminologies": sorted(
+            _logic_asset_path(cfg, path) for path in cfg.semantic_terminology_paths
+        ),
+        "configured_ontology_locks": sorted(
+            _logic_asset_path(cfg, path) for path in cfg.semantic_ontology_lock_paths
+        ),
+        "terminologies": [],
+        "ontology_locks": [],
+    }
+    try:
+        loaded_assets = configured_semantic_assets(cfg)
+        assets["terminologies"] = sorted((
+            {
+                "id": terminology["id"],
+                "version": terminology["version"],
+                "term_count": len(terminology["terms"]),
+                "path": _logic_asset_path(
+                    cfg, loaded_assets["terminology_paths"][terminology_id]
+                ),
+            }
+            for terminology_id, terminology in loaded_assets["terminologies"].items()
+        ), key=lambda item: (item["id"], item["version"], item["path"]))
+        assets["ontology_locks"] = sorted((
+            {
+                **copy.deepcopy(lock),
+                "path": _logic_asset_path(
+                    cfg, loaded_assets["ontology_lock_paths"][lock_id]
+                ),
+            }
+            for lock_id, lock in loaded_assets["ontology_locks"].items()
+        ), key=lambda item: (item["ontology_id"], item["version"], item["id"]))
+    except SemanticError as exc:
+        integrity_error = True
+        extra.append({
+            "severity": "error",
+            "code": "SEMANTIC_ASSET_INTEGRITY",
+            "node_id": None,
+            "detail": str(exc),
+            "source": "semantics",
+        })
+
+    documents, mapping_issues = load_mappings(cfg)
+    if mapping_issues:
+        integrity_error = True
+    for issue in mapping_issues:
+        extra.append({
+            "severity": "error",
+            "code": issue["code"],
+            "node_id": None,
+            "detail": f"{issue['path']}: {issue['detail']}",
+            "source": "semantics",
+        })
+
+    leaves = current_mapping_leaves(documents)
+    leaf_ids = {item["id"] for item in leaves}
+    conflicts = detect_mapping_conflicts(documents)
+    mapping_history = []
+    for document in documents:
+        mapping_history.append({
+            "id": document["id"],
+            "schema_version": document["schema_version"],
+            "recorded_at": document["recorded_at"],
+            "subject": copy.deepcopy(document["subject"]),
+            "mechanical_snapshot": copy.deepcopy(document["mechanical_snapshot"]),
+            "agent_input": copy.deepcopy(document["agent_input"]),
+            "review": copy.deepcopy(document["review"]),
+            "stored_derived": copy.deepcopy(document["derived"]),
+            "is_current": document["id"] in leaf_ids,
+        })
+
+    current_mapping_evaluations = []
+    live_evaluations = (
+        evaluate_mappings(cfg, leaves, conflicts=conflicts)
+        if loaded_assets is None
+        else _evaluate_mappings_from_assets(
+            leaves, loaded_assets, conflicts=conflicts,
+        )
+    )
+    for document, evaluation in zip(leaves, live_evaluations):
+        if mapping_issues:
+            evaluation = copy.deepcopy(evaluation)
+            evaluation["eligible_for_policy"] = False
+            evaluation["findings"].append({
+                "severity": "error",
+                "code": "SEMANTIC_MAPPING_INTEGRITY",
+                "detail": "mapping-store integrity is not established",
+            })
+        current_mapping_evaluations.append({
+            "mapping_id": document["id"],
+            "subject": copy.deepcopy(document["subject"]),
+            "review": copy.deepcopy(document["review"]),
+            "current_derived": copy.deepcopy(evaluation),
+        })
+        review_state = evaluation["effective_review_state"]
+        if review_state == "proposed":
+            extra.append({
+                "severity": "pending",
+                "code": "SEMANTIC_MAPPING_REVIEW_PENDING",
+                "node_id": None,
+                "detail": f"{document['id']} awaits acceptance or rejection",
+                "source": "semantics",
+            })
+        elif review_state == "contested" and not any(
+                item["code"] == "SEMANTIC_MAPPING_CONFLICT"
+                for item in evaluation["findings"]):
+            extra.append({
+                "severity": "warning",
+                "code": "SEMANTIC_MAPPING_CONTESTED",
+                "node_id": None,
+                "detail": f"{document['id']} has a contested current review",
+                "source": "semantics",
+            })
+        if review_state in {"proposed", "accepted", "contested"}:
+            for finding in evaluation["findings"]:
+                extra.append({
+                    "severity": finding["severity"],
+                    "code": finding["code"],
+                    "node_id": None,
+                    "detail": f"{document['id']}: {finding['detail']}",
+                    "source": "semantics",
+                })
+
+    policies, policy_issues = load_policies(cfg)
+    if policy_issues:
+        integrity_error = True
+    for issue in policy_issues:
+        extra.append({
+            "severity": "error",
+            "code": issue["code"],
+            "node_id": None,
+            "detail": f"{issue['path']}: {issue['detail']}",
+            "source": "semantics",
+        })
+
+    active_policy = (
+        evaluate_active_semantic_policy(cfg)
+        if loaded_assets is None
+        else _evaluate_active_semantic_policy_from_snapshot(
+            cfg, assets=loaded_assets, policies=policies,
+            policy_issues=policy_issues, mappings=documents,
+            mapping_issues=mapping_issues,
+        )
+    )
+    active_findings = active_policy["findings"]
+    if any(item["severity"] == "error" for item in active_findings):
+        integrity_error = True
+    for finding in active_findings:
+        extra.append({
+            "severity": finding["severity"],
+            "code": finding["code"],
+            "node_id": None,
+            "detail": finding["detail"],
+            "source": "semantics",
+        })
+
+    active_mapping_ids = []
+    evaluation = active_policy["evaluation"]
+    if evaluation is not None and evaluation["active"] and not integrity_error:
+        active_mapping_ids = list(evaluation["active_mapping_ids"])
+
+    snapshot_problems = []
+    if loaded_assets is None:
+        snapshot_problems.append(
+            "a coherent semantic asset snapshot was unavailable"
+        )
+    if evaluation is not None and evaluation.get("active"):
+        policy_ids = {item["id"] for item in policies}
+        evaluation_by_id = {
+            item["mapping_id"]: item["current_derived"]
+            for item in current_mapping_evaluations
+        }
+        if evaluation.get("policy_id") not in policy_ids:
+            snapshot_problems.append("active policy was not in the report policy snapshot")
+        if any(
+                mapping_id not in evaluation_by_id
+                or not evaluation_by_id[mapping_id].get("eligible_for_policy")
+                for mapping_id in evaluation.get("active_mapping_ids", [])):
+            snapshot_problems.append(
+                "active mappings disagree with the report mapping snapshot"
+            )
+    if loaded_assets is not None:
+        try:
+            final_assets = configured_semantic_assets(cfg)
+            if _canonical_json(final_assets) != _canonical_json(loaded_assets):
+                snapshot_problems.append(
+                    "semantic assets changed while the report was being built"
+                )
+        except SemanticError:
+            snapshot_problems.append(
+                "semantic assets became unavailable while the report was being built"
+            )
+    final_mappings, final_mapping_issues = load_mappings(cfg)
+    final_policies, final_policy_issues = load_policies(cfg)
+    if ([item["id"] for item in final_mappings] != [item["id"] for item in documents]
+            or _canonical_json(final_mapping_issues) != _canonical_json(mapping_issues)
+            or [item["id"] for item in final_policies] != [item["id"] for item in policies]
+            or _canonical_json(final_policy_issues) != _canonical_json(policy_issues)):
+        snapshot_problems.append("semantic stores changed while the report was being built")
+    if snapshot_problems:
+        integrity_error = True
+        active_mapping_ids = []
+        finding = {
+            "severity": "error",
+            "code": "SEMANTIC_REPORT_SNAPSHOT_CHANGED",
+            "node_id": None,
+            "detail": "; ".join(snapshot_problems),
+            "source": "semantics",
+        }
+        extra.append(finding)
+        active_policy = copy.deepcopy(active_policy)
+        active_policy["findings"] = [
+            *active_policy.get("findings", []),
+            {key: finding[key] for key in ("code", "severity", "detail")},
+        ]
+        if active_policy.get("evaluation") is not None:
+            active_policy["evaluation"]["active"] = False
+            active_policy["evaluation"]["valid"] = False
+            active_policy["evaluation"]["active_mapping_ids"] = []
+            active_policy["evaluation"]["findings"] = [
+                *active_policy["evaluation"].get("findings", []),
+                {key: finding[key] for key in ("code", "severity", "detail")},
+            ]
+    if cfg.require_active_semantic_policy and not active_policy["configured"]:
+        extra.append({
+            "severity": "warning",
+            "code": "MISSING_ACTIVE_SEMANTIC_POLICY",
+            "node_id": None,
+            "detail": (
+                "semantic normalization policy is required but no explicit active policy "
+                "is configured"
+            ),
+            "source": "semantics",
+        })
+
+    return {
+        "mapping_schema_version": MAPPING_SCHEMA,
+        "policy_schema_version": POLICY_SCHEMA,
+        "integrity": "error" if integrity_error else "ok",
+        "policy": {
+            "require_active_policy": cfg.require_active_semantic_policy,
+        },
+        "assets": assets,
+        "mapping_history": mapping_history,
+        "current_mapping_evaluations": current_mapping_evaluations,
+        "policies": copy.deepcopy(policies),
+        "active_policy": copy.deepcopy(active_policy),
+        "active_mapping_ids": active_mapping_ids,
+    }, extra
 
 
 def _read_logic_asset(cfg, path):
@@ -1121,6 +2405,49 @@ def _derivation_projection(cfg, raw):
     ]
 
 
+def _annotate_derivation_execution_basis(
+        derivations, claim_basis, *, require_complete_execution_basis=False):
+    by_pair = defaultdict(list)
+    for item in claim_basis["items"]:
+        by_pair[(item["claim_id"], item["result_id"])].append(item)
+    findings = []
+    for proof in derivations["active_proofs"]:
+        used_results = sorted(set(proof.get("result_ids", [])))
+        links = []
+        for result_id in used_results:
+            links.extend(by_pair.get((proof["claim_id"], result_id), []))
+        links.sort(key=lambda item: (item["result_id"], item["assessment_id"]))
+        if not used_results:
+            state = "not_applicable_no_result_premises"
+        elif ({item["result_id"] for item in links} == set(used_results)
+              and all(item["overall"] == "ready_under_reviewed_provenance"
+                      for item in links)):
+            state = "reviewed_execution_basis_current"
+        else:
+            state = "symbolically_active_execution_basis_incomplete"
+            findings.append({
+                "severity": (
+                    "warning" if require_complete_execution_basis else "info"
+                ),
+                "code": "SYMBOLIC_EXECUTION_BASIS_INCOMPLETE",
+                "node_id": proof["claim_id"],
+                "detail": (
+                    f"{proof['proof_id']} remains conditionally {proof['proof_state']} under "
+                    "project rules, but its result premises lack complete current execution, "
+                    "replay, and method-conformance provenance"
+                ),
+                "source": "claim_basis",
+            })
+        proof["execution_basis"] = {
+            "state": state,
+            "claim_basis_assessment_ids": sorted({
+                item["assessment_id"] for item in links
+            }),
+            "does_not_change_symbolic_proof_state": True,
+        }
+    return findings
+
+
 def build_report(cfg, *, strict=False, raw=None):
     """Build one deterministic report without printing, mutation, or verifier execution.
 
@@ -1133,10 +2460,30 @@ def build_report(cfg, *, strict=False, raw=None):
     warnings = lint_issues(cfg, raw=graph)
     receipts, receipt_findings = _receipt_projection(cfg, graph)
     assessments, assessment_findings = _assessment_projection(cfg, graph)
+    (
+        method_assessments,
+        method_findings,
+        method_snapshots_by_id,
+    ) = _method_assessment_projection(cfg)
+    claim_basis, claim_basis_findings = _claim_basis_projection(
+        cfg, graph, receipts, assessments, method_assessments,
+        method_snapshots_by_id,
+    )
+    semantics, semantic_findings = _semantic_projection(cfg)
     derivations, derivation_findings = _derivation_projection(cfg, graph)
+    symbolic_basis_findings = _annotate_derivation_execution_basis(
+        derivations, claim_basis,
+        require_complete_execution_basis=(
+            cfg.require_execution_contracts
+            or cfg.require_replay
+            or cfg.require_method_assessments
+        ),
+    )
     findings = _findings(
         problems, warnings, pending, bool(strict),
-        [*receipt_findings, *assessment_findings, *derivation_findings],
+        [*receipt_findings, *assessment_findings, *method_findings,
+         *claim_basis_findings, *semantic_findings, *derivation_findings,
+         *symbolic_basis_findings],
     )
     counts = Counter(item["severity"] for item in findings)
     blocking = sum(1 for item in findings if item["blocking"])
@@ -1158,6 +2505,9 @@ def build_report(cfg, *, strict=False, raw=None):
         "graph": _graph_projection(graph),
         "receipts": receipts,
         "assessments": assessments,
+        "method_assessments": method_assessments,
+        "claim_basis": claim_basis,
+        "semantics": semantics,
         "derivations": derivations,
         "findings": findings,
         "fatal": None,
@@ -1175,6 +2525,9 @@ def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
         "graph": None,
         "receipts": None,
         "assessments": None,
+        "method_assessments": None,
+        "claim_basis": None,
+        "semantics": None,
         "derivations": None,
         "findings": [],
         "fatal": {"code": str(code), "detail": str(detail)},
@@ -1183,7 +2536,7 @@ def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
 
 
 def dumps_report(report):
-    """Serialize a report canonically as one UTF-8-friendly JSON document plus newline."""
+    """Serialize a report canonically as terminal-safe ASCII JSON plus newline."""
     return json.dumps(
-        report, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        report, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False,
     ) + "\n"

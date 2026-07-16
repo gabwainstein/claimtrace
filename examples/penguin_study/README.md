@@ -60,10 +60,16 @@ python -m claimtrace --config $config run `
   --cwd $root -- python analysis/01_prepare.py
 
 python -m claimtrace --config $config run `
+  --pipeline-contract claimtrace/analyze.pipeline.json `
+  --stage-checkpoints `
   --input data/penguins_clean.csv `
   --input analysis/02_analyze.py `
   --output results/slopes.json `
   --cwd $root -- python analysis/02_analyze.py
+
+# Replace this placeholder with the run ID printed by the preceding command.
+$analysisRun = "run:<printed-analysis-run-id>"
+python -m claimtrace --config $config replay --repeat 2 $analysisRun
 
 python -m claimtrace --config $config run `
   --input data/penguins_clean.csv `
@@ -76,6 +82,7 @@ python -m claimtrace --config $config snapshot
 python -m claimtrace --config $config evidence-plan claim:sign-reversal --json
 python -m claimtrace --config $config derivations --json
 python -m claimtrace --config $config assessments --all --json
+python -m claimtrace --config $config method-assessments --json
 python -m claimtrace --config $config verify
 python -m claimtrace --config $config lint --strict
 python -m claimtrace --config $config check --strict --json
@@ -104,10 +111,16 @@ python -m claimtrace --config "$config" run \
   --cwd "$root" -- python analysis/01_prepare.py
 
 python -m claimtrace --config "$config" run \
+  --pipeline-contract claimtrace/analyze.pipeline.json \
+  --stage-checkpoints \
   --input data/penguins_clean.csv \
   --input analysis/02_analyze.py \
   --output results/slopes.json \
   --cwd "$root" -- python analysis/02_analyze.py
+
+# Replace this placeholder with the run ID printed by the preceding command.
+analysis_run="run:<printed-analysis-run-id>"
+python -m claimtrace --config "$config" replay --repeat 2 "$analysis_run"
 
 python -m claimtrace --config "$config" run \
   --input data/penguins_clean.csv \
@@ -120,37 +133,64 @@ python -m claimtrace --config "$config" snapshot
 python -m claimtrace --config "$config" evidence-plan claim:sign-reversal --json
 python -m claimtrace --config "$config" derivations --json
 python -m claimtrace --config "$config" assessments --all --json
+python -m claimtrace --config "$config" method-assessments --json
 python -m claimtrace --config "$config" verify
 python -m claimtrace --config "$config" lint --strict
 python -m claimtrace --config "$config" check --strict --json
 ```
 
-The generated files are checked in. A deterministic rerun over pre-existing identical outputs is a
-validation-only receipt, not evidence that the wrapper produced those files. To observe fresh
-production transitions, run the example in a disposable copy after removing only its generated
-data, results, figure, and event outputs. The checked-in assessment and derivation records are
-historical governance records; do not recreate them under the recorded actor's identity.
+The generated files are checked in. The analysis contract names four exact code-backed stages:
+complete-case selection, species grouping, descriptive OLS estimation, and result export. Its
+current producing event is `run:deda38a0-b5df-47f2-b5ed-9d88e599143b`; the current two-attempt
+certificate is `replay:sha256:72f560d01958bba46f405655b61e95b5668dbc7dd9a99d3bbc1345825b6a26a2`.
+Both replay attempts reproduced the output bytes, stdout, and normalized four-checkpoint sequence
+and created no visible undeclared workspace files. Each checkpoint record matched the exact
+direct-child process ID launched by the controller, preventing accidental descendant mixing.
+
+The first three stages exchange only in-memory values. The cooperative records show that the exact
+direct child reported reaching each locked callsite after its local stage code and checks. They do
+not independently observe the computation, intermediate values, or scientific meaning. The
+terminal JSON remains the only stage output observed at the process boundary in this contract.
+
+A deterministic rerun over a pre-existing identical output is a validation-only receipt, not
+evidence that the wrapper produced that file. To observe a fresh production transition, use a
+disposable copy and remove only the generated output before the contract-bound analysis run. The
+checked-in event, replay, assessment, method-assessment, and derivation records are immutable
+history; do not recreate them under a recorded actor's identity.
+The older event-v3 run and replay remain visible as stale historical records. Their natural
+input/contract drift is nonblocking only because the later event-v4 run has the exact same output
+role, current bindings, and a current review-ready replay; integrity faults, undeclared writes, and
+non-repeatability are never demoted by this replacement rule.
 
 ## Meaning and logic remain separate
 
-Two build-agent inputs compare the exact result artifact with two deliberately different claims:
+Two bounded agent inputs compare the exact result artifact with two deliberately different claims:
 
 - `semantic-estimated-slopes.proposal.json` targets `claim:estimated-slopes`, which states the complete
   sample size and all four numerical slopes.
 - `semantic-qualitative-sign.proposal.json` targets `claim:sign-reversal`, which states only the
   pooled-negative/species-positive direction pattern and is also the symbolic rule's target.
 
-A separate same-session `codex:/root/audit_examples` task accepted both narrow alignments after
-checking the source hashes, raw-to-curated identity, complete-case counts, and slope calculations.
-That is task separation, not an external independent review. Its decision is retained in the
-assessment ledger; the reproducible live verifier separately recomputes those checks from disk. The
-resulting active `supports` relations are assessment projections; there are no manual `supports`
-edges in the graph.
+The current proposals were recorded by `codex:/root/public-demo-regeneration`. A separate
+`codex:/root/penguin_evidence_review` task accepted both narrow alignments after the live verifier
+passed 4/4 checks and an independent sum-of-products calculation reproduced the sample count,
+species counts, four slopes, and sign pattern. That is task separation, not an external independent
+review. The resulting active `supports` relations are assessment projections; there are no manual
+`supports` edges in the graph.
+
+The checkpoint-instrumented method proposal was recorded by
+`codex:/root/stage-checkpoint-regeneration`. A distinct
+`codex:/root/checkpoint_adversarial` task recomputed all five anchor hashes, inspected each pinned
+span, and accepted the method-conformance proposal for `method:complete-case-ols`. That judgement
+says the pinned spans implement the four written steps. It does not independently show that each
+in-memory computation occurred, establish that the method is scientifically appropriate, or
+certify either claim as true.
 
 Inspect the complete immutable history with:
 
 ```powershell
 python -m claimtrace --config $config assessments --all --json
+python -m claimtrace --config $config method-assessments --json
 ```
 
 The history intentionally retains a v1 framing mistake, its prematurely accepted review, and a
@@ -160,29 +200,44 @@ input was resubmitted under schema v2, whose narrow magnitude-specificity rule m
 policy explicit. Review successors stay on their predecessor's schema, so old records are never
 silently reinterpreted after a policy change.
 
-`codex:/root/build_penguins` and `codex:/root/audit_examples` are self-asserted task identities;
-Claimtrace records but does not authenticate them. Acceptance is an attributed judgement, not proof
-that the scientific interpretation is true.
+All recorded `codex:/root/...` actor strings, including the current proposer and reviewer, are
+self-asserted task identities. Claimtrace records but does not authenticate them. Acceptance is an
+attributed judgement, not proof that the scientific interpretation is true.
 
 The reported OLS estimates are rounded to six decimal places. The checked-in mechanical receipts
 also retain the executable and working-directory paths observed on the producing machine. That is
 authentic environment provenance but may disclose local workspace layout; audit this boundary
 before republishing a copied ledger, and do not edit content-addressed receipts in place.
+The historical analysis receipt embeds pipeline snapshot v2, whose original content address also
+contains code-file `mtime_ns`. Claimtrace validates that stored snapshot exactly, then ignores only
+that volatile timestamp when comparing it with a fresh checkout; every content hash, size, graph
+node, method, stage, and anchor remains exact. Newly created contracts use timestamp-independent
+snapshot v3.
+The checked-in replay is therefore current only when the inspecting host resolves the same recorded
+executable bytes and project lockfiles. A different interpreter or operating system correctly emits
+`REPLAY_ENVIRONMENT_MISMATCH` and leaves strict claim provenance incomplete; run and review a fresh
+local receipt and replay instead of weakening or rewriting that historical record.
 
-To submit a new assessment, copy the relevant proposal, edit `provenance.agent` to your truthful
-actor ID, and pass that same ID to `--actor`. Do not reuse the checked-in build identity.
+To submit a new semantic or method assessment, copy the relevant proposal, edit
+`provenance.agent` to your truthful actor ID, and pass that same ID to `--actor`. Do not reuse a
+recorded actor identity.
 
 The symbolic layer asks a narrower deterministic question: does the recorded complete slope profile
 satisfy the project-owned sign rule?
+
+For a separate end-to-end example of exact ontology locking, bounded external-agent mapping input,
+human review, explicit policy compilation, activation, and strict verification, follow the
+[semantic-normalization walkthrough](SEMANTICS.md) in a disposable copy of this study.
 
 ```powershell
 python -m claimtrace --config $config evidence-plan claim:sign-reversal --json
 python -m claimtrace --config $config derivations --json
 ```
 
-The checked-in symbolic request and derivation are historical actions by the build task. For a new
-derivation after evidence or policy changes, copy the request, replace `provenance.agent` with your
-truthful actor ID, and use the same value for `--actor`.
+The derivation ledger retains the earlier proofs and the current proof rebuilt after checkpoint
+instrumentation refreshed the locked code basis. For a new derivation after evidence or policy
+changes, copy the request, replace `provenance.agent` with your truthful actor ID, and use the same
+value for `--actor`.
 
 The rule can return `derivable` or `refutable` for the configured target. It does not prove that the
 scientific interpretation is true, that the chosen policy captures every relevant alternative, or

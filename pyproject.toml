@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claimtrace-provenance"
-version = "0.2.0"
+version = "0.3.0"
 description = "Dependency-aware provenance + verification engine for scientific data analysis"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -36,7 +36,10 @@ Issues = "https://github.com/gabwainstein/claimtrace/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-claimtrace = ["templates/claimtrace-log/SKILL.md"]
+claimtrace = [
+    "templates/claimtrace-log/SKILL.md",
+    "templates/claimtrace-log/references/*.md",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

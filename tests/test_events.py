@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import claimtrace.events as events_module
 from claimtrace.cli import main
 from claimtrace.config import Config
 from claimtrace.events import (
@@ -306,6 +307,93 @@ def test_input_transition_cannot_claim_production(tmp_path):
     finish = _finish_event(start, input_transitions=(transition,))
     with pytest.raises(EventError, match="cannot claim production"):
         append_event(tmp_path, finish)
+
+
+def test_window_delta_shape_is_closed(tmp_path):
+    finish = _finish_event(_planned_start())
+    finish["payload"]["window_deltas"] = [0]
+    core = {key: finish[key] for key in (
+        "schema_version", "type", "run_id", "recorded_at", "payload",
+    )}
+    finish["id"] = "event:sha256:" + canonical_sha256(core)
+
+    with pytest.raises(EventError, match="window delta must be an object"):
+        append_event(tmp_path, finish)
+
+
+def test_event_store_rejects_excessive_json_nesting_with_stable_diagnostic(tmp_path):
+    events_path = tmp_path / "events"
+    fanout = events_path / "00"
+    fanout.mkdir(parents=True)
+    (fanout / ("0" * 64 + ".json")).write_text(
+        "[" * 5000 + "0" + "]" * 5000, encoding="utf-8",
+    )
+
+    loaded, issues = load_events(events_path)
+
+    assert loaded == []
+    assert len(issues) == 1
+    assert issues[0]["code"] == "EVENT_INTEGRITY"
+    assert "JSON nesting exceeds the 256-level limit" in issues[0]["detail"]
+
+
+def test_malformed_active_marker_is_a_structured_integrity_issue(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    directory = events_module._marker_directory(project)
+    directory.mkdir(parents=True)
+    (directory / "bad.json").write_text(json.dumps({
+        "schema_version": events_module.ACTIVE_SCHEMA,
+        "project_root": str(project.resolve()),
+        "run_id": "run:12345678-1234-4123-8123-123456789abc",
+        "start_event": 0,
+    }), encoding="utf-8")
+
+    markers, issues = events_module.load_active_markers(project)
+    assert markers == []
+    assert len(issues) == 1
+    assert issues[0]["code"] == "ACTIVE_MARKER_INTEGRITY"
+    assert "start_event must be an object" in issues[0]["detail"]
+    (directory / "bad.json").unlink()
+    directory.rmdir()
+
+
+def test_private_runtime_root_accepts_resolved_system_temp_symlink(
+        tmp_path, monkeypatch):
+    real_temp = tmp_path / "real-temp"
+    real_temp.mkdir()
+    temp_alias = tmp_path / "temp-alias"
+    try:
+        os.symlink(real_temp, temp_alias, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory links are unavailable on this platform: {exc}")
+
+    monkeypatch.setattr(
+        events_module.tempfile, "gettempdir", lambda: str(temp_alias),
+    )
+    root = events_module._private_runtime_root("claimtrace-runtime-test")
+
+    assert root.parent == real_temp.resolve()
+    assert root.is_dir()
+
+
+def test_active_marker_listing_fails_closed_at_bounded_entry_count(
+        tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    directory = events_module._marker_directory(project)
+    directory.mkdir(parents=True)
+    for index in range(3):
+        (directory / f"junk-{index}.tmp").write_bytes(b"")
+    monkeypatch.setattr(events_module, "MAX_ACTIVE_MARKER_FILES", 2)
+
+    markers, issues = events_module.load_active_markers(project)
+
+    assert markers == []
+    assert issues == [{
+        "code": "ACTIVE_MARKER_INTEGRITY", "marker": ".",
+        "detail": "active-marker store exceeds its file-count limit",
+    }]
 
 
 def test_materialized_run_roles_must_match_start_plan(tmp_path):
@@ -624,6 +712,188 @@ def test_child_control_plane_mutation_is_a_contract_failure(tmp_path):
     events, issues = load_events(cfg.events_path)
     assert len(events) == 2
     assert issues == []
+
+
+def test_child_semantic_policy_mutation_is_a_contract_failure(tmp_path):
+    cfg = _project(tmp_path)
+    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology.write_text(json.dumps({
+        "schema_version": "claimtrace.local-terminology/1",
+        "id": "study:terms",
+        "version": "1",
+        "terms": [{
+            "id": "study:score",
+            "kind": "concept",
+            "label": "Score",
+            "definition": "The declared study score.",
+            "aliases": [],
+        }],
+    }), encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+
+    result = run_command(
+        cfg,
+        [sys.executable, "-c",
+         "from pathlib import Path; Path('claimtrace/terms.json').write_text('{}')"],
+        inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
+    )
+    assert result["exit_code"] == 3
+    assert result["outcome"] == "contract_failed"
+    assert any("configured semantic assets" in item for item in result["contract_errors"])
+
+
+def test_snapshot_rejects_descriptor_for_a_different_path(tmp_path, monkeypatch):
+    original = tmp_path / "original.txt"
+    attacker = tmp_path / "attacker.txt"
+    original.write_text("original", encoding="utf-8")
+    attacker.write_text("attacker", encoding="utf-8")
+    real_open = events_module.os.open
+
+    def swapped_open(path, flags, *args, **kwargs):
+        if Path(path) == original:
+            return real_open(attacker, flags, *args, **kwargs)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(events_module.os, "open", swapped_open)
+    snapshot = events_module.snapshot_file(original, "original.txt")
+
+    assert snapshot["state"] == "unstable"
+    assert snapshot["reason"] == "path_changed_before_open"
+
+
+def test_snapshot_limit_remains_hard_when_file_grows_after_open(tmp_path, monkeypatch):
+    growing = tmp_path / "growing.txt"
+    growing.write_bytes(b"x")
+    real_read = events_module.os.read
+    appended = False
+
+    def append_then_read(descriptor, size):
+        nonlocal appended
+        if not appended:
+            appended = True
+            with growing.open("ab") as stream:
+                stream.write(b"y")
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(events_module.os, "read", append_then_read)
+    snapshot = events_module.snapshot_file(growing, "growing.txt", limit=1)
+
+    assert appended is True
+    assert snapshot["state"] == "unreadable"
+    assert snapshot["error"] == "SizeLimitExceeded"
+
+
+def test_semantic_control_plane_budget_blocks_launch(tmp_path):
+    cfg = _project(tmp_path)
+    ontology = tmp_path / "claimtrace" / "ontology"
+    ontology.mkdir()
+    (ontology / "oversized.owl").write_bytes(b"xx")
+    (ontology / "index.json").write_text("{}", encoding="utf-8")
+    (ontology / "ontology.lock.json").write_text(json.dumps({
+        "documents": [{"path": "oversized.owl"}],
+        "index": {"path": "index.json"},
+    }), encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["semantics"] = {
+        "ontology_locks": ["claimtrace/ontology/ontology.lock.json"],
+        "max_ontology_bytes": 1,
+    }
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+
+    with pytest.raises(EventError, match="byte (?:budget|limit)"):
+        run_command(
+            cfg,
+            [sys.executable, "-c",
+             "from pathlib import Path; Path('launched.txt').write_text('yes')"],
+            inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
+        )
+    assert not (tmp_path / "launched.txt").exists()
+
+
+def test_semantic_control_plane_rejects_member_path_controls_before_launch(tmp_path):
+    cfg = _project(tmp_path)
+    ontology = tmp_path / "claimtrace" / "ontology"
+    ontology.mkdir()
+    (ontology / "index.json").write_text("{}", encoding="utf-8")
+    (ontology / "ontology.lock.json").write_text(json.dumps({
+        "documents": [{"path": "bad\u0000path.owl"}],
+        "index": {"path": "index.json"},
+    }), encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["semantics"] = {
+        "ontology_locks": ["claimtrace/ontology/ontology.lock.json"],
+    }
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+
+    with pytest.raises(EventError, match="member path contains controls"):
+        run_command(
+            cfg,
+            [sys.executable, "-c",
+             "from pathlib import Path; Path('launched.txt').write_text('yes')"],
+            inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
+        )
+    assert not (tmp_path / "launched.txt").exists()
+
+
+def test_semantic_control_plane_rejects_reparse_source_before_launch(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology.write_text("{}", encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+    real_check = events_module._path_has_reparse_component
+
+    def source_is_reparse(path):
+        if Path(path) == terminology:
+            return True
+        return real_check(path)
+
+    monkeypatch.setattr(events_module, "_path_has_reparse_component", source_is_reparse)
+    with pytest.raises(EventError, match="source traverses a link"):
+        run_command(
+            cfg, [sys.executable, "-c",
+                  "from pathlib import Path; Path('launched.txt').write_text('yes')"],
+            inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
+        )
+    assert not (tmp_path / "launched.txt").exists()
+
+
+def test_semantic_control_plane_snapshot_uses_exact_preflight_size(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology.write_text("{}", encoding="utf-8")
+    config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+    real_snapshot = events_module.snapshot_file
+    observed_limit = None
+
+    def grow_before_snapshot(path, display, *, limit=None):
+        nonlocal observed_limit
+        if Path(path) == terminology and observed_limit is None:
+            observed_limit = limit
+            terminology.write_text('{"grew":true}', encoding="utf-8")
+        return real_snapshot(path, display, limit=limit)
+
+    monkeypatch.setattr(events_module, "snapshot_file", grow_before_snapshot)
+    with pytest.raises(EventError, match="file exceeds its byte limit"):
+        run_command(
+            cfg, [sys.executable, "-c",
+                  "from pathlib import Path; Path('launched.txt').write_text('yes')"],
+            inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
+        )
+    assert observed_limit == 2
+    assert not (tmp_path / "launched.txt").exists()
 
 
 def test_concurrent_runs_accept_append_only_receipt_activity(tmp_path):

@@ -1,0 +1,17 @@
+{
+  "schema_version": "claimtrace.local-terminology/1",
+  "id": "penguins:study-terms",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "id": "penguins:bill-length-mm",
+      "kind": "concept",
+      "label": "Bill length in millimetres",
+      "definition": "Culmen length in millimetres for one sampled penguin record in this project, corresponding to the dataset column bill_length_mm.",
+      "aliases": [
+        "bill length",
+        "culmen length"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "schema_version": "claimtrace.pipeline-contract/1",
+  "name": "penguin-complete-case-ols",
+  "entrypoint_code_node_id": "code:analyze",
+  "code_node_ids": ["code:analyze"],
+  "input_node_ids": ["data:clean"],
+  "output_node_ids": ["art:slopes"],
+  "required_parameters": [],
+  "required_seeds": [],
+  "stages": [
+    {
+      "id": "select_complete_bills",
+      "depends_on": [],
+      "method_id": "method:complete-case-ols",
+      "method_step_id": "select_complete_bills",
+      "consumes_node_ids": ["data:clean"],
+      "produces_node_ids": [],
+      "code_anchors": [
+        {
+          "code_node_id": "code:analyze",
+          "kind": "text_lines",
+          "start_line": 38,
+          "end_line": 48,
+          "text_sha256": "dccfb6d1a5d52a77947af2427a1ccae5d16a196026a1712a5ca86f86b40209a3"
+        }
+      ]
+    },
+    {
+      "id": "group_by_species",
+      "depends_on": ["select_complete_bills"],
+      "method_id": "method:complete-case-ols",
+      "method_step_id": "group_by_species",
+      "consumes_node_ids": [],
+      "produces_node_ids": [],
+      "code_anchors": [
+        {
+          "code_node_id": "code:analyze",
+          "kind": "text_lines",
+          "start_line": 50,
+          "end_line": 55,
+          "text_sha256": "4c1f355191c76317d9ae57860b8d44116b715cc35344e649554778a053cb1445"
+        }
+      ]
+    },
+    {
+      "id": "fit_descriptive_ols",
+      "depends_on": ["group_by_species"],
+      "method_id": "method:complete-case-ols",
+      "method_step_id": "fit_descriptive_ols",
+      "consumes_node_ids": [],
+      "produces_node_ids": [],
+      "code_anchors": [
+        {
+          "code_node_id": "code:analyze",
+          "kind": "text_lines",
+          "start_line": 16,
+          "end_line": 34,
+          "text_sha256": "ab328185fdec146d2b47237ebd4e80f3495b63ec010e3ddfd88978a0a9f42ed2"
+        },
+        {
+          "code_node_id": "code:analyze",
+          "kind": "text_lines",
+          "start_line": 57,
+          "end_line": 70,
+          "text_sha256": "c2945406e953aaf6905ae2215fad0f54b0a9896b6926a7d6a5ae83dfbb4b6d37"
+        }
+      ]
+    },
+    {
+      "id": "export_slope_profile",
+      "depends_on": ["fit_descriptive_ols"],
+      "method_id": "method:complete-case-ols",
+      "method_step_id": "export_slope_profile",
+      "consumes_node_ids": [],
+      "produces_node_ids": ["art:slopes"],
+      "code_anchors": [
+        {
+          "code_node_id": "code:analyze",
+          "kind": "text_lines",
+          "start_line": 72,
+          "end_line": 102,
+          "text_sha256": "a25beae4e459a18d9f8b4af0ba2249a9751d6f495d5d736dba7057e3df205eb4"
+        }
+      ]
+    }
+  ]
+}
