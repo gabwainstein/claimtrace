@@ -1,0 +1,31 @@
+{
+  "schema_version": "claimtrace.ontology-index/1",
+  "ontology_id": "penguin-example:ontology",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "iri": "urn:claimtrace:example:penguin-study:BillLengthMeasurement",
+      "kind": "class",
+      "labels": [
+        {
+          "text": "bill length measurement",
+          "language": "en"
+        }
+      ],
+      "synonyms": [
+        {
+          "text": "bill length",
+          "language": "en"
+        }
+      ],
+      "definitions": [
+        {
+          "text": "A bill length measurement defined for the Claimtrace Palmer Penguins example.",
+          "language": "en"
+        }
+      ],
+      "deprecated": false,
+      "parents": []
+    }
+  ]
+}

@@ -7,6 +7,8 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
+from claimtrace.pipeline import stage_checkpoint
+
 
 SPECIES = ("Adelie", "Chinstrap", "Gentoo")
 
@@ -43,12 +45,14 @@ def main() -> None:
             complete.append(
                 (row["species"], float(row["bill_length_mm"]), float(row["bill_depth_mm"]))
             )
+    stage_checkpoint("select_complete_bills")
 
     grouped: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for species, bill_length, bill_depth in complete:
         grouped[species].append((bill_length, bill_depth))
     if tuple(sorted(grouped)) != tuple(sorted(SPECIES)):
         raise RuntimeError(f"expected species {SPECIES}, observed {tuple(sorted(grouped))}")
+    stage_checkpoint("group_by_species")
 
     pooled_rows = [(bill_length, bill_depth) for _, bill_length, bill_depth in complete]
     pooled = ols(pooled_rows)
@@ -63,6 +67,7 @@ def main() -> None:
         centered_sxx += sum((x - x_bar) ** 2 for x, _ in rows)
         centered_sxy += sum((x - x_bar) * (y - y_bar) for x, y in rows)
     common_within_species_slope = centered_sxy / centered_sxx
+    stage_checkpoint("fit_descriptive_ols")
 
     reversal = pooled["slope"] < 0 and all(
         by_species[species]["slope"] > 0 for species in SPECIES
@@ -94,6 +99,7 @@ def main() -> None:
     ) as handle:
         json.dump(result, handle, indent=2, sort_keys=True)
         handle.write("\n")
+    stage_checkpoint("export_slope_profile")
     signs = ", ".join(
         f"{species}={by_species[species]['slope']:.6f}" for species in SPECIES
     )

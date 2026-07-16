@@ -5,7 +5,79 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 
 ## Unreleased
 
+## 0.3.0 - 2026-07-16
+
 ### Added
+- Make `claimtrace init` planning-safe by default with an empty valid graph, no invented data path,
+  and no configured executable verifier; retain a complete runnable toy CSV and verifier only
+  behind explicit `claimtrace init --example`.
+- Add closed method-step and claim-method requirement declarations plus opaque multistage pipeline
+  contracts that pin exact graph roles, code/method bytes, code-line anchors, parameter/seed keys,
+  and a declared-only stage DAG.
+- Add current event-v3 contract-bound receipts and replay-v2 certificates with automatic
+  path-bearing materialized-intermediate roles. Receipts keep pre/post whole-process intermediate
+  transitions separate from terminal outputs; fresh-workspace replay includes both roles in exact
+  source/attempt byte comparison, so a differing final materialized-intermediate file cannot be
+  hidden by stable terminal-output bytes. Transient, reverted, pathless, and in-memory changes
+  remain outside this observation. Legacy event-v2, snapshot-v1, and replay-v1 records remain
+  strictly readable but
+  contain no inferred intermediate evidence. Undeclared workspace writes remain ineligible for
+  claim readiness. Replay evaluation also revalidates the complete source event pair and exact
+  unredacted command metadata; secret-bearing overrides remain redacted but are deliberately
+  ineligible for current/review-ready source-command provenance.
+- Add optional cooperative stage checkpoints for instrumentable opaque programs. The public
+  `stage_checkpoint(stage_id)` API is a no-op outside traced children; `--stage-checkpoints` or
+  `execution.require_stage_checkpoints` writes event-v4 receipts and replay-v3 certificates. The
+  controller fails closed on missing, duplicate, unknown, out-of-DAG-order, incorrectly bound, or
+  unanchored callsites and replay compares the normalized source/attempt sequence. Reserved trace
+  environment variables are always scrubbed before launch and then freshly bound; checkpoint
+  records carry a `reporter_pid` that must match the exact launched direct child. Protocol v1
+  therefore rejects descendant/worker/kernel API reports; parent controllers checkpoint only after
+  workers join. A 1 MiB raw-trace cap keeps replay-v3 certificates bounded. Result identity excludes
+  nonce/raw/PID binding material while the finish event commits it. These controls prevent accidental
+  mixing but not cooperative raw-record forgery, and remain explicitly child self-report rather than
+  independent observation or scientific support.
+- Add immutable external-agent method-to-code conformance proposals, distinct-actor review, live
+  drift suppression, and a joined claim-provenance projection that keeps semantic meaning,
+  execution, replay, method review, symbolic derivability, and scientific validity separate.
+- Add deterministic `graph-hash`, `graph-propose`, and atomic `graph-apply` transactions so an agent
+  can draft a bounded graph change without silently mutating or rebasing the scientific graph.
+- Add exact `claimtrace.project-release/1` manifests with double collection, verification, and diff,
+  including event, replay, semantic, method-review, normalization, and symbolic provenance stores,
+  plus explicitly labeled current files at pipeline-contract paths referenced by those records.
+  Release-v1 validation accepts both the canonical pre-checkpoint schema inventory and the current
+  inventory; new manifests also enumerate the stage-checkpoint record, plan, and trace schemas.
+- Advance the strict report read model to 1.7 and standalone view to schema 5. Run details separate
+  terminal outputs from materialized-intermediate paths, post-process transitions, source/replay
+  comparison, exact graph binding, and optional cooperative stage-trace state while stating that
+  none of this independently observes computation or attributes bytes to a stage.
+  Preserve contract stages, replay status, method conformance, joined claim-provenance readiness,
+  draggable layout, wheel zoom, background pan, rounded obstacle-aware edges, and edge endpoint
+  focus.
+- Keep naturally stale run/replay/method history visible but demote its drift findings only after a
+  strictly later, exact-output-role replacement has a current contract, current graph bindings, and
+  review-ready replay (including repeatable cooperative checkpoints when policy requires them), plus
+  current accepted method conformance for stale method history. Integrity faults, non-repeatability,
+  replay conflicts, capture failures, and undeclared workspace writes remain blocking.
+- Upgrade newly written render manifests to schema v2 with SHA-256 while retaining strict read-only
+  validation of legacy unversioned SHA-1 locks.
+- Add a 512 MiB default semantic ontology hashing budget with an explicit bounded
+  `semantics.max_ontology_bytes` opt-in, and pin the Unicode data version in deterministic
+  candidate profiles.
+- Add optional deterministic semantic normalization with strict project terminology, exact-byte
+  ontology/index locks, offline exact candidate search, immutable separate-actor SKOS mapping
+  reviews, and explicit content-addressed policy releases that are never activated implicitly.
+- Add `lock-ontology`, `ontology-candidates`, `map-term`, `mappings`, `review-mapping`,
+  `compile-semantic-policy`, and `semantic-status`, plus report-schema 1.4 projections for asset
+  integrity, review history, live drift/conflicts, stored releases, and explicit activation.
+- Bundle a semantic-authoring reference with the `claimtrace-log` skill so agents can propose
+  normalization under locked candidates while remaining unable to invent IRIs, self-review, or
+  activate policy.
+- Add a replayable Palmer Penguins semantic-normalization walkthrough that starts with optional
+  empty ledgers, then demonstrates exact candidate discovery, bounded agent input, separate review,
+  inactive policy compilation, explicit activation, and a green strict gate.
+- Add pinned GitHub Actions release checks across Python 3.9-3.14 on Linux plus endpoint coverage on
+  Windows and macOS, including wheel/sdist and packaged-skill smoke tests.
 - Add a stdlib-only Palmer Penguins public demo with pinned CC0 sources, byte-identical
   raw-to-curated verification, pooled and species-conditioned slope claims, semantic review, and a
   project-owned symbolic sign rule.
@@ -55,6 +127,62 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   and detect opposing active proofs for the same formal target as a hard claim-level conflict.
 
 ### Fixed
+- Make `claimtrace verify` fail closed with exit code 2 when no verifier is configured or a
+  configured verifier registers zero checks; exit code 0 now means at least one registered check
+  ran and every check passed.
+- Pin the release workflow to the current non-yanked `build` frontend release instead of the
+  subsequently yanked 1.5.1 archive.
+- Derive claim readiness from the claimed terminal result's unique producer stage and transitive
+  stage ancestry. Require an exact claim-owned method/step set, current conformance for every
+  ancestry stage, and current bindings for path-bearing ancestry intermediates. Ancestry selection
+  is branch-local while replay remains whole-contract and conformance remains whole-method within
+  that contract.
+- Reject crossed event/snapshot schema generations, inactive or missing stage nodes, noncanonical
+  internal paths, and code/input/output/materialized-intermediate node or path collisions before a
+  contract-bound child can launch.
+- Revalidate stored contract-bound argv against the exact project-relative entrypoint and recorded
+  cwd, so recomputed event IDs cannot attach an unrelated command to a pipeline snapshot.
+- Recompute replay attempt outcomes from return codes, launch errors, and output stability; describe
+  the workspace scan as file-path coverage and explicitly exclude directory-only changes.
+- Quarantine all runs on event-store corruption, only the affected run on start/finish-link faults,
+  and all replay currentness on replay-store corruption while retaining inspectable history.
+- Reject linked, non-directory, nested, and unexpected semantic/method assessment-store entries;
+  retain declared lexical store roots so configuration cannot resolve away a junction before
+  validation.
+- Treat event-v2 sources as historical non-current replay coverage and suppress a positive replay
+  certificate when another current certificate for the same source run contradicts review
+  readiness.
+- Preserve binding currentness, boundary-evidence basis, and missing stage attribution in the
+  standalone view, and describe transitions as process-window content changes rather than proven
+  production by a command or stage.
+- Re-resolve legacy event-v2 contract receipts with their stored snapshot-v1 schema instead of
+  making them stale merely because current contract resolution emits snapshot-v2.
+- Discover pipeline-contract source paths from the stored event `type`, so an event-only
+  contract-bound run cannot omit its current source path from a project release; label that role as
+  current-path content rather than implying that it preserves every historical raw contract file.
+- Keep incomplete symbolic execution provenance visible but make it a strict blocking warning only
+  when a project enables a contract, replay, or method-conformance execution gate; conditional proof
+  state remains unchanged in either case.
+- Bound and descriptor-stabilize CLI JSON inputs, make `init` and `install-skill` reject linked or
+  escaping publication paths, preserve no-force collision semantics under concurrent writers,
+  serialize complete scaffold and skill-bundle publication, post-verify every managed skill file,
+  and escape terminal and bidirectional controls in every human-readable and JSON CLI output path.
+- Harden event, active-marker, and semantic-store concurrency with bounded scans, private lock
+  roots, stable file identities, content-addressed no-replace writes, and directory durability
+  barriers where the platform supports them; apply semantic lock deadlines to both in-process and
+  OS waits, and route graph mutations through the hardened private runtime lock.
+- Evaluate mapping and active-policy status from one in-memory semantic-asset snapshot and suppress
+  activation when assets or stores change during report construction, including change-and-revert
+  races.
+- Revalidate complete mapping snapshots under the mapping-store lock, serialize mapping/policy
+  publication in a fixed cross-store order, and use atomic no-replace content-addressed writes.
+- Bound aggregate semantic assets, ontology bytes, terms, search matches, and stores; reject
+  incompatible entity kinds, truncated candidates, conflicting ontology identities, and
+  non-total candidate ordering.
+- Label ontology indexes as project-supplied unverified assertions rather than verified RDF/OWL
+  extraction, and use `declared_imports_available` rather than claiming a complete import closure.
+- Include configured semantic assets and stores in the run control-plane fingerprint so a child
+  cannot silently change active meaning during an analysis receipt.
 - Write the EEG demo's tracked JSON artifacts with explicit LF newlines so Git line-ending
   normalization on Windows cannot invalidate the checked-in receipt hashes after a clean checkout.
 - Use the distinct PyPI distribution name `claimtrace-provenance` while retaining the `claimtrace`
@@ -82,6 +210,9 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Reconcile every render manifest against the graph's complete declared input set, reject missing or
   malformed manifests, detect canonical relabeling, verify the recorded output hash, and propagate
   content drift through current and confirmed downstream results.
+- Write render manifests as explicit `claimtrace.render-manifest/2` documents with SHA-256 output
+  and input hashes; continue checking unversioned SHA-1 locks as a legacy read-only format while
+  rejecting unknown schemas, mixed hash fields, malformed digests, and duplicate inputs.
 - Check claim/evidence backbone compatibility across normalized transitive dependencies.
 - Validate logged edges before mutation, serialize local writers with a cross-process lock, and
   replace the graph atomically so invalid or concurrent entries cannot be silently lost.
@@ -109,12 +240,17 @@ All notable changes to `claimtrace` are documented here. This project adheres to
   drift, and provenance hashing so adversarial or accidentally oversized inputs fail closed.
 
 ### Tests
+- Add adversarial semantic-normalization coverage for byte drift, case-sensitive IRIs, forged
+  snapshots, review separation, no-replace races, kind conflicts, resource budgets, release
+  eligibility/activation, CLI round trips, report fail-closure, and runtime policy mutation.
 - Add real-example trajectory coverage plus adversarial v1/v2 semantic-policy tests for mixed
   stores, schema-preserving reviews, qualitative-claim specificity, legacy policy stability, and
   derived-field tampering.
 - Add regression coverage for multiple concepts, topological impact order, manifest completeness,
   missing manifests, output tampering, canonical relabeling, downstream stale propagation, rejected
   dangling log edges, and concurrent thread/process writers.
+- Add render-manifest compatibility coverage for SHA-256 writes, legacy SHA-1 verification and
+  migration, legacy drift detection, unknown schemas, mixed hashes, and malformed digests.
 - Configure pytest's `src` path so the suite runs directly from a source checkout.
 - Add adversarial coverage for surviving-event modification and concurrent appends, exact argv preservation,
   missing inputs/outputs, failed commands, unchanged-output semantics, external path policy, secret
@@ -138,12 +274,20 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Render manifests are now required for a green `claimtrace check`. Existing projects must re-render
   if needed and run `claimtrace snapshot` once after upgrading. This fail-closed change is queued for
   the next release; the checked-in package version remains `0.2.0` until that release is cut.
+- New snapshots use versioned SHA-256 render manifests. Existing unversioned SHA-1 manifests remain
+  checkable: run `claimtrace check` first, then run `claimtrace snapshot` to migrate only the files
+  that passed the legacy lock, and run the check again. The legacy format is never written.
 - Strict checking now expects successful finalized receipts for current `render_types` and
   `run_output_types`. Existing projects remain compatible with bare `claimtrace check`; adopt
   `claimtrace run` before enabling the strict gate.
 - Semantic assessments are advisory by default. Projects that want strict coverage can add an
   `assessments` path and set `require_assessments` to `true` after reviewing both direct
   `supports`/`refutes` links and structural result-to-claim `derives_from` dependencies.
+- Semantic normalization is optional and advisory by default. Configure project terminology and
+  reviewed local ontology/index locks, create and separately review mappings, compile an explicit
+  release from exact accepted leaf IDs, then pin that release in `semantics.active_policy`. Enable
+  `require_active_policy` only after that migration. Existing symbolic proof schema v1 does not
+  automatically inherit or commit this release.
 - Symbolic derivations are optional and advisory by default. Projects adopting them should first
   review and protect their graph bindings, vocabularies, rules, and prose-to-target mappings, then
   add a `logic` config object. Enable `require_derivations` only after active formal targets have

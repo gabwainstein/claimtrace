@@ -53,8 +53,11 @@ def approx(a, b, tol) -> bool:
 def run_verifiers(cfg) -> int:
     _REGISTRY.clear()
     if not cfg.verifiers:
-        print("claimtrace verify: no verifiers configured (set 'verifiers' in claimtrace.config.json).")
-        return 0
+        print(
+            "claimtrace verify: NOT_CONFIGURED - no verifiers configured "
+            "(set 'verifiers' in claimtrace.config.json)."
+        )
+        return 2
     vp = Path(cfg.verifiers)
     if not vp.exists():
         print(f"claimtrace verify: verifiers file not found: {vp}")
@@ -76,8 +79,10 @@ def run_verifiers(cfg) -> int:
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}\n         live={live}\n         expect={expect}")
         print()
         if not oks:
-            print("claimtrace verify: no checks registered.")
-            return 0
+            print(
+                "claimtrace verify: NO_CHECKS - configured verifier registered zero checks."
+            )
+            return 2
         if all(oks):
             print(f"claimtrace verify: OK — {len(oks)} check(s) pass.")
             return 0

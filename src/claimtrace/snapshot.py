@@ -1,26 +1,17 @@
 """Lock each render's data state into a content-hash manifest.
 
 For every render-type node (default `figure`) this collects the input files it transitively
-depends on (types in cfg.input_types) and writes `<output>.manifest.json` recording each input's
-SHA1. Run it AFTER (re)producing the outputs to "lock" the render<->data state. Thereafter
+depends on (types in cfg.input_types) and writes a versioned `<output>.manifest.json` recording
+SHA-256 for the output and every input. Run it AFTER (re)producing the outputs to "lock" the
+render<->data state. Thereafter
 `claimtrace check` re-hashes the recorded inputs and raises STALE_DATA if any changed — a
 content-hash staleness signal that survives mtime quirks (touch, checkout, copy).
 """
 from __future__ import annotations
-import hashlib
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
-from .engine import expected_inputs, load_graph
-
-
-def _sha1(fp: Path) -> str:
-    h = hashlib.sha1()
-    with open(fp, "rb") as f:
-        for b in iter(lambda: f.read(1 << 20), b""):
-            h.update(b)
-    return h.hexdigest()
+from .engine import RENDER_MANIFEST_SCHEMA, _file_hash, expected_inputs, load_graph
 
 
 def snapshot(cfg) -> int:
@@ -36,13 +27,17 @@ def snapshot(cfg) -> int:
         inputs = [(path, fp) for path, fp in expected_inputs(cfg, nodes, edges, nid).items()
                   if fp.exists()]
         manifest = {
+            "schema_version": RENDER_MANIFEST_SCHEMA,
             "node": nid,
             "output": n["path"],
-            "output_sha1": _sha1(out),
+            "output_sha256": _file_hash(out, "sha256"),
             "backbone": n.get("backbone"),
             "value": n.get("value", ""),
             "locked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "inputs": [{"path": rel, "sha1": _sha1(fp)} for rel, fp in sorted(inputs)],
+            "inputs": [
+                {"path": rel, "sha256": _file_hash(fp, "sha256")}
+                for rel, fp in sorted(inputs)
+            ],
         }
         man = cfg.resolve(n["path"] + ".manifest.json")
         with man.open("w", encoding="utf-8", newline="\n") as handle:

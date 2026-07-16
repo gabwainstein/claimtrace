@@ -1,0 +1,292 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verify and build tagged release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify annotated tag, GitHub signature, and main ancestry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag_object="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}")"
+          if test "$(git cat-file -t "$tag_object")" != "tag"; then
+            echo "release tag must be an annotated tag object" >&2
+            exit 1
+          fi
+          if test "$(gh api \
+            "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" \
+            --jq '.verification.verified')" != "true"; then
+            echo "release tag signature is not verified by GitHub" >&2
+            exit 1
+          fi
+          release_commit="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          test "$release_commit" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$release_commit" origin/main
+
+      - name: Verify tag and release metadata agree
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import datetime
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          tag = os.environ["RELEASE_TAG"]
+          if tag != f"v{version}":
+              raise SystemExit(f"tag {tag!r} does not match package version {version!r}")
+
+          init_text = Path("src/claimtrace/__init__.py").read_text(encoding="utf-8")
+          init_match = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']\s*$', init_text, re.MULTILINE)
+          if init_match is None or init_match.group(1) != version:
+              raise SystemExit("src/claimtrace/__init__.py version does not match pyproject.toml")
+
+          citation_text = Path("CITATION.cff").read_text(encoding="utf-8")
+          citation_matches = re.findall(
+              r'^version:\s*["\']?([^"\'\s]+)["\']?\s*$', citation_text, re.MULTILINE
+          )
+          if citation_matches != [version]:
+              raise SystemExit("CITATION.cff version does not match pyproject.toml")
+
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          headings = list(re.finditer(r"^##\s+(.+?)\s*$", changelog, re.MULTILINE))
+          unreleased = [item for item in headings if item.group(1) == "Unreleased"]
+          if len(unreleased) != 1:
+              raise SystemExit("CHANGELOG.md must contain exactly one ## Unreleased heading")
+          unreleased_heading = unreleased[0]
+          next_headings = [item for item in headings if item.start() > unreleased_heading.start()]
+          unreleased_end = next_headings[0].start() if next_headings else len(changelog)
+          if changelog[unreleased_heading.end():unreleased_end].strip():
+              raise SystemExit("CHANGELOG.md Unreleased section must be empty before tagging")
+
+          version_heading = re.compile(
+              rf"^##\s+\[?{re.escape(version)}\]?(?:\s+-\s+(\S+))?\s*$",
+              re.MULTILINE,
+          )
+          version_matches = version_heading.findall(changelog)
+          if len(version_matches) != 1:
+              raise SystemExit(
+                  f"CHANGELOG.md must have exactly one release heading for {version}"
+              )
+          release_date = version_matches[0]
+          if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) is None:
+              raise SystemExit(f"CHANGELOG.md release heading for {version} must be dated")
+          try:
+              datetime.date.fromisoformat(release_date)
+          except ValueError as exc:
+              raise SystemExit("CHANGELOG.md release heading has an invalid date") from exc
+          PY
+
+      - name: Install pinned release tooling
+        run: >-
+          python -m pip install --disable-pip-version-check
+          "build==1.5.0"
+          "check-wheel-contents==0.6.3"
+          "packaging==26.2"
+          "pyproject-hooks==1.2.0"
+          "setuptools==83.0.0"
+          "twine==6.2.0"
+          "wheel==0.47.0"
+
+      - name: Install project for tests
+        run: >-
+          python -m pip install --disable-pip-version-check
+          --editable "."
+          "pytest==9.1.1"
+      - name: Run full test suite
+        run: python -m pytest -q
+
+      - name: Build twice and compare deterministic outputs
+        env:
+          PYTHONHASHSEED: "0"
+          TZ: UTC
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          rm -rf build src/*.egg-info dist-first dist-second dist
+          python -m build --no-isolation --outdir dist-first
+          rm -rf build src/*.egg-info
+          python -m build --no-isolation --outdir dist-second
+          python - <<'PY'
+          import hashlib
+          import shutil
+          import tarfile
+          from pathlib import Path
+
+          def files(root, suffix):
+              return sorted(path for path in root.iterdir() if path.name.endswith(suffix))
+
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def sdist_payload(path):
+              result = []
+              with tarfile.open(path, "r:gz") as archive:
+                  for member in archive.getmembers():
+                      content_sha256 = None
+                      if member.isfile():
+                          handle = archive.extractfile(member)
+                          if handle is None:
+                              raise SystemExit(f"cannot read sdist member {member.name!r}")
+                          content_sha256 = hashlib.sha256(handle.read()).hexdigest()
+                      result.append((
+                          member.name,
+                          member.type,
+                          member.mode,
+                          member.linkname,
+                          member.size,
+                          content_sha256,
+                      ))
+              return result
+
+          first_root = Path("dist-first")
+          second_root = Path("dist-second")
+          first_wheels = files(first_root, ".whl")
+          second_wheels = files(second_root, ".whl")
+          first_sdists = files(first_root, ".tar.gz")
+          second_sdists = files(second_root, ".tar.gz")
+          if not all(len(items) == 1 for items in (
+              first_wheels, second_wheels, first_sdists, second_sdists
+          )):
+              raise SystemExit("each build must produce exactly one wheel and one sdist")
+          if (first_wheels[0].name != second_wheels[0].name
+                  or digest(first_wheels[0]) != digest(second_wheels[0])):
+              raise SystemExit("release wheels are not byte-identical across clean builds")
+          if (first_sdists[0].name != second_sdists[0].name
+                  or sdist_payload(first_sdists[0]) != sdist_payload(second_sdists[0])):
+              raise SystemExit("source distributions do not contain identical ordered payloads")
+          shutil.copytree("dist-first", "dist")
+          PY
+
+      - name: Check release archives
+        run: |
+          python -m twine check dist/*
+          check-wheel-contents dist/*.whl
+          python - <<'PY'
+          import glob
+          import tarfile
+          import zipfile
+
+          sdists = glob.glob("dist/*.tar.gz")
+          wheels = glob.glob("dist/*.whl")
+          if len(sdists) != 1 or len(wheels) != 1:
+              raise SystemExit(f"expected one sdist and one wheel: {sdists!r}, {wheels!r}")
+          with tarfile.open(sdists[0]) as archive:
+              names = archive.getnames()
+          forbidden = [name for name in names if "/tests/" in "/" + name.strip("/") + "/"]
+          if forbidden:
+              raise SystemExit(f"source archive unexpectedly contains tests: {forbidden!r}")
+          with zipfile.ZipFile(wheels[0]) as archive:
+              names = set(archive.namelist())
+          required_suffixes = {
+              "claimtrace/templates/claimtrace-log/SKILL.md",
+              "claimtrace/templates/claimtrace-log/references/semantic-authoring.md",
+          }
+          missing = sorted(required_suffixes - names)
+          if missing:
+              raise SystemExit(f"wheel is missing packaged skill assets: {missing!r}")
+          PY
+
+      - name: Smoke-test a clean wheel installation
+        run: |
+          python -m venv release-smoke
+          release-smoke/bin/python -m pip install --disable-pip-version-check --no-deps dist/*.whl
+          release-smoke/bin/claimtrace --help
+          release-smoke/bin/python -c "from importlib.resources import files; \
+          assert files('claimtrace').joinpath(
+          'templates/claimtrace-log/references/semantic-authoring.md').is_file()"
+          release-smoke/bin/python -m pip check
+
+      - name: Write deterministic checksums
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          lines = [
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+              for path in sorted(Path("dist").iterdir()) if path.is_file()
+          ]
+          Path("SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="ascii")
+          PY
+
+      - name: Attest release archives
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: "dist/*"
+
+      - name: Retain the exact publish artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: claimtrace-release-${{ github.ref_name }}
+          path: |
+            dist/*
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish approved artifact
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Retrieve the gated release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: claimtrace-release-${{ github.ref_name }}
+          path: release-artifacts
+      - name: Verify retained checksums
+        working-directory: release-artifacts/dist
+        run: sha256sum --check ../SHA256SUMS
+      - name: Publish to PyPI with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        with:
+          packages-dir: release-artifacts/dist/
+      - name: Create immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          release-artifacts/dist/*
+          release-artifacts/SHA256SUMS
+          --repo "${{ github.repository }}"
+          --verify-tag
+          --generate-notes
+          --title "Claimtrace ${{ github.ref_name }}"

@@ -77,6 +77,6 @@
       "Complete-case exclusion removes two records with missing bill measurements.",
       "The fitted slopes do not establish generalization beyond these records."
     ],
-    "provenance": {"agent": "codex:/root/build_penguins"}
+    "provenance": {"agent": "codex:/root/public-demo-regeneration"}
   }
 }

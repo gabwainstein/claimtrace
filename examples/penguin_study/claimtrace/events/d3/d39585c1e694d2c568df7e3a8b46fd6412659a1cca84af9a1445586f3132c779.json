@@ -1,0 +1,332 @@
+{
+  "id": "event:sha256:d39585c1e694d2c568df7e3a8b46fd6412659a1cca84af9a1445586f3132c779",
+  "payload": {
+    "capture_scope": {
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "writes": "declared_snapshots_plus_unattributed_project_window"
+    },
+    "name": null,
+    "plan": {
+      "argv": [
+        "python",
+        "analysis/02_analyze.py"
+      ],
+      "argv_capture": "redacted_best_effort",
+      "computation_id": "computation:sha256:8ca0f8f152b74dfc73538c666f44597d85edb82942fcc76ab251f26d2bab87cb",
+      "control_plane_before": {
+        "event_ledger": {
+          "event_count": 16,
+          "event_ids_sha256": "66406433dd2def1fe6be6d3e1c712203f7f1eedf92f912c32111dabe10a47ddd",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "cwd": ".",
+      "declared_inputs": [
+        {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        {
+          "file_version_id": "file:sha256:2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784127968165720200,
+          "path": "analysis/02_analyze.py",
+          "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+          "size": 3971,
+          "state": "stable"
+        }
+      ],
+      "declared_intermediates": [],
+      "declared_outputs": [
+        "results/slopes.json"
+      ],
+      "environment": {
+        "capture": "partial_no_environment_variables",
+        "controller_implementation": "CPython",
+        "controller_python": "3.13.9",
+        "executable": {
+          "requested": "python",
+          "resolved": "C:\\Users\\gwbez\\anaconda3\\python.exe",
+          "sha256": "7679e53fa969789309e81fdad0d52b8cda5f83c9abf7cb31a3c58bf24b31e264",
+          "state": "stable"
+        },
+        "platform": "Windows-11-10.0.26200-SP0",
+        "root_lockfiles": []
+      },
+      "git": {
+        "branch": "main",
+        "head": "7dd3ee37c92c3551559c6d7c3fcc825cb0f422ae",
+        "state": "captured",
+        "tracked_dirty": true,
+        "tracked_patch_sha256": "8cc75520d573db8bcac08412a38c7b27643150b3356364cfc6bc669c3d3d6735",
+        "untracked_files": "not_captured"
+      },
+      "parameters": {},
+      "pipeline_contract": {
+        "coverage": {
+          "boundary_files": "declared_paths_and_graph_roles_input_bytes_captured_by_run_receipt",
+          "code": "exact_files_text_anchors_and_declared_entrypoint",
+          "hidden_intermediates": "not_observed",
+          "in_memory_intermediates": "not_observed",
+          "materialized_intermediates": "declared_file_paths_for_process_boundary_capture_not_stage_attributed",
+          "methods": "exact_nodes_and_optional_files",
+          "semantic_equivalence": "requires_separate_review",
+          "stage_execution": "declared_only_not_observed"
+        },
+        "entrypoint_code_node_id": "code:analyze",
+        "id": "pipeline-contract:sha256:058bb94be155e525b242e1a54555b1c330d9adfb5fa178505496e7639ca84b7e",
+        "name": "penguin-complete-case-ols",
+        "required_parameters": [],
+        "required_seeds": [],
+        "roles": {
+          "code": [
+            {
+              "file": {
+                "file_version_id": "file:sha256:2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+                "method": "sha256_stat_before_after",
+                "mtime_ns": 1784127968165720200,
+                "path": "analysis/02_analyze.py",
+                "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+                "size": 3971,
+                "state": "stable"
+              },
+              "node_id": "code:analyze",
+              "node_sha256": "2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+              "node_version_id": "node:sha256:2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+              "path": "analysis/02_analyze.py"
+            }
+          ],
+          "inputs": [
+            {
+              "node_id": "data:clean",
+              "node_sha256": "78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+              "node_version_id": "node:sha256:78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+              "path": "data/penguins_clean.csv"
+            }
+          ],
+          "intermediates": [],
+          "methods": [
+            {
+              "method_spec": {
+                "schema_version": "claimtrace.method-spec/1",
+                "steps": [
+                  {
+                    "id": "select_complete_bills",
+                    "required": true,
+                    "statement": "Read the curated Palmer Penguins CSV and retain records whose bill length and bill depth are both present, converting those measurements to floats."
+                  },
+                  {
+                    "id": "group_by_species",
+                    "required": true,
+                    "statement": "Partition complete records by the declared Adelie, Chinstrap, and Gentoo species and fail if that exact species set is not observed."
+                  },
+                  {
+                    "id": "fit_descriptive_ols",
+                    "required": true,
+                    "statement": "For pooled records and each declared species, compute the ordinary least-squares slope and intercept for bill depth on bill length, Pearson correlation, and R-squared, and also compute the common within-species slope."
+                  },
+                  {
+                    "id": "export_slope_profile",
+                    "required": true,
+                    "statement": "Classify whether the pooled slope is negative while every species-specific slope is positive, then write the rounded estimates, sample counts, pattern, and interpretation boundary to results/slopes.json."
+                  }
+                ]
+              },
+              "node_id": "method:complete-case-ols",
+              "node_sha256": "c2f64de3bb68bc3149d2719e73d23e6948460aeeabe4644878b1abff4aaceeac",
+              "node_version_id": "node:sha256:c2f64de3bb68bc3149d2719e73d23e6948460aeeabe4644878b1abff4aaceeac"
+            }
+          ],
+          "outputs": [
+            {
+              "node_id": "art:slopes",
+              "node_sha256": "f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+              "node_version_id": "node:sha256:f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+              "path": "results/slopes.json"
+            }
+          ]
+        },
+        "schema_version": "claimtrace.pipeline-contract-snapshot/2",
+        "source": {
+          "file_version_id": "file:sha256:ebe14ae7374404ee40ebd1b75158cc0fad295f5e386b9f7a2e8b21edf130d246",
+          "path": "claimtrace/analyze.pipeline.json",
+          "sha256": "ebe14ae7374404ee40ebd1b75158cc0fad295f5e386b9f7a2e8b21edf130d246",
+          "size": 2650
+        },
+        "stages": [
+          {
+            "code_anchors": [
+              {
+                "code_node_id": "code:analyze",
+                "end_line": 48,
+                "kind": "text_lines",
+                "start_line": 38,
+                "text_sha256": "dccfb6d1a5d52a77947af2427a1ccae5d16a196026a1712a5ca86f86b40209a3",
+                "valid": true
+              }
+            ],
+            "consumes_node_ids": [
+              "data:clean"
+            ],
+            "depends_on": [],
+            "execution_observation": "declared_only_not_observed",
+            "id": "select_complete_bills",
+            "method_id": "method:complete-case-ols",
+            "method_step_id": "select_complete_bills",
+            "produces_node_ids": []
+          },
+          {
+            "code_anchors": [
+              {
+                "code_node_id": "code:analyze",
+                "end_line": 55,
+                "kind": "text_lines",
+                "start_line": 50,
+                "text_sha256": "4c1f355191c76317d9ae57860b8d44116b715cc35344e649554778a053cb1445",
+                "valid": true
+              }
+            ],
+            "consumes_node_ids": [],
+            "depends_on": [
+              "select_complete_bills"
+            ],
+            "execution_observation": "declared_only_not_observed",
+            "id": "group_by_species",
+            "method_id": "method:complete-case-ols",
+            "method_step_id": "group_by_species",
+            "produces_node_ids": []
+          },
+          {
+            "code_anchors": [
+              {
+                "code_node_id": "code:analyze",
+                "end_line": 34,
+                "kind": "text_lines",
+                "start_line": 16,
+                "text_sha256": "ab328185fdec146d2b47237ebd4e80f3495b63ec010e3ddfd88978a0a9f42ed2",
+                "valid": true
+              },
+              {
+                "code_node_id": "code:analyze",
+                "end_line": 70,
+                "kind": "text_lines",
+                "start_line": 57,
+                "text_sha256": "c2945406e953aaf6905ae2215fad0f54b0a9896b6926a7d6a5ae83dfbb4b6d37",
+                "valid": true
+              }
+            ],
+            "consumes_node_ids": [],
+            "depends_on": [
+              "group_by_species"
+            ],
+            "execution_observation": "declared_only_not_observed",
+            "id": "fit_descriptive_ols",
+            "method_id": "method:complete-case-ols",
+            "method_step_id": "fit_descriptive_ols",
+            "produces_node_ids": []
+          },
+          {
+            "code_anchors": [
+              {
+                "code_node_id": "code:analyze",
+                "end_line": 102,
+                "kind": "text_lines",
+                "start_line": 72,
+                "text_sha256": "a25beae4e459a18d9f8b4af0ba2249a9751d6f495d5d736dba7057e3df205eb4",
+                "valid": true
+              }
+            ],
+            "consumes_node_ids": [],
+            "depends_on": [
+              "fit_descriptive_ols"
+            ],
+            "execution_observation": "declared_only_not_observed",
+            "id": "export_slope_profile",
+            "method_id": "method:complete-case-ols",
+            "method_step_id": "export_slope_profile",
+            "produces_node_ids": [
+              "art:slopes"
+            ]
+          }
+        ]
+      },
+      "seeds": {},
+      "stage_trace_plan": {
+        "mode": "cooperative_child_checkpoint_log",
+        "record_schema": "claimtrace.stage-checkpoint/1",
+        "reporter_scope": "direct_child_process_id_checked",
+        "required_stage_ids": [
+          "select_complete_bills",
+          "group_by_species",
+          "fit_descriptive_ols",
+          "export_slope_profile"
+        ],
+        "requirement": "all_contract_stages_once_after_dependencies",
+        "schema_version": "claimtrace.stage-trace-plan/1",
+        "transport": "controller_private_jsonl_environment",
+        "trust": "cooperative_child_self_report_not_independent_observation"
+      }
+    },
+    "plan_id": "recipe:sha256:41e527f5eddd783b3b716febe63349b6ecc637e2f109ac08bd2ffb0ec0c2f881",
+    "stage_trace_binding": {
+      "nonce_sha256": "4baa2c2a3a8b9dbaec10c0f89bc13ff686ef030a471b48cc5daef2643eb55b43",
+      "reporter_scope": "direct_child_process_id_checked",
+      "transport": "controller_created_private_file"
+    }
+  },
+  "recorded_at": "2026-07-15T15:40:14.939Z",
+  "run_id": "run:deda38a0-b5df-47f2-b5ed-9d88e599143b",
+  "schema_version": "claimtrace.event/4",
+  "type": "run.started"
+}

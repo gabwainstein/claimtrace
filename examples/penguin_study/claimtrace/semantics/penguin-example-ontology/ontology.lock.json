@@ -1,0 +1,24 @@
+{
+  "id": "ontology-lock:sha256:dd8a376f48641ab1ce8ac0aa6b066ef68e42b6e13e9e6e0a346a716944fdfff6",
+  "schema_version": "claimtrace.ontology-lock/1",
+  "ontology_id": "penguin-example:ontology",
+  "ontology_iri": "urn:claimtrace:example:penguin-study:ontology",
+  "version": "1.0.0",
+  "version_iri": "urn:claimtrace:example:penguin-study:ontology:1.0.0",
+  "license_iri": null,
+  "documents": [
+    {
+      "path": "ontology.ttl",
+      "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+      "size": 376
+    }
+  ],
+  "index": {
+    "path": "index.json",
+    "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+    "size": 702,
+    "assertion": "project-supplied-index-not-verified-extraction"
+  },
+  "imports": [],
+  "declared_imports_available": true
+}

@@ -362,7 +362,7 @@ def test_report_projects_one_composite_active_proof_for_all_results(tmp_path):
 
     report = build_report(cfg, strict=True)
 
-    assert report["report_schema_version"] == "1.3"
+    assert report["report_schema_version"] == "1.7"
     assert report["scope"]["symbolic_logic"] == (
         "conditional_derivability_under_project_rules_not_truth"
     )
@@ -383,6 +383,11 @@ def test_report_projects_one_composite_active_proof_for_all_results(tmp_path):
         "rendered_outcomes": ["release-1 satisfies the configured gate."],
         "assumptions": [],
         "claim_level_active": True,
+        "execution_basis": {
+            "state": "symbolically_active_execution_basis_incomplete",
+            "claim_basis_assessment_ids": [],
+            "does_not_change_symbolic_proof_state": True,
+        },
     }]
     item = report["derivations"]["items"][0]
     assert item["stored_derived"]["active"] is True
@@ -392,6 +397,29 @@ def test_report_projects_one_composite_active_proof_for_all_results(tmp_path):
         finding["code"] == "MISSING_CLAIM_DERIVATION"
         for finding in report["findings"]
     )
+    execution_basis_finding = next(
+        finding for finding in report["findings"]
+        if finding["code"] == "SYMBOLIC_EXECUTION_BASIS_INCOMPLETE"
+    )
+    assert execution_basis_finding["severity"] == "info"
+
+
+def test_required_execution_contract_makes_incomplete_symbolic_basis_blocking(tmp_path):
+    cfg, vocabulary_path, rules_path = _project(tmp_path, require_derivations=True)
+    config_data = json.loads(cfg.config_path.read_text(encoding="utf-8"))
+    config_data["execution"] = {"require_contracts": True}
+    cfg.config_path.write_text(json.dumps(config_data), encoding="utf-8")
+    cfg = Config(cfg.config_path)
+    _append_proof(cfg, vocabulary_path, rules_path)
+
+    report = build_report(cfg, strict=True)
+
+    finding = next(
+        item for item in report["findings"]
+        if item["code"] == "SYMBOLIC_EXECUTION_BASIS_INCOMPLETE"
+    )
+    assert finding["severity"] == "warning"
+    assert report["ok"] is False
 
 
 def test_corrupt_derivation_store_globally_suppresses_activation_but_keeps_history(tmp_path):

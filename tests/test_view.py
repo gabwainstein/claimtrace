@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+import claimtrace.view as view_module
 from claimtrace.assessment import append_assessment, create_assessment, transition_review
 from claimtrace.config import Config
 from claimtrace.cli import main
@@ -12,6 +13,7 @@ from claimtrace.engine import GraphError
 from claimtrace.events import run_command
 from claimtrace.logic import (EVIDENCE_PLAN_SCHEMA, append_derivation,
                               create_derivation, load_rule_pack, load_vocabulary)
+from claimtrace.report import build_report
 from claimtrace.view import render_view
 
 
@@ -300,6 +302,8 @@ def test_render_view_is_standalone_atomic_and_deterministic(tmp_path):
     assert 'id="focus-select"' in html
     assert 'id="edge-select"' in html
     assert 'id="assessment-select"' in html
+    assert 'id="semantic-policy-summary"' in html
+    assert 'id="semantic-mapping-list"' in html
     assert '<button id="layout-reset" type="button">Auto-arrange</button>' in html
     assert 'class="move-controls" role="group"' in html
     assert 'id="layout-status"' in html
@@ -313,6 +317,99 @@ def test_render_view_is_standalone_atomic_and_deterministic(tmp_path):
     assert 'group.addEventListener("lostpointercapture"' in html
     assert "ct-ancestor" in html and "ct-descendant" in html
     assert "ct-type-claim" in html and "ct-status-stale" in html
+    payload = _payload(html)
+    assert payload["semantic_policy"] == {
+        "integrity": "ok",
+        "require_active_policy": False,
+        "current_mappings": [],
+        "release_count": 0,
+        "active_policy_configured": False,
+        "configured_policy_id": None,
+        "active_policy_active": False,
+        "active_policy_valid": False,
+        "active_policy_findings": [],
+        "active_policy_id": None,
+        "active_mapping_ids": [],
+    }
+    assert payload["summary"]["semantic_mappings"] == 0
+
+
+def test_view_preserves_invalid_configured_policy_and_mapping_decision_context(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    report = build_report(cfg, strict=False)
+    mapping_id = "semantic-mapping:sha256:" + "a" * 64
+    policy_id = "semantic-policy:sha256:" + "b" * 64
+    finding = {
+        "code": "SEMANTIC_POLICY_STALE",
+        "severity": "error",
+        "detail": "A selected mapping no longer matches its pinned local snapshot.",
+    }
+    report["semantics"] = {
+        "integrity": "error",
+        "policy": {"require_active_policy": False},
+        "mapping_history": [{
+            "id": mapping_id,
+            "agent_input": {
+                "relation": "skos:closeMatch",
+                "target": {"iri": "https://example.org/onto/MemoryScore"},
+                "rationale": "Definitions overlap but the local measure is narrower.",
+                "limitations": ["The ontology omits the project instrument."],
+                "provenance": {"agent": "agent:test"},
+            },
+            "mechanical_snapshot": {
+                "local_term": {"term": {
+                    "label": "Memory score",
+                    "definition": "Score from the declared memory assessment.",
+                }},
+                "selected_candidate": {
+                    "iri": "https://example.org/onto/MemoryScore",
+                },
+            },
+        }],
+        "current_mapping_evaluations": [{
+            "mapping_id": mapping_id,
+            "subject": {
+                "terminology_id": "study:terms",
+                "term_id": "study:memory-score",
+            },
+            "review": {"state": "accepted", "actor": "reviewer:human"},
+            "current_derived": {
+                "eligible_for_policy": False,
+                "stale": True,
+                "findings": [finding],
+            },
+        }],
+        "policies": [],
+        "active_policy": {
+            "configured": True,
+            "configured_policy_id": policy_id,
+            "policy": None,
+            "evaluation": None,
+            "findings": [finding],
+        },
+        "active_mapping_ids": [],
+    }
+    monkeypatch.setattr(view_module, "build_report", lambda *_args, **_kwargs: report)
+
+    output = tmp_path / "semantic-state.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    semantic_policy = payload["semantic_policy"]
+    mapping = semantic_policy["current_mappings"][0]
+
+    assert semantic_policy["active_policy_configured"] is True
+    assert semantic_policy["configured_policy_id"] == policy_id
+    assert semantic_policy["active_policy_active"] is False
+    assert semantic_policy["active_policy_findings"] == [finding]
+    assert mapping["local_term"]["definition"].startswith("Score from")
+    assert mapping["rationale"].startswith("Definitions overlap")
+    assert mapping["limitations"] == ["The ontology omits the project instrument."]
+    assert mapping["provenance"]["agent"] == "agent:test"
+    assert mapping["current_derived"]["findings"] == [finding]
+    assert mapping["active"] is False
+    assert "configured release is invalid or inactive" in html
 
 
 def test_manual_layout_is_browser_local_sanitized_and_visual_only(tmp_path):
@@ -493,6 +590,10 @@ def test_run_receipt_is_linked_to_bound_output_with_partial_label(tmp_path):
     receipt = next(node for node in payload["nodes"] if node["kind"] == "run")
     binding = next(edge for edge in payload["edges"] if edge["kind"] == "receipt")
     assert receipt["node_id"] == result["run_id"]
+    assert receipt["event_store_integrity"] == "ok"
+    assert receipt["link_integrity"] == "ok"
+    assert receipt["link_issues"] == []
+    assert receipt["evidence_eligible"] is True
     assert binding["source"] == receipt["key"]
     assert binding["target"] == "graph:artifact:result"
     assert binding["relation"] == "binds declared output"
@@ -500,7 +601,281 @@ def test_run_receipt_is_linked_to_bound_output_with_partial_label(tmp_path):
     assert receipt["layer"] < nodes[binding["target"]]["layer"]
     assert "not observed reads" in receipt["coverage"]
     assert "do not prove write causation" in payload["coverage_notice"]
+    assert "Event-store integrity" in output.read_text(encoding="utf-8")
+    assert "Run-link integrity" in output.read_text(encoding="utf-8")
+    assert "Replay conflict" in output.read_text(encoding="utf-8")
+    assert "Evidence eligible" in output.read_text(encoding="utf-8")
     assert nodes["graph:artifact:result"]["run_ids"] == [result["run_id"]]
+
+
+def test_run_detail_distinguishes_materialized_intermediate_boundary_evidence(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    _record_run(cfg)
+    report = build_report(cfg)
+    run = report["receipts"]["runs"][0]
+    run["declared_intermediates"] = ["data/clean.csv"]
+    run["intermediate_transitions"] = [{
+        "path": "data/clean.csv", "transition": "created", "produced": True,
+        "before": {"path": "data/clean.csv", "state": "missing"},
+        "after": {"path": "data/clean.csv", "state": "stable",
+                  "sha256": "a" * 64, "size": 12},
+    }]
+    run["bindings"].append({
+        "binding_kind": "materialized_intermediate_path",
+        "node_id": "artifact:result",
+        "path": "data/clean.csv",
+        "declaration_comparison": "contract_role_agrees",
+        "output_evidence": "post_process_content_transition_detected",
+        "stage_attribution": "not_observed",
+        "current": True,
+    })
+    run["replays"] = [{
+        "id": "replay:sha256:" + "b" * 64,
+        "outcome": "byte_repeatable", "undeclared_write_paths": [],
+        "current_derived": {
+            "byte_repeatable_current": True, "review_ready_current": True,
+        },
+        "comparison": {
+            "materialized_intermediates_equal": True,
+            "all_materialized_intermediates_match_source_receipt": True,
+        },
+    }]
+    monkeypatch.setattr(view_module, "build_report", lambda _cfg, strict=False: report)
+
+    output = tmp_path / "trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    receipt = next(node for node in payload["nodes"] if node["kind"] == "run")
+    intermediate_edge = next(
+        edge for edge in payload["edges"]
+        if edge.get("binding_kind") == "materialized_intermediate_path"
+    )
+
+    assert receipt["declared_outputs"] == ["out.txt"]
+    assert receipt["declared_intermediates"] == ["data/clean.csv"]
+    assert receipt["intermediate_transitions"][0]["after"]["sha256"] == "a" * 64
+    assert receipt["bindings"][-1]["output_evidence"] == (
+        "post_process_content_transition_detected"
+    )
+    assert intermediate_edge["current"] is True
+    assert intermediate_edge["stage_attribution"] == "not_observed"
+    assert intermediate_edge["output_evidence"] == (
+        "post_process_content_transition_detected"
+    )
+    assert "Declared materialized intermediate paths" in html
+    assert "Materialized intermediate file transitions" in html
+    assert "Replay materialized-intermediate comparison" in html
+    assert "content changed in process window; write causation not proven" in html
+    assert "content changed in process window; stage causation not proven" in html
+    assert "Boundary evidence" in html
+    assert "Stage attribution" in html
+    assert "Current binding" in html
+    assert ", produced" not in html
+
+
+def test_run_and_claim_details_expose_cooperative_stage_trace_without_stage_nodes(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    _record_run(cfg)
+    report = build_report(cfg)
+    run = report["receipts"]["runs"][0]
+    run["event_schema_version"] = "claimtrace.event/4"
+    run["pipeline_contract"] = {
+        "stages": [
+            {
+                "id": "clean", "method_id": "method:analysis",
+                "method_step_id": "clean", "depends_on": [],
+                "execution_observation": "declared_only_not_observed",
+            },
+            {
+                "id": "fit", "method_id": "method:analysis",
+                "method_step_id": "fit", "depends_on": ["clean"],
+                "execution_observation": "declared_only_not_observed",
+            },
+        ],
+    }
+    run["stage_trace_plan"] = {
+        "schema_version": "claimtrace.stage-trace-plan/1",
+        "required_stage_ids": ["clean", "fit"],
+    }
+    run["stage_trace"] = {
+        "schema_version": "claimtrace.stage-trace/1",
+        "mode": "cooperative_child_checkpoint_log",
+        "state": "cooperative_report_complete",
+        "trust": "cooperative_child_self_report_not_independent_observation",
+        "binding": {
+            "nonce_sha256": "a" * 64,
+            "transport": "controller_created_private_file",
+            "raw_sha256": "b" * 64,
+            "raw_size": 451,
+        },
+        "required_stage_ids": ["clean", "fit"],
+        "checkpoints": [
+            {
+                "sequence": 1, "stage_id": "clean",
+                "code_node_id": "code:pipeline",
+                "callsite": {"path": "analysis.py", "line": 12},
+                "observation": "program_emitted_checkpoint_reached",
+            },
+            {
+                "sequence": 2, "stage_id": "fit",
+                "code_node_id": "code:pipeline",
+                "callsite": {"path": "analysis.py", "line": 27},
+                "observation": "program_emitted_checkpoint_reached",
+            },
+        ],
+        "checkpoint_sequence_sha256": "c" * 64,
+        "issues": [],
+    }
+    run["replays"] = [{
+        "id": "replay:sha256:" + "d" * 64,
+        "outcome": "byte_repeatable",
+        "undeclared_write_paths": [],
+        "current_derived": {
+            "byte_repeatable_current": True,
+            "review_ready_current": True,
+            "stage_trace_repeatable_current": True,
+        },
+        "comparison": {
+            "materialized_intermediates_equal": True,
+            "all_materialized_intermediates_match_source_receipt": True,
+            "all_stage_traces_complete": True,
+            "stage_traces_equal": True,
+            "all_stage_traces_match_source_receipt": True,
+        },
+    }]
+    report["claim_basis"] = {"items": [{
+        "assessment_id": "assessment:fixture",
+        "result_id": "artifact:result",
+        "claim_id": "claim:result",
+        "overall": "ready_under_reviewed_provenance",
+        "execution_state": "current_producing_receipt",
+        "contract_state": "current",
+        "ancestry_state": "current",
+        "materialized_intermediate_state": "not_required",
+        "replay_state": "byte_repeatable_current",
+        "method_state": "accepted_current_conformance",
+        "stage_checkpoint_state": "cooperative_report_repeatable_current",
+        "stage_execution_observation": (
+            "cooperative_checkpoint_self_report_not_independent_observation"
+        ),
+    }]}
+    monkeypatch.setattr(view_module, "build_report", lambda _cfg, strict=False: report)
+
+    output = tmp_path / "stage-trace.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    receipt = next(node for node in payload["nodes"] if node["kind"] == "run")
+    claim = next(
+        node for node in payload["nodes"] if node["key"] == "graph:claim:result"
+    )
+
+    assert receipt["stage_trace"]["state"] == "cooperative_report_complete"
+    assert [(item["stage_id"], item["callsite"]) for item in
+            receipt["stage_trace"]["checkpoints"]] == [
+        ("clean", {"path": "analysis.py", "line": 12}),
+        ("fit", {"path": "analysis.py", "line": 27}),
+    ]
+    assert payload["summary"]["stage_checkpoint_runs"] == 1
+    assert payload["summary"]["complete_stage_checkpoint_runs"] == 1
+    assert not any(node["kind"] == "stage" for node in payload["nodes"])
+    assert claim["claim_basis"][0]["stage_checkpoint_state"] == (
+        "cooperative_report_repeatable_current"
+    )
+    assert "Cooperative checkpoint trace" in html
+    assert "Program-emitted stage checkpoints" in html
+    assert "Replay cooperative-stage trace comparison" in html
+    assert '", checkpoint=" + (item.stage_checkpoint_state || "not available")' in html
+    assert "child-program self-report that locked callsites were reached" in html
+    assert "not independent observation of stage computation, scientific meaning, or in-memory values" in html
+
+
+def test_view_labels_stale_historical_replacement_and_links_current_run(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    historical_result = _record_run(cfg)
+    replacement_result = _record_run(cfg)
+    report = build_report(cfg)
+    runs = {
+        item["run_id"]: item for item in report["receipts"]["runs"]
+    }
+    historical = runs[historical_result["run_id"]]
+    replacement = runs[replacement_result["run_id"]]
+    replacement_replay_id = "replay:sha256:" + "e" * 64
+    historical.update({
+        "pipeline_contract_state": "stale_or_invalid",
+        "current_gate_role": "historical_replaced",
+        "replacement_run_id": replacement["run_id"],
+        "replacement_replay_ids": [replacement_replay_id],
+    })
+    replacement["replays"] = [{
+        "id": replacement_replay_id,
+        "outcome": "byte_repeatable",
+        "undeclared_write_paths": [],
+        "current_derived": {
+            "byte_repeatable_current": True,
+            "review_ready_current": True,
+        },
+        "comparison": {},
+    }]
+    monkeypatch.setattr(view_module, "build_report", lambda _cfg, strict=False: report)
+
+    output = tmp_path / "historical-replacement.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    historical_node = next(
+        node for node in payload["nodes"]
+        if node.get("node_id") == historical_result["run_id"]
+    )
+
+    assert historical_node["status"] == "succeeded"
+    assert historical_node["pipeline_contract_state"] == "stale_or_invalid"
+    assert historical_node["current_gate_role"] == "historical_replaced"
+    assert historical_node["replacement_run_id"] == replacement_result["run_id"]
+    assert historical_node["replacement_replay_ids"] == [replacement_replay_id]
+    assert not any(edge["kind"] == "replacement" for edge in payload["edges"])
+    assert '"historical replacement · stale"' in html
+    assert 'appendDetail(list, "Current gate role"' in html
+    assert 'appendRunLinkDetail(list, "Replacement run"' in html
+    assert '"Replacement replay certificates"' in html
+    assert 'linkButton.setAttribute("data-replacement-run-id", runId)' in html
+    assert "selectNode(replacementKey)" in html
+    assert "stale historical run is retained for audit" in html
+
+
+def test_view_marks_integrity_quarantined_run_as_historical_only(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    _record_run(cfg)
+    report = build_report(cfg)
+    run = report["receipts"]["runs"][0]
+    run.update({
+        "event_store_integrity": "error",
+        "link_integrity": "error",
+        "link_issues": [{
+            "code": "RUN_INPUT_SNAPSHOT_MISMATCH",
+            "detail": "stored start and finish input baselines differ",
+        }],
+        "evidence_eligible": False,
+    })
+    monkeypatch.setattr(view_module, "build_report", lambda _cfg, strict=False: report)
+
+    output = tmp_path / "quarantined.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+    payload = _payload(html)
+    receipt = next(node for node in payload["nodes"] if node["kind"] == "run")
+
+    assert receipt["status"] == "integrity_error"
+    assert receipt["evidence_eligible"] is False
+    assert receipt["link_issues"][0]["code"] == "RUN_INPUT_SNAPSHOT_MISMATCH"
+    assert "historical run is quarantined" in html
+    assert "not attributed to a stage" in html
+    assert "pathless or in-memory intermediates remain declared" in html
 
 
 def test_explicit_semantic_run_reference_is_not_labelled_as_output_binding(tmp_path):
@@ -566,7 +941,7 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     payload = _payload(html)
     nodes = {node["key"]: node for node in payload["nodes"]}
 
-    assert payload["schema"] == "claimtrace.view/3"
+    assert payload["schema"] == "claimtrace.view/5"
     rendered_review = next(
         item for item in payload["assessments"] if item["id"] == accepted["id"]
     )
@@ -629,7 +1004,7 @@ def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path
     payload = _payload(html)
     nodes = {node["key"]: node for node in payload["nodes"]}
 
-    assert payload["schema"] == "claimtrace.view/3"
+    assert payload["schema"] == "claimtrace.view/5"
     assert payload["derivation_integrity"] == "ok"
     proof = nodes["proof:" + document["id"]]
     assert proof["kind"] == "proof"
@@ -643,6 +1018,7 @@ def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path
         "formal conclusion · target derivable under view:rules",
     ]
     assert "not a certificate of truth, scientific meaning, or evidentiary support" in html
+    assert 'const proof = node.kind === "proof" ? (node.proof || {}) : null;' in html
 
 
 def test_claim_owned_evidence_plan_is_visible_on_semantic_claim(tmp_path):
@@ -917,6 +1293,7 @@ def test_view_cli_requires_explicit_output_and_reports_summary(tmp_path, capsys)
 @pytest.mark.parametrize("target", [
     "claimtrace/graph.json", "data.txt", "claimtrace/events/view.html",
     "claimtrace/assessments/view.html", "claimtrace/derivations/view.html",
+    "claimtrace/semantics/mappings/view.html", "claimtrace/semantics/policies/view.html",
     "out.txt.manifest.json",
 ])
 def test_view_refuses_to_overwrite_provenance_or_graph_files(tmp_path, target):

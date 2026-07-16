@@ -1,0 +1,21 @@
+{
+  "terminology_id": "penguins:study-terms",
+  "term_id": "penguins:bill-length-mm",
+  "agent_input": {
+    "relation": "skos:closeMatch",
+    "target": {
+      "ontology_lock_id": "<copy ontology_lock_id from ontology-candidates>",
+      "iri": "urn:claimtrace:example:penguin-study:BillLengthMeasurement"
+    },
+    "candidate_query": "bill length",
+    "candidate_set_id": "<copy id from ontology-candidates>",
+    "rationale": "Both definitions concern bill length measurements, but the local term additionally fixes this dataset's culmen convention, millimetre unit, and record-level scope.",
+    "limitations": [
+      "This project-owned example ontology is not a canonical community ontology.",
+      "The supplied index is reviewed project input; Claimtrace does not verify its extraction from RDF or OWL."
+    ],
+    "provenance": {
+      "agent": "agent:semantic-demo"
+    }
+  }
+}

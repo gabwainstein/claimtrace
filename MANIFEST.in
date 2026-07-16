@@ -1,0 +1,4 @@
+# The repository tests depend on examples and agent-skill mirrors that are not
+# release artifacts. Run them from a source checkout; do not ship a partial,
+# predictably failing test suite in the source distribution.
+prune tests

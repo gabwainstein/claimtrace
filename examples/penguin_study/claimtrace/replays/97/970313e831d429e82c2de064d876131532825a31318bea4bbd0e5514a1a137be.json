@@ -1,0 +1,115 @@
+{
+  "attempts": [
+    {
+      "direct_child_returncode": 0,
+      "duration_ns": 55447500,
+      "index": 1,
+      "launch_error": null,
+      "materialized_intermediates": [],
+      "outcome": "succeeded",
+      "outputs": [
+        {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        }
+      ],
+      "stderr": {
+        "content": "not_stored",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "stdout": {
+        "content": "not_stored",
+        "sha256": "54dbf9ec0e665ec2b52bc644995eaf1177be42d1707b255f4437ab67afdfab17",
+        "size": 79
+      },
+      "undeclared_writes": []
+    },
+    {
+      "direct_child_returncode": 0,
+      "duration_ns": 52295400,
+      "index": 2,
+      "launch_error": null,
+      "materialized_intermediates": [],
+      "outcome": "succeeded",
+      "outputs": [
+        {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        }
+      ],
+      "stderr": {
+        "content": "not_stored",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "stdout": {
+        "content": "not_stored",
+        "sha256": "54dbf9ec0e665ec2b52bc644995eaf1177be42d1707b255f4437ab67afdfab17",
+        "size": 79
+      },
+      "undeclared_writes": []
+    }
+  ],
+  "command": {
+    "argv": [
+      "python",
+      "analysis/02_analyze.py"
+    ],
+    "argv_capture": "redacted_best_effort",
+    "cwd": ".",
+    "secret_override_used_not_stored": false,
+    "timeout_seconds": null
+  },
+  "comparison": {
+    "all_declared_outputs_match_source_receipt": true,
+    "all_materialized_intermediates_match_source_receipt": true,
+    "basis": "byte_exact_sha256_and_size",
+    "declared_outputs_equal": true,
+    "materialized_intermediates_equal": true,
+    "minimum_attempts_met": true,
+    "stderr_equal": true,
+    "stdout_equal": true,
+    "undeclared_workspace_deltas_equal": true,
+    "undeclared_workspace_writes_present": false
+  },
+  "computation_id": "computation:sha256:417035fdf030ab0524693100a6186b244ad9432462ccc7babd8b6041728bf062",
+  "coverage": {
+    "environment": "source_executable_and_root_lockfiles_rechecked_partial_host",
+    "external_filesystem_writes": "not_observed_or_prevented",
+    "filesystem_inputs": "declared_project_files_only",
+    "filesystem_writes": "all_workspace_file_paths_pre_post_scan_unattributed_no_follow",
+    "in_memory_intermediates": "not_observed",
+    "internal_stage_execution": "declared_only_not_observed",
+    "materialized_intermediates": "declared_paths_post_execution_hashed",
+    "method_code_equivalence": "requires_separate_review",
+    "network": "not_isolated",
+    "parameters_and_seeds": "recorded_declarations_not_runtime_injected",
+    "processes": "direct_child_exit_only"
+  },
+  "id": "replay:sha256:970313e831d429e82c2de064d876131532825a31318bea4bbd0e5514a1a137be",
+  "mode": "declared-project-files-fresh-workspace",
+  "observed_at": "2026-07-15T11:58:22.696004Z",
+  "outcome": "byte_repeatable",
+  "pipeline_contract_id": "pipeline-contract:sha256:2e4ac93d89eb4c771ab0ccb7470b3ccdc566e16b5e37216168c200c65a1a10e9",
+  "schema_version": "claimtrace.replay-certificate/2",
+  "source_finish_event_id": "event:sha256:50c3b7fef8a5d15eb0df8a1f86880825d78726725f4b168c39ec61888a61049e",
+  "source_materialized_intermediates": [],
+  "source_outputs": [
+    {
+      "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+      "path": "results/slopes.json",
+      "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+      "size": 1098,
+      "state": "stable"
+    }
+  ],
+  "source_run_id": "run:e04dc1cd-9302-43a9-bada-45831012459e",
+  "source_start_event_id": "event:sha256:c610b2dfb7c53d2011a74ab4b7eb3f83267c6d930db4a5b576fa1b7756cb965d"
+}

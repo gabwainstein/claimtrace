@@ -1,0 +1,911 @@
+{
+  "id": "derivation:sha256:563289b6b6932ad5fed9dcfd0de38a987be8ac7312738f06f0645c92ee33b014",
+  "schema_version": "claimtrace.symbolic-derivation/1",
+  "recorded_at": "2026-07-15T15:15:20.780775Z",
+  "actor": "codex:/root/stage-checkpoint-regeneration",
+  "subject": {
+    "claim_id": "claim:sign-reversal",
+    "result_ids": [
+      "art:slopes"
+    ],
+    "vocabulary_id": "penguin:vocabulary",
+    "rule_pack_id": "penguin:sign-rules"
+  },
+  "agent_input": {
+    "target": {
+      "predicate": "penguin:species_conditioned_sign_reversal",
+      "polarity": "positive",
+      "arguments": {
+        "study": {
+          "type": "penguin:study",
+          "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+          "unit": null
+        }
+      }
+    },
+    "facts": [
+      {
+        "atom": {
+          "predicate": "penguin:reported_slopes",
+          "polarity": "positive",
+          "arguments": {
+            "adelie": {
+              "type": "ct:decimal",
+              "value": "0.178834",
+              "unit": "penguin:mm-per-mm"
+            },
+            "chinstrap": {
+              "type": "ct:decimal",
+              "value": "0.222212",
+              "unit": "penguin:mm-per-mm"
+            },
+            "gentoo": {
+              "type": "ct:decimal",
+              "value": "0.204844",
+              "unit": "penguin:mm-per-mm"
+            },
+            "pooled": {
+              "type": "ct:decimal",
+              "value": "-0.085021",
+              "unit": "penguin:mm-per-mm"
+            },
+            "study": {
+              "type": "penguin:study",
+              "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+              "unit": null
+            }
+          }
+        },
+        "evidence": [
+          {
+            "result_id": "art:slopes",
+            "binding_id": "penguin:complete-slope-profile",
+            "fact_index": 0
+          }
+        ],
+        "assumption": null
+      }
+    ],
+    "note": "Materialize the complete slope profile required by the reviewed claim-owned evidence plan.",
+    "provenance": {
+      "agent": "codex:/root/stage-checkpoint-regeneration"
+    }
+  },
+  "mechanical_snapshot": {
+    "claim": {
+      "node_id": "claim:sign-reversal",
+      "node_sha256": "86f433d00e645731ace88f17ae2a3a3bbab007b4db73e4453fbf4528843b28c0",
+      "node_version_id": "node:sha256:86f433d00e645731ace88f17ae2a3a3bbab007b4db73e4453fbf4528843b28c0",
+      "type": "claim",
+      "status": "current",
+      "eligible": true,
+      "logic": {
+        "vocabulary_id": "penguin:vocabulary",
+        "rule_pack_id": "penguin:sign-rules",
+        "target": {
+          "predicate": "penguin:species_conditioned_sign_reversal",
+          "polarity": "positive",
+          "arguments": {
+            "study": {
+              "type": "penguin:study",
+              "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+              "unit": null
+            }
+          }
+        }
+      },
+      "evidence_plan": {
+        "schema_version": "claimtrace.symbolic-evidence-plan/1",
+        "required_bindings": [
+          {
+            "result_id": "art:slopes",
+            "binding_id": "penguin:complete-slope-profile"
+          }
+        ]
+      }
+    },
+    "results": [
+      {
+        "node_id": "art:slopes",
+        "node_sha256": "f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+        "node_version_id": "node:sha256:f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+        "type": "artifact",
+        "status": "confirmed",
+        "eligible": true,
+        "artifact": {
+          "state": "stable",
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098
+        }
+      }
+    ],
+    "provenance_check": {
+      "scope_node_ids": [
+        "art:slopes",
+        "claim:sign-reversal",
+        "code:analyze",
+        "code:fetch",
+        "code:prepare",
+        "data:clean",
+        "data:curated-reference",
+        "data:raw-source",
+        "hyp:species-composition",
+        "pred:sign-reversal",
+        "question:bill-shape",
+        "ref:palmerpenguins",
+        "ref:r-journal-2022"
+      ],
+      "node_versions": [
+        {
+          "node_id": "art:slopes",
+          "node_sha256": "f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+          "node_version_id": "node:sha256:f9aab2929e2cb196482d992d3c63dd0cc767d89a98fd9fa5c99b04f9f0f7766a",
+          "artifact": {
+            "state": "stable",
+            "path": "results/slopes.json",
+            "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+            "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+            "size": 1098
+          }
+        },
+        {
+          "node_id": "claim:sign-reversal",
+          "node_sha256": "86f433d00e645731ace88f17ae2a3a3bbab007b4db73e4453fbf4528843b28c0",
+          "node_version_id": "node:sha256:86f433d00e645731ace88f17ae2a3a3bbab007b4db73e4453fbf4528843b28c0",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "code:analyze",
+          "node_sha256": "2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+          "node_version_id": "node:sha256:2159207ae807cbe8a15e4a6b03cfae72c240ff1bda7092e33fc38070afb7388b",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/02_analyze.py",
+            "sha256": "2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+            "file_version_id": "file:sha256:2e4327c01adc90baa53dde078e95f0e9d3a6396c61f9769c8d9596d8632db97a",
+            "size": 3971
+          }
+        },
+        {
+          "node_id": "code:fetch",
+          "node_sha256": "c2e4d541670ae30e0ee4eefdabfcfcc999332358f30e623be71de9115dd4b1dc",
+          "node_version_id": "node:sha256:c2e4d541670ae30e0ee4eefdabfcfcc999332358f30e623be71de9115dd4b1dc",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/00_fetch.py",
+            "sha256": "30812bc0ca85cf900c26718304ba44fd7178312a05dc9d9ec31cdf0d63f69fda",
+            "file_version_id": "file:sha256:30812bc0ca85cf900c26718304ba44fd7178312a05dc9d9ec31cdf0d63f69fda",
+            "size": 2973
+          }
+        },
+        {
+          "node_id": "code:prepare",
+          "node_sha256": "7b92bdd3d9ca8aed8767baf3554967d19470093cf3b6767709468128a24c0847",
+          "node_version_id": "node:sha256:7b92bdd3d9ca8aed8767baf3554967d19470093cf3b6767709468128a24c0847",
+          "artifact": {
+            "state": "stable",
+            "path": "analysis/01_prepare.py",
+            "sha256": "e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+            "file_version_id": "file:sha256:e5fe75be98004f7bc21e18b0c0c6a81ea61506587cef6c5c9ebd9c077166f548",
+            "size": 3257
+          }
+        },
+        {
+          "node_id": "data:clean",
+          "node_sha256": "78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+          "node_version_id": "node:sha256:78b54c44cd00ecb52c390575a862da03c9f9d173d1f1990752c9d880143f152d",
+          "artifact": {
+            "state": "stable",
+            "path": "data/penguins_clean.csv",
+            "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+            "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+            "size": 15241
+          }
+        },
+        {
+          "node_id": "data:curated-reference",
+          "node_sha256": "eb1209f35aab5a56e288b658c0b38e1f9f279ca035ff2fd3224952c036eefd7c",
+          "node_version_id": "node:sha256:eb1209f35aab5a56e288b658c0b38e1f9f279ca035ff2fd3224952c036eefd7c",
+          "artifact": {
+            "state": "stable",
+            "path": "data/source/penguins.csv",
+            "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+            "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+            "size": 15241
+          }
+        },
+        {
+          "node_id": "data:raw-source",
+          "node_sha256": "4c5098635404c0ccdbcb0125063ef15d551e8c1ed8eee8738d45bcde93c327bf",
+          "node_version_id": "node:sha256:4c5098635404c0ccdbcb0125063ef15d551e8c1ed8eee8738d45bcde93c327bf",
+          "artifact": {
+            "state": "stable",
+            "path": "data/source/penguins_raw.csv",
+            "sha256": "144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+            "file_version_id": "file:sha256:144f623143c9360fd77322a4f86acb06dc198814dbd2669724c63e6457b907bd",
+            "size": 53098
+          }
+        },
+        {
+          "node_id": "hyp:species-composition",
+          "node_sha256": "e5a637fd026f8d1b6d3b145407aa7e7b011d54f2a3497ab445c9f5d7f65a6ae1",
+          "node_version_id": "node:sha256:e5a637fd026f8d1b6d3b145407aa7e7b011d54f2a3497ab445c9f5d7f65a6ae1",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "pred:sign-reversal",
+          "node_sha256": "6b4cf7d8069d945d4c5bbe160784b962b6f45b715e1673baa9fa8c0229c454e0",
+          "node_version_id": "node:sha256:6b4cf7d8069d945d4c5bbe160784b962b6f45b715e1673baa9fa8c0229c454e0",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "question:bill-shape",
+          "node_sha256": "f399aa2148b13dd0e1ac1be40fabac252b44583087fc5b4af54e189cab53aa9d",
+          "node_version_id": "node:sha256:f399aa2148b13dd0e1ac1be40fabac252b44583087fc5b4af54e189cab53aa9d",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "ref:palmerpenguins",
+          "node_sha256": "c99ba5a1e26ca0a35a487a1a56293ea940d8ca1d197928d1c83644c6847c7b40",
+          "node_version_id": "node:sha256:c99ba5a1e26ca0a35a487a1a56293ea940d8ca1d197928d1c83644c6847c7b40",
+          "artifact": {
+            "state": "not_declared"
+          }
+        },
+        {
+          "node_id": "ref:r-journal-2022",
+          "node_sha256": "b28cdf512dd61d235c408887aae95b9055660b00881b0951e1ca62bd6519563c",
+          "node_version_id": "node:sha256:b28cdf512dd61d235c408887aae95b9055660b00881b0951e1ca62bd6519563c",
+          "artifact": {
+            "state": "not_declared"
+          }
+        }
+      ],
+      "edge_versions": [
+        {
+          "edge": {
+            "from": "art:slopes",
+            "rel": "derives_from",
+            "to": "claim:sign-reversal"
+          },
+          "edge_sha256": "c3cd344e707551f4e5a6845d61aff439e2c8d44d575fb533390de4f18c990717"
+        },
+        {
+          "edge": {
+            "from": "code:analyze",
+            "rel": "produces",
+            "to": "art:slopes"
+          },
+          "edge_sha256": "0442978e07c98a8be4d91cffa9a978bcd4148f6a60018d6888b8165591ae7ea2"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "rel": "produces",
+            "to": "data:curated-reference"
+          },
+          "edge_sha256": "e7da5d280768be54a5367f059a9111f7b3c3d775759d6b6e530fc60cf73003d5"
+        },
+        {
+          "edge": {
+            "from": "code:fetch",
+            "rel": "produces",
+            "to": "data:raw-source"
+          },
+          "edge_sha256": "f70685528919d8e1a32f0c4020f3d7bd2e9ad3d17af14dfc9703b570c927aec0"
+        },
+        {
+          "edge": {
+            "from": "code:prepare",
+            "rel": "produces",
+            "to": "data:clean"
+          },
+          "edge_sha256": "ea6c2d01b17c268f8fe8dc6afb59ef049a86da0f552dc554b402254b27938d06"
+        },
+        {
+          "edge": {
+            "from": "data:clean",
+            "rel": "produces",
+            "to": "art:slopes"
+          },
+          "edge_sha256": "ddb69d0285a1c680e701b75f7547311c4a582e2a411bee9ce2f37490b0a9901f"
+        },
+        {
+          "edge": {
+            "from": "data:curated-reference",
+            "rel": "produces",
+            "to": "data:clean"
+          },
+          "edge_sha256": "aaa5b4a58b432442f218cd2660e1fc1f3fec9b4473725c15dbb349a230c031ae"
+        },
+        {
+          "edge": {
+            "from": "data:raw-source",
+            "rel": "produces",
+            "to": "data:clean"
+          },
+          "edge_sha256": "6f0c5e1b2acf764d02bd916b3c1462088baf403529627c3396ad0ae2bffe2c4c"
+        },
+        {
+          "edge": {
+            "from": "hyp:species-composition",
+            "rel": "predicts",
+            "to": "pred:sign-reversal"
+          },
+          "edge_sha256": "4c1232f0576f434ad28e01a051ae22cffab42cda8d395269786bd09bf5171d71"
+        },
+        {
+          "edge": {
+            "from": "pred:sign-reversal",
+            "rel": "tested_by",
+            "to": "art:slopes"
+          },
+          "edge_sha256": "4212e3aec009e8e243061f72afd0e2faa6c004fbfdeb07f38e643532c38f44e2"
+        },
+        {
+          "edge": {
+            "from": "question:bill-shape",
+            "rel": "motivates",
+            "to": "hyp:species-composition"
+          },
+          "edge_sha256": "b4133ec291924fa20ec286855354e23a961cb9bffcbad889e9cb2b8950c09400"
+        },
+        {
+          "edge": {
+            "from": "ref:palmerpenguins",
+            "rel": "derives_from",
+            "to": "data:curated-reference"
+          },
+          "edge_sha256": "398754802bcd1ef0a9d97ce277884413c87aa2959d10d71c12a4c1133649247d"
+        },
+        {
+          "edge": {
+            "from": "ref:palmerpenguins",
+            "rel": "derives_from",
+            "to": "data:raw-source"
+          },
+          "edge_sha256": "d9c628f0b4fddbb52cab8c568f360ff53699c7fbc7e8fc2fc21b3e6f435a3750"
+        },
+        {
+          "edge": {
+            "from": "ref:r-journal-2022",
+            "rel": "motivates",
+            "to": "hyp:species-composition"
+          },
+          "edge_sha256": "a8c6bea84c52609af3697a4a3574a0fb3ebb18044f8676b46d5631901bf21d8b"
+        }
+      ],
+      "problems": [],
+      "pending": [],
+      "eligible": true
+    },
+    "vocabulary": {
+      "id": "penguin:vocabulary",
+      "version": "1.0.0",
+      "sha256": "4e7bd20d59b8ac9f00ece1a1ad1efdb93ea9daef735a118c65feffcaa7935c8b",
+      "document": {
+        "schema_version": "claimtrace.symbolic-vocabulary/1",
+        "id": "penguin:vocabulary",
+        "version": "1.0.0",
+        "types": [
+          {
+            "id": "penguin:study",
+            "base": "ct:symbol"
+          }
+        ],
+        "units": [
+          "penguin:mm-per-mm"
+        ],
+        "predicates": [
+          {
+            "id": "penguin:reported_slopes",
+            "kind": "input",
+            "arguments": [
+              {
+                "name": "study",
+                "type": "penguin:study",
+                "unit": null
+              },
+              {
+                "name": "pooled",
+                "type": "ct:decimal",
+                "unit": "penguin:mm-per-mm"
+              },
+              {
+                "name": "adelie",
+                "type": "ct:decimal",
+                "unit": "penguin:mm-per-mm"
+              },
+              {
+                "name": "chinstrap",
+                "type": "ct:decimal",
+                "unit": "penguin:mm-per-mm"
+              },
+              {
+                "name": "gentoo",
+                "type": "ct:decimal",
+                "unit": "penguin:mm-per-mm"
+              }
+            ]
+          },
+          {
+            "id": "penguin:species_conditioned_sign_reversal",
+            "kind": "derived",
+            "arguments": [
+              {
+                "name": "study",
+                "type": "penguin:study",
+                "unit": null
+              }
+            ]
+          }
+        ],
+        "renderers": [
+          {
+            "id": "penguin:sign-reversal-negative-en",
+            "predicate": "penguin:species_conditioned_sign_reversal",
+            "polarity": "negative",
+            "language": "en",
+            "template": "{study} does not have the configured pooled-versus-within-species sign reversal."
+          },
+          {
+            "id": "penguin:sign-reversal-positive-en",
+            "predicate": "penguin:species_conditioned_sign_reversal",
+            "polarity": "positive",
+            "language": "en",
+            "template": "{study} has a negative pooled slope and positive slope within every declared species."
+          }
+        ]
+      }
+    },
+    "rule_pack": {
+      "id": "penguin:sign-rules",
+      "version": "1.0.0",
+      "vocabulary_id": "penguin:vocabulary",
+      "sha256": "e9e089b28b558b7838e84f0fa8a29d9b344cac79e2cdfd20f4bb5034324b3a9a",
+      "document": {
+        "schema_version": "claimtrace.symbolic-rules/1",
+        "id": "penguin:sign-rules",
+        "version": "1.0.0",
+        "vocabulary_id": "penguin:vocabulary",
+        "rules": [
+          {
+            "id": "penguin:adelie-not-positive",
+            "when": [
+              {
+                "predicate": "penguin:reported_slopes",
+                "polarity": "positive",
+                "arguments": {
+                  "adelie": {
+                    "var": "adelie"
+                  },
+                  "chinstrap": {
+                    "var": "chinstrap"
+                  },
+                  "gentoo": {
+                    "var": "gentoo"
+                  },
+                  "pooled": {
+                    "var": "pooled"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "lte",
+                "left": {
+                  "var": "adelie"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "penguin:species_conditioned_sign_reversal",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "penguin:all-signs-match",
+            "when": [
+              {
+                "predicate": "penguin:reported_slopes",
+                "polarity": "positive",
+                "arguments": {
+                  "adelie": {
+                    "var": "adelie"
+                  },
+                  "chinstrap": {
+                    "var": "chinstrap"
+                  },
+                  "gentoo": {
+                    "var": "gentoo"
+                  },
+                  "pooled": {
+                    "var": "pooled"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "gt",
+                "left": {
+                  "var": "adelie"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "chinstrap"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "gentoo"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "pooled"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "penguin:species_conditioned_sign_reversal",
+              "polarity": "positive",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "penguin:chinstrap-not-positive",
+            "when": [
+              {
+                "predicate": "penguin:reported_slopes",
+                "polarity": "positive",
+                "arguments": {
+                  "adelie": {
+                    "var": "adelie"
+                  },
+                  "chinstrap": {
+                    "var": "chinstrap"
+                  },
+                  "gentoo": {
+                    "var": "gentoo"
+                  },
+                  "pooled": {
+                    "var": "pooled"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "lte",
+                "left": {
+                  "var": "chinstrap"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "penguin:species_conditioned_sign_reversal",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "penguin:gentoo-not-positive",
+            "when": [
+              {
+                "predicate": "penguin:reported_slopes",
+                "polarity": "positive",
+                "arguments": {
+                  "adelie": {
+                    "var": "adelie"
+                  },
+                  "chinstrap": {
+                    "var": "chinstrap"
+                  },
+                  "gentoo": {
+                    "var": "gentoo"
+                  },
+                  "pooled": {
+                    "var": "pooled"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "lte",
+                "left": {
+                  "var": "gentoo"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "penguin:species_conditioned_sign_reversal",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          },
+          {
+            "id": "penguin:pooled-not-negative",
+            "when": [
+              {
+                "predicate": "penguin:reported_slopes",
+                "polarity": "positive",
+                "arguments": {
+                  "adelie": {
+                    "var": "adelie"
+                  },
+                  "chinstrap": {
+                    "var": "chinstrap"
+                  },
+                  "gentoo": {
+                    "var": "gentoo"
+                  },
+                  "pooled": {
+                    "var": "pooled"
+                  },
+                  "study": {
+                    "var": "study"
+                  }
+                }
+              }
+            ],
+            "where": [
+              {
+                "op": "gte",
+                "left": {
+                  "var": "pooled"
+                },
+                "right": {
+                  "const": {
+                    "type": "ct:decimal",
+                    "value": "0",
+                    "unit": "penguin:mm-per-mm"
+                  }
+                }
+              }
+            ],
+            "then": {
+              "predicate": "penguin:species_conditioned_sign_reversal",
+              "polarity": "negative",
+              "arguments": {
+                "study": {
+                  "var": "study"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "anchor_checks": [
+      {
+        "fact_index": 0,
+        "result_id": "art:slopes",
+        "binding_id": "penguin:complete-slope-profile",
+        "predicate": "penguin:reported_slopes",
+        "polarity": "positive",
+        "valid": true,
+        "detail": "complete project-bound fact matched exact typed artifact values",
+        "argument_checks": [
+          {
+            "argument": "adelie",
+            "kind": "json_pointer",
+            "pointer": "/by_species/Adelie/slope",
+            "observed_value_sha256": "3525f7a7e15860e2ca40bac963155dcd90177e2fd32485826bb19ec81412703e",
+            "valid": true
+          },
+          {
+            "argument": "chinstrap",
+            "kind": "json_pointer",
+            "pointer": "/by_species/Chinstrap/slope",
+            "observed_value_sha256": "20e7542ea149e7de3e73220a5cb04354126f411b75486ae55412fb8715ccd1bf",
+            "valid": true
+          },
+          {
+            "argument": "gentoo",
+            "kind": "json_pointer",
+            "pointer": "/by_species/Gentoo/slope",
+            "observed_value_sha256": "ebb95e90fc8e7cc8bcad5f29c213ada6cc82c51bd73c6508cc276a37f0348b16",
+            "valid": true
+          },
+          {
+            "argument": "pooled",
+            "kind": "json_pointer",
+            "pointer": "/pooled/slope",
+            "observed_value_sha256": "ca62d5a111d6a48a95761fd5e42a7a0aa084c8308230cf65fa877e9d040169d8",
+            "valid": true
+          },
+          {
+            "argument": "study",
+            "kind": "json_pointer",
+            "pointer": "/study_id",
+            "observed_value_sha256": "68dda2e8dee7e13f15236bbbfc4f75061b6003919754ad1924804249a075ad68",
+            "valid": true
+          }
+        ]
+      }
+    ]
+  },
+  "derived": {
+    "proof_state": "derivable",
+    "target": {
+      "predicate": "penguin:species_conditioned_sign_reversal",
+      "polarity": "positive",
+      "arguments": {
+        "study": {
+          "type": "penguin:study",
+          "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+          "unit": null
+        }
+      }
+    },
+    "rendered_target": "palmerpenguins-v0.1.0-bill-complete-cases has a negative pooled slope and positive slope within every declared species.",
+    "outcome_relation": "target_derived",
+    "outcome_atoms": [
+      {
+        "predicate": "penguin:species_conditioned_sign_reversal",
+        "polarity": "positive",
+        "arguments": {
+          "study": {
+            "type": "penguin:study",
+            "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+            "unit": null
+          }
+        }
+      }
+    ],
+    "rendered_outcomes": [
+      "palmerpenguins-v0.1.0-bill-complete-cases has a negative pooled slope and positive slope within every declared species."
+    ],
+    "claim_bound": true,
+    "active": true,
+    "stale": false,
+    "proof_id": "proof:sha256:0a55ebf87cea81ab609ad7938752518858736830ef61538fbefefdb3a3b109b3",
+    "input_fact_ids": [
+      "atom:sha256:2975e698ff1b1608cce0bc170c654b9fbf2b48b75bad1cd634d33818aa8b6c8d"
+    ],
+    "used_input_fact_ids": [
+      "atom:sha256:2975e698ff1b1608cce0bc170c654b9fbf2b48b75bad1cd634d33818aa8b6c8d"
+    ],
+    "unused_input_fact_ids": [],
+    "used_result_ids": [
+      "art:slopes"
+    ],
+    "supporting_fact_id": "atom:sha256:e6b94bf4a8b591da511acd815aa0ab76597742be841fe9d5d6c93036e9efebb9",
+    "refuting_fact_id": null,
+    "proof_steps": [
+      {
+        "rule_id": "penguin:all-signs-match",
+        "rule_sha256": "rule:sha256:bfcf52123807094c2c32d393a5419c716df222a8d95f0e12b2a7cd1f152bd8c1",
+        "premise_fact_ids": [
+          "atom:sha256:2975e698ff1b1608cce0bc170c654b9fbf2b48b75bad1cd634d33818aa8b6c8d"
+        ],
+        "conclusion_fact_id": "atom:sha256:e6b94bf4a8b591da511acd815aa0ab76597742be841fe9d5d6c93036e9efebb9",
+        "substitution": {
+          "adelie": {
+            "type": "ct:decimal",
+            "value": "0.178834",
+            "unit": "penguin:mm-per-mm"
+          },
+          "chinstrap": {
+            "type": "ct:decimal",
+            "value": "0.222212",
+            "unit": "penguin:mm-per-mm"
+          },
+          "gentoo": {
+            "type": "ct:decimal",
+            "value": "0.204844",
+            "unit": "penguin:mm-per-mm"
+          },
+          "pooled": {
+            "type": "ct:decimal",
+            "value": "-0.085021",
+            "unit": "penguin:mm-per-mm"
+          },
+          "study": {
+            "type": "penguin:study",
+            "value": "palmerpenguins-v0.1.0-bill-complete-cases",
+            "unit": null
+          }
+        }
+      }
+    ],
+    "assumptions": [],
+    "drift": [],
+    "findings": []
+  }
+}
