@@ -38,7 +38,8 @@ from .semantics import (MAPPING_SCHEMA, POLICY_SCHEMA, SemanticError,
 from .method_assessment import (SCHEMA_VERSION as METHOD_ASSESSMENT_SCHEMA,
                                 evaluate_method_assessment, load_method_assessments)
 from .pipeline import (LEGACY_SNAPSHOT_SCHEMA, PipelineError,
-                       resolve_pipeline_contract, validate_pipeline_snapshot,
+                       pipeline_snapshots_equivalent, resolve_pipeline_contract,
+                       validate_pipeline_snapshot,
                        validate_stage_trace_against_snapshot)
 from .replay import (REPLAY_SCHEMA, STAGE_REPLAY_SCHEMA, SUPPORTED_REPLAY_SCHEMAS,
                      evaluate_replay_certificate, load_replay_certificates)
@@ -278,7 +279,7 @@ def _pipeline_state(cfg, start):
         )
     except (KeyError, PipelineError, TypeError, ValueError) as exc:
         return "stale_or_invalid", str(exc)
-    if current["id"] != snapshot["id"]:
+    if not pipeline_snapshots_equivalent(snapshot, current):
         return "stale_or_invalid", "current pipeline snapshot has a different content ID"
     return "current", None
 
@@ -1184,6 +1185,10 @@ def _assessment_projection(cfg, raw):
 
 def _method_assessment_projection(cfg):
     documents, integrity_issues = load_method_assessments(cfg)
+    snapshots_by_id = {
+        item["id"]: item["mechanical_snapshot"]["pipeline_contract"]
+        for item in documents
+    }
     extra = []
     for issue in integrity_issues:
         extra.append({
@@ -1257,12 +1262,13 @@ def _method_assessment_projection(cfg):
                 "detail": f"{item['id']}: {finding['detail']}",
                 "source": "method_assessments",
             })
-    return {
+    projection = {
         "schema_version": METHOD_ASSESSMENT_SCHEMA,
         "integrity": "error" if integrity_issues else "ok",
         "policy": {"require_method_assessments": cfg.require_method_assessments},
         "items": items,
-    }, extra
+    }
+    return projection, extra, snapshots_by_id
 
 
 def _claim_stage_ancestry(snapshot, result_id):
@@ -1377,7 +1383,9 @@ def _claim_ancestry_intermediates(run, ancestry_stages, nodes):
     return "missing_or_stale", projected
 
 
-def _claim_basis_projection(cfg, raw, receipts, assessments, method_assessments):
+def _claim_basis_projection(
+        cfg, raw, receipts, assessments, method_assessments,
+        method_snapshots_by_id):
     """Join semantic meaning to current execution/replay/method evidence without inference."""
     nodes, _edges, _concepts = load_graph(cfg, raw=raw)
     producing_by_node = {}
@@ -1388,6 +1396,26 @@ def _claim_basis_projection(cfg, raw, receipts, assessments, method_assessments)
     method_items = [
         item for item in method_assessments["items"] if item["is_current"]
     ]
+    method_run_match_cache = {}
+
+    def assessment_matches_run(item, run):
+        key = (item["id"], run["run_id"])
+        if key in method_run_match_cache:
+            return method_run_match_cache[key]
+        assessment_snapshot = method_snapshots_by_id.get(item["id"])
+        run_snapshot = run.get("pipeline_contract")
+        try:
+            matches = (
+                isinstance(assessment_snapshot, dict)
+                and pipeline_snapshots_equivalent(
+                    assessment_snapshot, run_snapshot,
+                )
+            )
+        except (PipelineError, TypeError, ValueError):
+            matches = False
+        method_run_match_cache[key] = matches
+        return matches
+
     items = []
     extra = []
     for relation in assessments["active_relations"]:
@@ -1517,7 +1545,7 @@ def _claim_basis_projection(cfg, raw, receipts, assessments, method_assessments)
         else:
             relevant_method_items = [
                 item for item in method_items
-                if item["subject"]["pipeline_contract_id"] == run["pipeline_contract_id"]
+                if assessment_matches_run(item, run)
             ]
             for stage in ancestry_stages:
                 matches = [
@@ -2432,9 +2460,14 @@ def build_report(cfg, *, strict=False, raw=None):
     warnings = lint_issues(cfg, raw=graph)
     receipts, receipt_findings = _receipt_projection(cfg, graph)
     assessments, assessment_findings = _assessment_projection(cfg, graph)
-    method_assessments, method_findings = _method_assessment_projection(cfg)
+    (
+        method_assessments,
+        method_findings,
+        method_snapshots_by_id,
+    ) = _method_assessment_projection(cfg)
     claim_basis, claim_basis_findings = _claim_basis_projection(
         cfg, graph, receipts, assessments, method_assessments,
+        method_snapshots_by_id,
     )
     semantics, semantic_findings = _semantic_projection(cfg)
     derivations, derivation_findings = _derivation_projection(cfg, graph)

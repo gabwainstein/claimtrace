@@ -7,6 +7,7 @@ receipts and replay certificates consume the resolved snapshot from this module.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -23,8 +24,17 @@ from .engine import load_graph, load_raw
 
 CONTRACT_SCHEMA = "claimtrace.pipeline-contract/1"
 LEGACY_SNAPSHOT_SCHEMA = "claimtrace.pipeline-contract-snapshot/1"
-SNAPSHOT_SCHEMA = "claimtrace.pipeline-contract-snapshot/2"
-SUPPORTED_SNAPSHOT_SCHEMAS = frozenset({LEGACY_SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA})
+PREVIOUS_SNAPSHOT_SCHEMA = "claimtrace.pipeline-contract-snapshot/2"
+SNAPSHOT_SCHEMA = "claimtrace.pipeline-contract-snapshot/3"
+SUPPORTED_SNAPSHOT_SCHEMAS = frozenset({
+    LEGACY_SNAPSHOT_SCHEMA, PREVIOUS_SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA,
+})
+_INTERMEDIATE_SNAPSHOT_SCHEMAS = frozenset({
+    PREVIOUS_SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA,
+})
+_MTIME_SNAPSHOT_SCHEMAS = frozenset({
+    LEGACY_SNAPSHOT_SCHEMA, PREVIOUS_SNAPSHOT_SCHEMA,
+})
 METHOD_SPEC_SCHEMA = "claimtrace.method-spec/1"
 CONTRACT_ID_RE = re.compile(r"^pipeline-contract:sha256:[0-9a-f]{64}$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
@@ -1113,7 +1123,7 @@ def resolve_pipeline_contract(
         code_snapshots[code_id] = {
             **_node_snapshot(node),
             "path": node["path"],
-            "file": file_snapshot,
+            "file": _snapshot_file_for_schema(file_snapshot, snapshot_schema),
         }
 
     method_ids = sorted({stage["method_id"] for stage in ordered})
@@ -1144,7 +1154,10 @@ def resolve_pipeline_contract(
             # The whole-file lock is intentional. Fine-grained method prose anchors can be
             # added later without weakening this exact-byte basis.
             del method_data
-            snap.update({"path": method_path, "file": method_file})
+            snap.update({
+                "path": method_path,
+                "file": _snapshot_file_for_schema(method_file, snapshot_schema),
+            })
         method_snapshots[method_id] = snap
 
     observed_method_steps = []
@@ -1248,7 +1261,7 @@ def resolve_pipeline_contract(
         "outputs": role_items(output_ids),
         "methods": [method_snapshots[node_id] for node_id in sorted(method_snapshots)],
     }
-    if snapshot_schema == SNAPSHOT_SCHEMA:
+    if snapshot_schema in _INTERMEDIATE_SNAPSHOT_SCHEMAS:
         roles["intermediates"] = intermediate_role_items(internal_output_ids)
         _assert_disjoint_role_values({
             "code": [item["path"] for item in roles["code"]],
@@ -1275,7 +1288,8 @@ def resolve_pipeline_contract(
         "stages": resolved_stages,
         "coverage": dict(
             _SNAPSHOT_COVERAGE
-            if snapshot_schema == SNAPSHOT_SCHEMA else _LEGACY_SNAPSHOT_COVERAGE
+            if snapshot_schema in _INTERMEDIATE_SNAPSHOT_SCHEMAS
+            else _LEGACY_SNAPSHOT_COVERAGE
         ),
     }
     return {
@@ -1323,7 +1337,8 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
     _bounded_token(snapshot.get("name"), "pipeline contract snapshot name")
     expected_coverage = (
         _SNAPSHOT_COVERAGE
-        if schema_version == SNAPSHOT_SCHEMA else _LEGACY_SNAPSHOT_COVERAGE
+        if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS
+        else _LEGACY_SNAPSHOT_COVERAGE
     )
     if snapshot.get("coverage") != expected_coverage:
         raise PipelineError("pipeline contract snapshot coverage is invalid or overstated")
@@ -1343,13 +1358,13 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
 
     roles = snapshot.get("roles")
     expected_roles = {"code", "inputs", "outputs", "methods"}
-    if schema_version == SNAPSHOT_SCHEMA:
+    if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS:
         expected_roles.add("intermediates")
     if not isinstance(roles, dict) or set(roles) != expected_roles:
         raise PipelineError("pipeline contract snapshot roles are invalid")
     role_ids: dict[str, set[str]] = {}
     role_order = ["code", "inputs", "outputs", "methods"]
-    if schema_version == SNAPSHOT_SCHEMA:
+    if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS:
         role_order.append("intermediates")
     materialized_paths = []
     execution_role_paths: dict[str, list[str]] = {
@@ -1385,7 +1400,9 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
                 if set(item) != {
                         "node_id", "node_sha256", "node_version_id", "path", "file"}:
                     raise PipelineError(f"{label} has unknown or missing fields")
-                _validate_snapshot_file(item["file"], f"{label}.file")
+                _validate_snapshot_file(
+                    item["file"], f"{label}.file", schema_version,
+                )
                 if item["file"]["path"] != item.get("path"):
                     raise PipelineError(f"{label} file path does not match node path")
             elif role == "methods":
@@ -1400,7 +1417,9 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
                     raise PipelineError(f"{label} path and file must appear together")
                 _method_spec({"id": item["node_id"], "method_spec": item["method_spec"]})
                 if "file" in item:
-                    _validate_snapshot_file(item["file"], f"{label}.file")
+                    _validate_snapshot_file(
+                        item["file"], f"{label}.file", schema_version,
+                    )
                     if item["file"]["path"] != item["path"]:
                         raise PipelineError(f"{label} file path does not match method path")
             else:
@@ -1423,7 +1442,7 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
             if "path" in item and (
                     not isinstance(item["path"], str) or not item["path"]):
                 raise PipelineError(f"{label}.path is invalid")
-            if schema_version == SNAPSHOT_SCHEMA and "path" in item:
+            if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS and "path" in item:
                 _canonical_snapshot_path(item["path"], f"{label}.path")
                 role_name = {
                     "code": "code",
@@ -1438,7 +1457,7 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
         raise PipelineError(
             "pipeline contract snapshot materialized intermediate paths repeat"
         )
-    if schema_version == SNAPSHOT_SCHEMA:
+    if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS:
         _assert_disjoint_role_values({
             "code": role_ids["code"],
             "input": role_ids["inputs"],
@@ -1593,7 +1612,7 @@ def validate_pipeline_snapshot(snapshot: object) -> str:
         raise PipelineError(
             "pipeline contract snapshot terminal outputs differ from output roles"
         )
-    if schema_version == SNAPSHOT_SCHEMA:
+    if schema_version in _INTERMEDIATE_SNAPSHOT_SCHEMAS:
         internal_outputs = set(output_producer) - role_ids["outputs"]
         if internal_outputs != role_ids["intermediates"]:
             raise PipelineError(
@@ -1610,10 +1629,18 @@ def _validate_snapshot_node_version(item: dict, label: str) -> None:
         raise PipelineError(f"{label} has an invalid node version")
 
 
-def _validate_snapshot_file(value: object, label: str) -> None:
+def _snapshot_file_for_schema(value: dict, schema_version: str) -> dict:
+    if schema_version == SNAPSHOT_SCHEMA:
+        return {key: item for key, item in value.items() if key != "mtime_ns"}
+    return value
+
+
+def _validate_snapshot_file(value: object, label: str, schema_version: str) -> None:
     expected = {
-        "path", "method", "state", "sha256", "size", "mtime_ns", "file_version_id",
+        "path", "method", "state", "sha256", "size", "file_version_id",
     }
+    if schema_version in _MTIME_SNAPSHOT_SCHEMAS:
+        expected.add("mtime_ns")
     if not isinstance(value, dict) or set(value) != expected:
         raise PipelineError(f"{label} has an invalid file snapshot shape")
     if value.get("method") != "sha256_stat_before_after" or value.get("state") != "stable":
@@ -1624,10 +1651,44 @@ def _validate_snapshot_file(value: object, label: str) -> None:
         raise PipelineError(f"{label} has an invalid file digest")
     if (not isinstance(value.get("path"), str) or not value["path"]
             or isinstance(value.get("size"), bool)
-            or not isinstance(value.get("size"), int) or value["size"] < 0
-            or isinstance(value.get("mtime_ns"), bool)
-            or not isinstance(value.get("mtime_ns"), int) or value["mtime_ns"] < 0):
+            or not isinstance(value.get("size"), int) or value["size"] < 0):
         raise PipelineError(f"{label} has invalid path or stat metadata")
+    if schema_version in _MTIME_SNAPSHOT_SCHEMAS and (
+            isinstance(value.get("mtime_ns"), bool)
+            or not isinstance(value.get("mtime_ns"), int)
+            or value["mtime_ns"] < 0):
+        raise PipelineError(f"{label} has invalid path or stat metadata")
+
+
+def pipeline_snapshots_equivalent(stored: object, current: object) -> bool:
+    """Compare validated snapshots, tolerating only legacy file mtimes.
+
+    Snapshot v2 content IDs included volatile filesystem mtimes for code and
+    optional method files.  After both inputs pass their exact historical
+    validators, equality may therefore ignore only those fields.  Legacy v1
+    and current v3 snapshots remain exact content-address comparisons.
+    """
+    validate_pipeline_snapshot(stored)
+    validate_pipeline_snapshot(current)
+    stored_schema = stored["schema_version"]
+    if current["schema_version"] != stored_schema:
+        return False
+    if current["id"] == stored["id"]:
+        return True
+    if stored_schema != PREVIOUS_SNAPSHOT_SCHEMA:
+        return False
+
+    def comparison_value(snapshot: dict) -> dict:
+        value = copy.deepcopy(snapshot)
+        del value["id"]
+        for role in ("code", "methods"):
+            for item in value["roles"][role]:
+                file_snapshot = item.get("file")
+                if file_snapshot is not None:
+                    del file_snapshot["mtime_ns"]
+        return value
+
+    return comparison_value(stored) == comparison_value(current)
 
 
 def pipeline_method_ids(snapshot: dict) -> list[str]:
@@ -1636,12 +1697,14 @@ def pipeline_method_ids(snapshot: dict) -> list[str]:
 
 
 __all__ = [
-    "CONTRACT_SCHEMA", "LEGACY_SNAPSHOT_SCHEMA", "SNAPSHOT_SCHEMA",
+    "CONTRACT_SCHEMA", "LEGACY_SNAPSHOT_SCHEMA", "PREVIOUS_SNAPSHOT_SCHEMA",
+    "SNAPSHOT_SCHEMA",
     "SUPPORTED_SNAPSHOT_SCHEMAS", "METHOD_SPEC_SCHEMA", "STAGE_CHECKPOINT_SCHEMA",
     "STAGE_TRACE_SCHEMA", "STAGE_TRACE_PLAN_SCHEMA", "STAGE_TRACE_MODE",
     "STAGE_TRACE_TRUST", "PipelineError",
     "canonical_bytes", "canonical_sha256", "resolve_pipeline_contract",
-    "validate_pipeline_snapshot", "pipeline_method_ids", "stage_checkpoint",
+    "validate_pipeline_snapshot", "pipeline_snapshots_equivalent",
+    "pipeline_method_ids", "stage_checkpoint",
     "stage_trace_plan", "prepare_stage_trace", "stage_trace_child_environment",
     "scrub_stage_trace_environment", "finalize_stage_trace", "validate_stage_trace",
     "validate_stage_trace_against_snapshot",

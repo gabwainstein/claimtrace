@@ -173,6 +173,34 @@ def test_penguin_demo_integrity_and_environment_relative_strict_state():
     } == {("claim:sign-reversal", "derivable", True)}
 
 
+def test_penguin_v2_contract_remains_current_after_fresh_file_copy(tmp_path):
+    source = PUBLIC_DEMOS[0].parent
+    copied = tmp_path / "penguin_study"
+    shutil.copytree(source, copied, copy_function=shutil.copyfile)
+
+    report = build_report(Config(copied / "claimtrace.config.json"), strict=True)
+    run_id = next(iter({item["run_id"] for item in report["claim_basis"]["items"]}))
+    run = next(item for item in report["receipts"]["runs"] if item["run_id"] == run_id)
+
+    assert run["pipeline_contract"]["schema_version"] == (
+        "claimtrace.pipeline-contract-snapshot/2"
+    )
+    assert run["pipeline_contract_state"] == "current"
+    assert all(
+        finding["code"] != "REPLAY_CONTRACT_DRIFT"
+        for replay in run["replays"]
+        for finding in replay["current_derived"]["findings"]
+    )
+    assert {
+        item["method_state"] for item in report["claim_basis"]["items"]
+    } == {"accepted_current_conformance"}
+    assert any(
+        item["current_derived"]["implementation_current"]
+        for item in report["method_assessments"]["items"]
+        if item["review"]["state"] == "accepted"
+    )
+
+
 def test_eeg_demo_clean_checkout_boundary_keeps_semantic_history_but_requires_fetch(tmp_path):
     source = PUBLIC_DEMOS[1].parent
     destination = tmp_path / "eegbci_study"

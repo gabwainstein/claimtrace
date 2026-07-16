@@ -2,12 +2,14 @@
 import copy
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 import claimtrace.events as events_module
+import claimtrace.pipeline as pipeline_module
 from claimtrace.config import Config
 from claimtrace.events import (
     EventError,
@@ -18,9 +20,13 @@ from claimtrace.events import (
     run_command,
 )
 from claimtrace.pipeline import (
+    LEGACY_SNAPSHOT_SCHEMA,
+    PREVIOUS_SNAPSHOT_SCHEMA,
+    SNAPSHOT_SCHEMA,
     PipelineError,
     canonical_sha256,
     finalize_stage_trace,
+    pipeline_snapshots_equivalent,
     prepare_stage_trace,
     resolve_pipeline_contract,
     validate_pipeline_snapshot,
@@ -190,6 +196,22 @@ def _resolve(cfg):
     )
 
 
+def _resolve_schema(cfg, snapshot_schema):
+    return resolve_pipeline_contract(
+        cfg, "claimtrace/primary.pipeline.json",
+        declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
+        declared_outputs=["results/fit.json"],
+        parameters={"model": "ols"}, seeds={"numpy": "7"},
+        snapshot_schema=snapshot_schema,
+    )
+
+
+def _advance_mtime(path):
+    before = path.stat()
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
+    assert path.stat().st_mtime_ns != before.st_mtime_ns
+
+
 def _readdress(snapshot):
     core = {key: value for key, value in snapshot.items() if key != "id"}
     snapshot["id"] = "pipeline-contract:sha256:" + canonical_sha256(core)
@@ -303,12 +325,127 @@ def test_contract_pins_code_method_and_roles_without_claiming_stage_observation(
     assert first["roles"]["intermediates"] == []
 
 
+def test_v3_omits_volatile_code_and_method_mtimes(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+
+    snapshot = _resolve(cfg)
+
+    assert snapshot["schema_version"] == SNAPSHOT_SCHEMA
+    assert "mtime_ns" not in snapshot["roles"]["code"][0]["file"]
+    assert "mtime_ns" not in snapshot["roles"]["methods"][0]["file"]
+    assert validate_pipeline_snapshot(snapshot) == snapshot["id"]
+
+
+def test_v3_snapshot_is_identical_after_mtime_only_changes(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+    first = _resolve(cfg)
+
+    _advance_mtime(cfg.root / "analysis" / "pipeline.py")
+    _advance_mtime(cfg.root / "methods.md")
+    second = _resolve(cfg)
+
+    assert second == first
+    assert pipeline_snapshots_equivalent(first, second) is True
+
+
+def test_v2_snapshot_keeps_intermediates_and_is_portable_across_mtimes(tmp_path):
+    cfg, _contract, _path = _materialized_project(tmp_path)
+    stored = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+
+    assert "intermediates" in stored["roles"]
+    assert stored["coverage"]["materialized_intermediates"] == (
+        "declared_file_paths_for_process_boundary_capture_not_stage_attributed"
+    )
+    assert "mtime_ns" in stored["roles"]["code"][0]["file"]
+    assert "mtime_ns" in stored["roles"]["methods"][0]["file"]
+    assert validate_pipeline_snapshot(stored) == stored["id"]
+
+    _advance_mtime(cfg.root / "analysis" / "pipeline.py")
+    _advance_mtime(cfg.root / "methods.md")
+    current = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+
+    assert current["id"] != stored["id"]
+    assert pipeline_snapshots_equivalent(stored, current) is True
+
+
+def test_v2_snapshot_content_change_is_not_mtime_equivalent(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+    stored = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+    method_path = cfg.root / "methods.md"
+    method_path.write_text(
+        "# Methods\nMaterially changed method prose.\n", encoding="utf-8",
+    )
+    current = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+
+    assert validate_pipeline_snapshot(current) == current["id"]
+    assert pipeline_snapshots_equivalent(stored, current) is False
+
+
+def test_v1_snapshot_keeps_exact_mtime_currentness(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+    stored = _resolve_schema(cfg, LEGACY_SNAPSHOT_SCHEMA)
+
+    _advance_mtime(cfg.root / "analysis" / "pipeline.py")
+    current = _resolve_schema(cfg, LEGACY_SNAPSHOT_SCHEMA)
+
+    assert current["id"] != stored["id"]
+    assert pipeline_snapshots_equivalent(stored, current) is False
+
+
+def test_snapshot_currentness_never_crosses_schema_versions(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+    v2 = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+    v3 = _resolve_schema(cfg, SNAPSHOT_SCHEMA)
+
+    assert pipeline_snapshots_equivalent(v2, v3) is False
+
+
+def test_malformed_v2_snapshot_is_rejected_before_mtime_projection(tmp_path):
+    cfg, _contract, _path = _project(tmp_path)
+    stored = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+    forged = copy.deepcopy(stored)
+    forged["roles"]["code"][0]["file"].pop("mtime_ns")
+    forged = _readdress(forged)
+
+    with pytest.raises(PipelineError, match="invalid file snapshot shape"):
+        pipeline_snapshots_equivalent(forged, stored)
+
+
+@pytest.mark.parametrize("mutation", ["path", "node", "source", "anchor", "size"])
+def test_v2_equivalence_rejects_every_non_mtime_contract_change(
+        tmp_path, mutation):
+    cfg, _contract, _path = _project(tmp_path)
+    stored = _resolve_schema(cfg, PREVIOUS_SNAPSHOT_SCHEMA)
+    changed = copy.deepcopy(stored)
+    if mutation == "path":
+        code = changed["roles"]["code"][0]
+        code["path"] = "analysis/other.py"
+        code["file"]["path"] = "analysis/other.py"
+    elif mutation == "node":
+        code = changed["roles"]["code"][0]
+        code["node_sha256"] = "f" * 64
+        code["node_version_id"] = "node:sha256:" + "f" * 64
+    elif mutation == "source":
+        changed["source"]["sha256"] = "f" * 64
+        changed["source"]["file_version_id"] = "file:sha256:" + "f" * 64
+    elif mutation == "anchor":
+        changed["stages"][0]["code_anchors"][0]["text_sha256"] = "f" * 64
+    elif mutation == "size":
+        changed["roles"]["code"][0]["file"]["size"] += 1
+    else:  # pragma: no cover - the parameter list above is closed
+        raise AssertionError(mutation)
+    changed = _readdress(changed)
+
+    assert validate_pipeline_snapshot(changed) == changed["id"]
+    assert pipeline_snapshots_equivalent(stored, changed) is False
+
+
 def test_path_bearing_internal_stage_output_is_a_materialized_intermediate_role(tmp_path):
     cfg, _contract, _path = _materialized_project(tmp_path)
 
     snapshot = _resolve(cfg)
 
-    assert snapshot["schema_version"] == "claimtrace.pipeline-contract-snapshot/2"
+    assert snapshot["schema_version"] == SNAPSHOT_SCHEMA
     intermediate = snapshot["roles"]["intermediates"]
     assert len(intermediate) == 1
     assert intermediate[0]["node_id"] == "art:clean"
@@ -1117,6 +1254,46 @@ def test_event_v3_rejects_legacy_snapshot_v1_even_when_readdressed(tmp_path):
 
     with pytest.raises(EventError, match="event/3 requires a .*snapshot/2 contract"):
         append_event(tmp_path / "reverse-schema-crossing", forged)
+
+
+@pytest.mark.parametrize("stage_checkpoints", [False, True])
+def test_event_v3_and_v4_accept_stored_snapshot_v2(
+    tmp_path, monkeypatch, stage_checkpoints,
+):
+    project = _instrumented_project if stage_checkpoints else _project
+    cfg, _contract, _path = project(tmp_path)
+    if stage_checkpoints:
+        monkeypatch.setenv(
+            "PYTHONPATH", str(Path(__file__).resolve().parents[1] / "src"),
+        )
+    original_resolve = pipeline_module.resolve_pipeline_contract
+
+    def resolve_v2(*args, **kwargs):
+        kwargs.setdefault("snapshot_schema", PREVIOUS_SNAPSHOT_SCHEMA)
+        return original_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "resolve_pipeline_contract", resolve_v2)
+    result = run_command(
+        cfg, [sys.executable, "analysis/pipeline.py"],
+        inputs=["data/raw.csv", "analysis/pipeline.py"],
+        outputs=["results/fit.json"], cwd=str(cfg.root),
+        parameters={"model": "ols"}, seeds={"numpy": "7"},
+        pipeline_contract="claimtrace/primary.pipeline.json",
+        stage_checkpoints=stage_checkpoints, scan_writes=False,
+    )
+
+    assert result["outcome"] == "succeeded"
+    stored, issues = load_events(cfg.events_path)
+    assert issues == []
+    start = next(item for item in stored if item["type"] == "run.started")
+    assert start["schema_version"] == (
+        events_module.STAGE_CONTRACT_EVENT_SCHEMA
+        if stage_checkpoints else events_module.CONTRACT_EVENT_SCHEMA
+    )
+    assert (
+        start["payload"]["plan"]["pipeline_contract"]["schema_version"]
+        == PREVIOUS_SNAPSHOT_SCHEMA
+    )
 
 
 def test_event_v3_hashes_and_links_materialized_intermediate_file(tmp_path):

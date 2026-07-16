@@ -133,6 +133,10 @@ All notable changes to `claimtrace` are documented here. This project adheres to
 - Enforce a project-owned 256-level JSON nesting limit before decoding untrusted configuration,
   CLI, and event documents, so acceptance and diagnostics do not depend on CPython recursion
   behavior across Python 3.9-3.14.
+- Make pipeline-contract snapshot v3 exclude clone-local `mtime_ns` from code and method file
+  identities. Historical v2 snapshots still validate their original exact content addresses, then
+  ignore only those timestamp fields for currentness; hashes, sizes, nodes, methods, stages,
+  anchors, roles, and all immutable ledger bindings remain fail-closed.
 - Stop replay workspace link checks at the controlled workspace root while still rejecting links
   at or below that boundary; this prevents trusted macOS `/var` aliases above the workspace from
   appearing as undeclared analysis files.

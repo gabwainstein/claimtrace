@@ -208,6 +208,11 @@ The reported OLS estimates are rounded to six decimal places. The checked-in mec
 also retain the executable and working-directory paths observed on the producing machine. That is
 authentic environment provenance but may disclose local workspace layout; audit this boundary
 before republishing a copied ledger, and do not edit content-addressed receipts in place.
+The historical analysis receipt embeds pipeline snapshot v2, whose original content address also
+contains code-file `mtime_ns`. Claimtrace validates that stored snapshot exactly, then ignores only
+that volatile timestamp when comparing it with a fresh checkout; every content hash, size, graph
+node, method, stage, and anchor remains exact. Newly created contracts use timestamp-independent
+snapshot v3.
 The checked-in replay is therefore current only when the inspecting host resolves the same recorded
 executable bytes and project lockfiles. A different interpreter or operating system correctly emits
 `REPLAY_ENVIRONMENT_MISMATCH` and leaves strict claim provenance incomplete; run and review a fresh

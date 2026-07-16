@@ -401,6 +401,10 @@ def test_legacy_contract_state_resolves_with_its_stored_snapshot_schema(
     }
     seen = {}
     monkeypatch.setattr(report_module, "validate_pipeline_snapshot", lambda value: value["id"])
+    monkeypatch.setattr(
+        report_module, "pipeline_snapshots_equivalent",
+        lambda stored, current: stored["id"] == current["id"],
+    )
 
     def resolve(_cfg, path, **kwargs):
         seen.update({"path": path, **kwargs})

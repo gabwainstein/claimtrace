@@ -57,6 +57,7 @@ from .pipeline import (
     canonical_sha256,
     finalize_stage_trace,
     prepare_stage_trace,
+    pipeline_snapshots_equivalent,
     resolve_pipeline_contract,
     stage_trace_child_environment,
     validate_stage_trace,
@@ -545,7 +546,7 @@ def replay_run(cfg, run_id: str, *, attempts: int | None = None,
         )
     except (KeyError, PipelineError) as exc:
         raise ReplayError(f"source pipeline contract is stale or invalid: {exc}") from exc
-    if current_contract["id"] != contract["id"]:
+    if not pipeline_snapshots_equivalent(contract, current_contract):
         raise ReplayError("source pipeline contract, code, or method bytes have drifted")
 
     cwd_label = plan.get("cwd")
@@ -868,7 +869,7 @@ def evaluate_replay_certificate(cfg, document: dict, *, start: dict | None = Non
             seeds=dict(plan.get("seeds", {})),
             snapshot_schema=contract["schema_version"],
         )
-        if current_contract["id"] != contract["id"]:
+        if not pipeline_snapshots_equivalent(contract, current_contract):
             raise ReplayError("pipeline contract, method, code, or anchor bytes changed")
     except (KeyError, PipelineError, ReplayError) as exc:
         finding("REPLAY_CONTRACT_DRIFT", str(exc))
