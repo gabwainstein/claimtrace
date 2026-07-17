@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from claimtrace import events as events_module
-from claimtrace import pipeline as pipeline_module
-from claimtrace import replay as replay_module
-from claimtrace.cli import main as cli_main
-from claimtrace.events import run_command
-from claimtrace.pipeline import PREVIOUS_SNAPSHOT_SCHEMA, resolve_pipeline_contract
-from claimtrace.replay import (
+from provsleuth import events as events_module
+from provsleuth import pipeline as pipeline_module
+from provsleuth import replay as replay_module
+from provsleuth.cli import main as cli_main
+from provsleuth.events import run_command
+from provsleuth.pipeline import PREVIOUS_SNAPSHOT_SCHEMA, resolve_pipeline_contract
+from provsleuth.replay import (
     LEGACY_REPLAY_SCHEMA,
     LEGACY_WORKSPACE_WRITE_COVERAGE,
     ReplayError,
@@ -34,7 +34,7 @@ def _run(cfg, **kwargs):
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False, **kwargs,
     )
 
@@ -142,7 +142,7 @@ def _legacy_source_pair(cfg, run_id):
         recorded_at=current_finish["recorded_at"],
         schema_version=events_module.LEGACY_CONTRACT_EVENT_SCHEMA,
     )
-    store = cfg.root / "claimtrace" / "legacy-events"
+    store = cfg.root / "provsleuth" / "legacy-events"
     events_module.append_event(store, legacy_start)
     events_module.append_event(store, legacy_finish)
     return store, legacy_start, legacy_finish
@@ -275,7 +275,7 @@ def test_replay_rejects_checkpoint_sequences_emitted_by_descendants(
         "import subprocess\n"
         "import sys\n"
         "from pathlib import Path\n"
-        "from claimtrace.pipeline import stage_checkpoint\n"
+        "from provsleuth.pipeline import stage_checkpoint\n"
         "\n"
         "def work():\n"
         "    rows = Path('data/raw.csv').read_text().splitlines()\n"
@@ -285,11 +285,11 @@ def test_replay_rejects_checkpoint_sequences_emitted_by_descendants(
         "    Path('results/fit.json').write_text(str(slope))\n"
         "    stage_checkpoint('fit')\n"
         "\n"
-        "if os.environ.get('CLAIMTRACE_DESCENDANT') == '1':\n"
+        "if os.environ.get('PROVSLEUTH_DESCENDANT') == '1':\n"
         "    work()\n"
         "elif Path.cwd().name.startswith('attempt-'):\n"
         "    child_env = os.environ.copy()\n"
-        "    child_env['CLAIMTRACE_DESCENDANT'] = '1'\n"
+        "    child_env['PROVSLEUTH_DESCENDANT'] = '1'\n"
         "    raise SystemExit(subprocess.run([sys.executable, __file__], env=child_env).returncode)\n"
         "else:\n"
         "    work()\n"
@@ -454,7 +454,7 @@ def test_run_cli_prints_materialized_intermediate_transition(tmp_path, capsys):
         "--input", "data/raw.csv", "--input", "analysis/pipeline.py",
         "--output", "results/fit.json", "--param", "model=ols",
         "--seed", "numpy=7", "--cwd", str(cfg.root),
-        "--pipeline-contract", "claimtrace/primary.pipeline.json",
+        "--pipeline-contract", "provsleuth/primary.pipeline.json",
         "--", sys.executable, "analysis/pipeline.py",
     ])
 
@@ -678,7 +678,7 @@ def test_redacted_source_argv_requires_matching_override_without_storing_secret(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     with pytest.raises(ReplayError, match="redacted values"):

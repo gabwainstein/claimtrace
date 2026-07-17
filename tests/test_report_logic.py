@@ -3,9 +3,9 @@ import json
 
 import pytest
 
-import claimtrace.report as report_module
-from claimtrace.config import Config
-from claimtrace.logic import (
+import provsleuth.report as report_module
+from provsleuth.config import Config
+from provsleuth.logic import (
     EVIDENCE_PLAN_SCHEMA,
     append_derivation,
     create_derivation,
@@ -13,7 +13,7 @@ from claimtrace.logic import (
     load_rule_pack,
     load_vocabulary,
 )
-from claimtrace.report import build_report
+from provsleuth.report import build_report
 
 
 FIXED_TIME = "2026-07-14T02:00:00.000Z"
@@ -138,7 +138,7 @@ def _agent_input():
 
 
 def _project(tmp_path, *, require_derivations=False):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     logic_dir = trace / "logic"
     logic_dir.mkdir(parents=True)
     (tmp_path / "a.json").write_text(
@@ -193,14 +193,14 @@ def _project(tmp_path, *, require_derivations=False):
         "edges": [],
     }
     (trace / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
         "logic": {
-            "derivations": "claimtrace/derivations",
-            "vocabularies": ["claimtrace/logic/vocabulary.json"],
-            "rule_packs": ["claimtrace/logic/rules.json"],
+            "derivations": "provsleuth/derivations",
+            "vocabularies": ["provsleuth/logic/vocabulary.json"],
+            "rule_packs": ["provsleuth/logic/rules.json"],
             "require_derivations": require_derivations,
         },
     }), encoding="utf-8")
@@ -541,10 +541,10 @@ def test_one_result_can_expose_bindings_for_multiple_vocabularies(tmp_path):
         }],
         "renderers": [],
     }
-    auxiliary_path = cfg.root / "claimtrace" / "logic" / "auxiliary.json"
+    auxiliary_path = cfg.root / "provsleuth" / "logic" / "auxiliary.json"
     auxiliary_path.write_text(json.dumps(auxiliary), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["logic"]["vocabularies"].append("claimtrace/logic/auxiliary.json")
+    config["logic"]["vocabularies"].append("provsleuth/logic/auxiliary.json")
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
 
     graph = json.loads(cfg.graph_path.read_text(encoding="utf-8"))

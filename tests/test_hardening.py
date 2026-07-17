@@ -12,12 +12,18 @@ from types import SimpleNamespace
 
 import pytest
 
-import claimtrace.cli as cli_module
-import claimtrace.events as events_module
-from claimtrace import engine
-from claimtrace.cli import main
-from claimtrace.config import Config, MAX_JSON_NESTING_DEPTH, strict_json_loads
-from claimtrace.snapshot import snapshot
+import provsleuth.cli as cli_module
+import provsleuth.events as events_module
+from provsleuth import engine
+from provsleuth.cli import main
+from provsleuth.config import (
+    Config,
+    MAX_JSON_NESTING_DEPTH,
+    find_config,
+    load_config,
+    strict_json_loads,
+)
+from provsleuth.snapshot import snapshot
 
 
 def _process_log(config_path, node_id, start, results):
@@ -30,12 +36,91 @@ def _process_log(config_path, node_id, start, results):
 
 
 def _project(tmp_path, graph, config=None):
-    (tmp_path / "claimtrace").mkdir()
-    (tmp_path / "claimtrace.config.json").write_text(
-        json.dumps(config or {"root": ".", "graph": "claimtrace/graph.json"}))
-    (tmp_path / "claimtrace" / "graph.json").write_text(
+    (tmp_path / "provsleuth").mkdir()
+    (tmp_path / "provsleuth.config.json").write_text(
+        json.dumps(config or {"root": ".", "graph": "provsleuth/graph.json"}))
+    (tmp_path / "provsleuth" / "graph.json").write_text(
         graph if isinstance(graph, str) else json.dumps(graph))
-    return Config(tmp_path / "claimtrace.config.json")
+    return Config(tmp_path / "provsleuth.config.json")
+
+
+def test_config_discovery_rejects_dual_current_and_legacy_configs(tmp_path):
+    project = tmp_path / "project"
+    child = project / "analysis"
+    child.mkdir(parents=True)
+    (project / "provsleuth.config.json").write_text("{}", encoding="utf-8")
+    (project / "claimtrace.config.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="ambiguous project configuration"):
+        find_config(child)
+    with pytest.raises(SystemExit, match="pass --config explicitly"):
+        load_config(start=child)
+
+
+def test_explicit_legacy_config_retains_claimtrace_default_store_paths(tmp_path):
+    project = tmp_path / "legacy-project"
+    (project / "claimtrace").mkdir(parents=True)
+    (project / "claimtrace" / "graph.json").write_text(
+        json.dumps({
+            "schema_version": "1.0", "concepts": {}, "nodes": [], "edges": [],
+        }),
+        encoding="utf-8",
+    )
+    legacy_path = project / "claimtrace.config.json"
+    legacy_path.write_text(json.dumps({"root": "."}), encoding="utf-8")
+    (project / "provsleuth.config.json").write_text("{}", encoding="utf-8")
+
+    cfg = load_config(explicit=legacy_path)
+
+    assert cfg.config_path == legacy_path.resolve()
+    assert cfg.legacy_layout is True
+    assert cfg.store_prefix == "claimtrace"
+    assert cfg.graph_path == (project / "claimtrace" / "graph.json").resolve()
+    assert cfg.events_path == (project / "claimtrace" / "events").absolute()
+    assert cfg.assessments_path == (project / "claimtrace" / "assessments").absolute()
+    assert cfg.replays_path == (project / "claimtrace" / "replays").absolute()
+    assert cfg.method_assessments_path == (
+        project / "claimtrace" / "method-assessments"
+    ).absolute()
+    assert cfg.derivations_path == (project / "claimtrace" / "derivations").resolve()
+    assert cfg.semantic_mappings_path == (
+        project / "claimtrace" / "semantics" / "mappings"
+    ).resolve()
+    assert cfg.semantic_policies_path == (
+        project / "claimtrace" / "semantics" / "policies"
+    ).resolve()
+
+
+def test_current_config_name_uses_provsleuth_default_store_paths(tmp_path):
+    project = tmp_path / "current-project"
+    (project / "provsleuth").mkdir(parents=True)
+    (project / "provsleuth" / "graph.json").write_text(
+        json.dumps({
+            "schema_version": "1.0", "concepts": {}, "nodes": [], "edges": [],
+        }),
+        encoding="utf-8",
+    )
+    config_path = project / "provsleuth.config.json"
+    config_path.write_text(json.dumps({"root": "."}), encoding="utf-8")
+
+    cfg = load_config(explicit=config_path)
+
+    assert cfg.legacy_layout is False
+    assert cfg.store_prefix == "provsleuth"
+    assert cfg.graph_path == (project / "provsleuth" / "graph.json").resolve()
+    assert cfg.events_path == (project / "provsleuth" / "events").absolute()
+    assert cfg.assessments_path == (project / "provsleuth" / "assessments").absolute()
+    assert cfg.replays_path == (project / "provsleuth" / "replays").absolute()
+    assert cfg.method_assessments_path == (
+        project / "provsleuth" / "method-assessments"
+    ).absolute()
+    assert cfg.derivations_path == (project / "provsleuth" / "derivations").resolve()
+    assert cfg.semantic_mappings_path == (
+        project / "provsleuth" / "semantics" / "mappings"
+    ).resolve()
+    assert cfg.semantic_policies_path == (
+        project / "provsleuth" / "semantics" / "policies"
+    ).resolve()
 
 
 def _make_directory_link(target, link):
@@ -81,10 +166,10 @@ def test_graph_lock_rejects_linked_private_runtime_root(tmp_path, monkeypatch):
 
 def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path, capsys):
     repository = Path(__file__).resolve().parents[1]
-    canonical_root = repository / "src" / "claimtrace" / "templates" / "claimtrace-log"
+    canonical_root = repository / "src" / "provsleuth" / "templates" / "provsleuth-log"
     source_roots = [
-        repository / ".agents" / "skills" / "claimtrace-log",
-        repository / ".claude" / "skills" / "claimtrace-log",
+        repository / ".agents" / "skills" / "provsleuth-log",
+        repository / ".claude" / "skills" / "provsleuth-log",
     ]
     manifest = ("SKILL.md", "references/semantic-authoring.md")
     expected_files = {
@@ -111,8 +196,8 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
     ]
 
     assert main(["install-skill", "--dir", str(tmp_path)]) == 0
-    agents = tmp_path / ".agents" / "skills" / "claimtrace-log" / "SKILL.md"
-    claude = tmp_path / ".claude" / "skills" / "claimtrace-log" / "SKILL.md"
+    agents = tmp_path / ".agents" / "skills" / "provsleuth-log" / "SKILL.md"
+    claude = tmp_path / ".claude" / "skills" / "provsleuth-log" / "SKILL.md"
     agents_reference = agents.parent / "references" / "semantic-authoring.md"
     claude_reference = claude.parent / "references" / "semantic-authoring.md"
     assert agents.read_text(encoding="utf-8") == expected
@@ -195,7 +280,7 @@ def test_concurrent_force_skill_installs_remain_bundle_coherent(
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(install, ("A", "B")))
 
-    root = tmp_path / ".agents" / "skills" / "claimtrace-log"
+    root = tmp_path / ".agents" / "skills" / "provsleuth-log"
     installed = (
         (root / "SKILL.md").read_text(encoding="utf-8"),
         (root / "references" / "semantic-authoring.md").read_text(encoding="utf-8"),
@@ -243,8 +328,8 @@ def test_concurrent_force_init_remains_scaffold_coherent(tmp_path, monkeypatch):
         results = list(pool.map(initialise, ("A", "B")))
 
     installed = [
-        (project / "claimtrace.config.json").read_text(encoding="utf-8"),
-        (project / "claimtrace" / "graph.json").read_text(encoding="utf-8"),
+        (project / "provsleuth.config.json").read_text(encoding="utf-8"),
+        (project / "provsleuth" / "graph.json").read_text(encoding="utf-8"),
     ]
     assert results == [0, 0]
     assert overlaps == []
@@ -254,22 +339,22 @@ def test_concurrent_force_init_remains_scaffold_coherent(tmp_path, monkeypatch):
 def test_default_init_is_a_green_planning_project_without_invented_assets(
         tmp_path, capsys):
     project = tmp_path / "planning-project"
-    config_path = project / "claimtrace.config.json"
+    config_path = project / "provsleuth.config.json"
 
     assert main(["init", str(project)]) == 0
     init_output = capsys.readouterr().out
     config = json.loads(config_path.read_text(encoding="utf-8"))
     graph = json.loads(
-        (project / "claimtrace" / "graph.json").read_text(encoding="utf-8")
+        (project / "provsleuth" / "graph.json").read_text(encoding="utf-8")
     )
 
-    assert "initialised planning claimtrace" in init_output
+    assert "initialised planning ProvSleuth" in init_output
     assert config["verifiers"] is None
     assert config["execution"]["require_stage_checkpoints"] is False
     assert graph == {
         "schema_version": "1.0", "concepts": {}, "nodes": [], "edges": [],
     }
-    assert not (project / "claimtrace" / "verifiers.py").exists()
+    assert not (project / "provsleuth" / "verifiers.py").exists()
     assert not (project / "data").exists()
     assert "data/raw.csv" not in config_path.read_text(encoding="utf-8")
 
@@ -288,22 +373,22 @@ def test_default_init_is_a_green_planning_project_without_invented_assets(
 
 def test_explicit_init_example_is_complete_and_runnable(tmp_path, capsys):
     project = tmp_path / "example-project"
-    config_path = project / "claimtrace.config.json"
+    config_path = project / "provsleuth.config.json"
 
     assert main(["init", str(project), "--example"]) == 0
     init_output = capsys.readouterr().out
     config = json.loads(config_path.read_text(encoding="utf-8"))
     graph = json.loads(
-        (project / "claimtrace" / "graph.json").read_text(encoding="utf-8")
+        (project / "provsleuth" / "graph.json").read_text(encoding="utf-8")
     )
 
-    assert "initialised example claimtrace" in init_output
-    assert config["verifiers"] == "claimtrace/verifiers.py"
-    assert graph["nodes"][0]["path"] == "data/claimtrace-example.csv"
+    assert "initialised example ProvSleuth" in init_output
+    assert config["verifiers"] == "provsleuth/verifiers.py"
+    assert graph["nodes"][0]["path"] == "data/provsleuth-example.csv"
     assert (project / graph["nodes"][0]["path"]).read_text(encoding="utf-8") == (
         "measurement\n1\n2\n"
     )
-    assert (project / "claimtrace" / "verifiers.py").is_file()
+    assert (project / "provsleuth" / "verifiers.py").is_file()
 
     assert main(["--config", str(config_path), "verify"]) == 0
     verify_output = capsys.readouterr().out
@@ -319,11 +404,11 @@ def test_explicit_init_example_is_complete_and_runnable(tmp_path, capsys):
 
 def test_configured_verifier_with_no_registered_checks_fails_closed(tmp_path, capsys):
     project = tmp_path / "empty-verifier-project"
-    config_path = project / "claimtrace.config.json"
+    config_path = project / "provsleuth.config.json"
 
     assert main(["init", str(project), "--example"]) == 0
     capsys.readouterr()
-    (project / "claimtrace" / "verifiers.py").write_text(
+    (project / "provsleuth" / "verifiers.py").write_text(
         "# Intentionally registers no checks.\n", encoding="utf-8",
     )
 
@@ -335,12 +420,12 @@ def test_configured_verifier_with_no_registered_checks_fails_closed(tmp_path, ca
 
 def test_registered_verifier_failure_remains_nonzero(tmp_path, capsys):
     project = tmp_path / "failing-verifier-project"
-    config_path = project / "claimtrace.config.json"
+    config_path = project / "provsleuth.config.json"
 
     assert main(["init", str(project), "--example"]) == 0
     capsys.readouterr()
-    (project / "claimtrace" / "verifiers.py").write_text(
-        "from claimtrace import check\n\n"
+    (project / "provsleuth" / "verifiers.py").write_text(
+        "from provsleuth import check\n\n"
         "@check('intentional drift')\n"
         "def drift():\n"
         "    return False, 'live=changed', 'live=expected'\n",
@@ -402,17 +487,17 @@ def test_install_skill_rejects_directory_link_escape(tmp_path, capsys):
         _remove_directory_link(link)
 
 
-def test_init_rejects_claimtrace_directory_link_escape(tmp_path, capsys):
+def test_init_rejects_provsleuth_directory_link_escape(tmp_path, capsys):
     project = tmp_path / "project"
     external = tmp_path / "external-init-target"
     project.mkdir()
     external.mkdir()
-    link = project / "claimtrace"
+    link = project / "provsleuth"
     _make_directory_link(external, link)
 
     try:
         assert main(["init", str(project)]) == 1
-        assert not (project / "claimtrace.config.json").exists()
+        assert not (project / "provsleuth.config.json").exists()
         assert list(external.iterdir()) == []
         assert "refusing unsafe path" in capsys.readouterr().err
     finally:
@@ -429,7 +514,7 @@ def test_init_example_rejects_data_directory_link_escape(tmp_path, capsys):
 
     try:
         assert main(["init", str(project), "--example"]) == 1
-        assert not (project / "claimtrace.config.json").exists()
+        assert not (project / "provsleuth.config.json").exists()
         assert list(external.iterdir()) == []
         assert "refusing unsafe path" in capsys.readouterr().err
     finally:
@@ -438,7 +523,7 @@ def test_init_example_rejects_data_directory_link_escape(tmp_path, capsys):
 
 def test_install_skill_no_force_race_preserves_competing_file(
         tmp_path, monkeypatch, capsys):
-    target = tmp_path / ".agents" / "skills" / "claimtrace-log" / "SKILL.md"
+    target = tmp_path / ".agents" / "skills" / "provsleuth-log" / "SKILL.md"
     real_link = os.link
     raced = False
 
@@ -460,7 +545,7 @@ def test_install_skill_no_force_race_preserves_competing_file(
 
 def test_init_no_force_race_preserves_competing_config(tmp_path, monkeypatch, capsys):
     project = tmp_path / "project"
-    target = project / "claimtrace.config.json"
+    target = project / "provsleuth.config.json"
     real_link = os.link
     raced = False
 
@@ -476,13 +561,13 @@ def test_init_no_force_race_preserves_competing_config(tmp_path, monkeypatch, ca
     assert raced is True
     assert target.read_text(encoding="utf-8") == "concurrent config\n"
     assert "refusing to overwrite config" in capsys.readouterr().err
-    assert not (project / "claimtrace" / "graph.json").exists()
+    assert not (project / "provsleuth" / "graph.json").exists()
 
 
 def test_no_force_preflight_conflicts_do_not_create_other_scaffold_paths(
         tmp_path, capsys):
     project = tmp_path / "project"
-    skill_root = project / ".agents" / "skills" / "claimtrace-log"
+    skill_root = project / ".agents" / "skills" / "provsleuth-log"
     skill_root.mkdir(parents=True)
     (skill_root / "SKILL.md").write_text("project skill\n", encoding="utf-8")
 
@@ -495,7 +580,7 @@ def test_no_force_preflight_conflicts_do_not_create_other_scaffold_paths(
     config = project / "claimtrace.config.json"
     config.write_text("existing config\n", encoding="utf-8")
     assert main(["init", str(project)]) == 1
-    assert not (project / "claimtrace").exists()
+    assert not (project / "provsleuth").exists()
 
 
 def test_cli_json_inputs_are_bounded_and_recursion_safe(
@@ -562,17 +647,17 @@ def test_logic_config_is_project_scoped_and_requires_explicit_external_opt_in(tm
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
     cfg = _project(tmp_path, graph, config={
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
         "logic": {
-            "derivations": "claimtrace/derivations",
-            "vocabularies": ["claimtrace/logic/vocabulary.json"],
-            "rule_packs": ["claimtrace/logic/rules.json"],
+            "derivations": "provsleuth/derivations",
+            "vocabularies": ["provsleuth/logic/vocabulary.json"],
+            "rule_packs": ["provsleuth/logic/rules.json"],
             "require_derivations": True,
         },
     })
-    assert cfg.derivations_path == (tmp_path / "claimtrace" / "derivations").resolve()
+    assert cfg.derivations_path == (tmp_path / "provsleuth" / "derivations").resolve()
     assert cfg.logic_vocabulary_paths == [
-        (tmp_path / "claimtrace" / "logic" / "vocabulary.json").resolve()
+        (tmp_path / "provsleuth" / "logic" / "vocabulary.json").resolve()
     ]
     assert cfg.require_derivations is True
 
@@ -590,7 +675,7 @@ def test_logic_config_is_project_scoped_and_requires_explicit_external_opt_in(tm
     ]
 
     config["logic"]["vocabularies"] = [
-        "claimtrace/logic/vocabulary.json", "claimtrace/logic/vocabulary.json",
+        "provsleuth/logic/vocabulary.json", "provsleuth/logic/vocabulary.json",
     ]
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(SystemExit, match="duplicate paths"):
@@ -601,12 +686,12 @@ def test_semantics_config_is_strict_project_scoped_and_explicit(tmp_path):
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
     cfg = _project(tmp_path, graph, config={
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
         "semantics": {
-            "terminologies": ["claimtrace/semantics/local.json"],
-            "ontology_locks": ["claimtrace/semantics/example.lock.json"],
-            "mappings": "claimtrace/semantics/mappings",
-            "policies": "claimtrace/semantics/policies",
+            "terminologies": ["provsleuth/semantics/local.json"],
+            "ontology_locks": ["provsleuth/semantics/example.lock.json"],
+            "mappings": "provsleuth/semantics/mappings",
+            "policies": "provsleuth/semantics/policies",
             "active_policy": "semantic-policy:sha256:" + "a" * 64,
             "require_active_policy": True,
             "language": "en",
@@ -615,13 +700,13 @@ def test_semantics_config_is_strict_project_scoped_and_explicit(tmp_path):
         },
     })
     assert cfg.semantic_terminology_paths == [
-        (tmp_path / "claimtrace" / "semantics" / "local.json").resolve()
+        (tmp_path / "provsleuth" / "semantics" / "local.json").resolve()
     ]
     assert cfg.semantic_ontology_lock_paths == [
-        (tmp_path / "claimtrace" / "semantics" / "example.lock.json").resolve()
+        (tmp_path / "provsleuth" / "semantics" / "example.lock.json").resolve()
     ]
     assert cfg.semantic_mappings_path == (
-        tmp_path / "claimtrace" / "semantics" / "mappings"
+        tmp_path / "provsleuth" / "semantics" / "mappings"
     ).resolve()
     assert cfg.require_active_semantic_policy is True
     assert cfg.semantic_max_candidates == 50
@@ -641,8 +726,8 @@ def test_semantics_config_is_strict_project_scoped_and_explicit(tmp_path):
     ]
 
     config["semantics"]["ontology_locks"] = [
-        "claimtrace/semantics/example.lock.json",
-        "claimtrace/semantics/example.lock.json",
+        "provsleuth/semantics/example.lock.json",
+        "provsleuth/semantics/example.lock.json",
     ]
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(SystemExit, match="duplicate paths"):
@@ -655,7 +740,7 @@ def test_semantics_config_is_strict_project_scoped_and_explicit(tmp_path):
     ("max_ontology_bytes", True, "positive integer"),
     ("max_ontology_bytes", 274877906945, "positive integer"),
     ("active_policy", "", "null or an exact semantic-policy"),
-    ("active_policy", "claimtrace/semantics/active.json", "null or an exact semantic-policy"),
+    ("active_policy", "provsleuth/semantics/active.json", "null or an exact semantic-policy"),
     ("language", "", "non-empty string"),
     ("language", "@@@", "BCP-47-style"),
     ("require_active_policy", 1, "must be a boolean"),
@@ -664,13 +749,13 @@ def test_semantics_config_rejects_ambiguous_scalar_values(
         tmp_path, field, value, message):
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
     config = {
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
         "semantics": {field: value},
     }
-    (tmp_path / "claimtrace").mkdir()
-    config_path = tmp_path / "claimtrace.config.json"
+    (tmp_path / "provsleuth").mkdir()
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
-    (tmp_path / "claimtrace" / "graph.json").write_text(
+    (tmp_path / "provsleuth" / "graph.json").write_text(
         json.dumps(graph), encoding="utf-8",
     )
     with pytest.raises(SystemExit, match=message):
@@ -678,17 +763,17 @@ def test_semantics_config_rejects_ambiguous_scalar_values(
 
 
 @pytest.mark.parametrize("semantics,message", [
-    ({"ontology_locks": ["claimtrace/graph.json"]}, "overlaps a protected"),
-    ({"mappings": "claimtrace/events"}, "distinct non-nested"),
-    ({"terminologies": ["claimtrace/semantics/mappings/terms.json"]},
+    ({"ontology_locks": ["provsleuth/graph.json"]}, "overlaps a protected"),
+    ({"mappings": "provsleuth/events"}, "distinct non-nested"),
+    ({"terminologies": ["provsleuth/semantics/mappings/terms.json"]},
      "inside a provenance store"),
 ])
 def test_semantics_config_rejects_policy_and_provenance_path_overlap(
         tmp_path, semantics, message):
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
     config = {
-        "root": ".", "graph": "claimtrace/graph.json",
-        "events": "claimtrace/events", "semantics": semantics,
+        "root": ".", "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events", "semantics": semantics,
     }
     with pytest.raises(SystemExit, match=message):
         _project(tmp_path, graph, config=config)
@@ -696,27 +781,27 @@ def test_semantics_config_rejects_policy_and_provenance_path_overlap(
 
 def test_semantics_config_rejects_control_paths_and_excessive_counts(tmp_path):
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
     (trace / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
 
     config_path.write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
         "semantics": {"terminologies": ["bad\u0000path"]},
     }), encoding="utf-8")
     with pytest.raises(SystemExit, match="without controls"):
         Config(config_path)
 
     config_path.write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
         "semantics": {"mappings": "bad\ud800path"},
     }), encoding="utf-8")
     with pytest.raises(SystemExit, match="Unicode surrogates"):
         Config(config_path)
 
     config_path.write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
         "semantics": {"ontology_locks": [f"locks/{index}.json" for index in range(257)]},
     }), encoding="utf-8")
     with pytest.raises(SystemExit, match="256-path limit"):
@@ -725,12 +810,12 @@ def test_semantics_config_rejects_control_paths_and_excessive_counts(tmp_path):
 
 def test_unknown_semantics_key_is_terminal_safe(tmp_path):
     graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
     (trace / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
         "semantics": {"\u001b[31mspoof": True},
     }), encoding="utf-8")
 
@@ -741,7 +826,7 @@ def test_unknown_semantics_key_is_terminal_safe(tmp_path):
 
 
 def test_config_read_is_bounded_and_recursion_errors_are_clean(tmp_path):
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text("[" * 5000 + "]" * 5000, encoding="utf-8")
     with pytest.raises(
         SystemExit, match="not valid JSON.*JSON nesting exceeds the 256-level limit",

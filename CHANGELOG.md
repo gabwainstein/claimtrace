@@ -1,9 +1,29 @@
 # Changelog
 
-All notable changes to `claimtrace` are documented here. This project adheres to
+All notable changes to ProvSleuth are documented here. This project adheres to
 [semantic versioning](https://semver.org/).
 
 ## Unreleased
+
+## 0.4.0 - 2026-07-17
+
+### Changed
+- Rename the distribution, Python package, command, project scaffold, visualizer branding, and
+  agent skill from Claimtrace to ProvSleuth.
+- Use `provsleuth.config.json` and `provsleuth/` for newly initialized projects while continuing to
+  discover legacy `claimtrace.config.json` projects with their original implicit store paths.
+  Same-directory dual configs fail closed, and explicit `--config` remains authoritative.
+- Emit `PROVSLEUTH_*` cooperative-checkpoint environment variables while accepting the legacy
+  `CLAIMTRACE_*` variables and rejecting conflicting dual values. Runtime lock names remain shared
+  with Claimtrace-era processes so old and new versions cannot bypass each other.
+- Move browser-local graph arrangements to a ProvSleuth key with one-time recovery of compatible
+  Claimtrace-era layouts.
+
+### Compatibility
+- Keep all persisted `claimtrace.*` schema values, logical identifiers, content-addressed records,
+  checked-in legacy demo stores, and historical release manifests byte-compatible. ProvSleuth does
+  not ship a `claimtrace` import package or command alias, avoiding the namespace collision that
+  motivated the rename.
 
 ## 0.3.0 - 2026-07-16
 

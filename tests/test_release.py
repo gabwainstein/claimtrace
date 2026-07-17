@@ -6,16 +6,17 @@ import sys
 
 import pytest
 
-import claimtrace.release as release
-from claimtrace.config import Config
-from claimtrace.events import CONTRACT_EVENT_SCHEMA, SUPPORTED_EVENT_SCHEMAS, run_command
-from claimtrace.engine import METHOD_REQUIREMENTS_SCHEMA
-from claimtrace.method_assessment import (
+import provsleuth.release as release
+from provsleuth import __version__
+from provsleuth.config import Config
+from provsleuth.events import CONTRACT_EVENT_SCHEMA, SUPPORTED_EVENT_SCHEMAS, run_command
+from provsleuth.engine import METHOD_REQUIREMENTS_SCHEMA
+from provsleuth.method_assessment import (
     SCHEMA_VERSION as METHOD_ASSESSMENT_SCHEMA,
     append_method_assessment,
     create_method_assessment,
 )
-from claimtrace.pipeline import (
+from provsleuth.pipeline import (
     CONTRACT_SCHEMA as PIPELINE_CONTRACT_SCHEMA,
     SNAPSHOT_SCHEMA as PIPELINE_SNAPSHOT_SCHEMA,
     STAGE_CHECKPOINT_SCHEMA,
@@ -23,7 +24,7 @@ from claimtrace.pipeline import (
     STAGE_TRACE_SCHEMA,
     SUPPORTED_SNAPSHOT_SCHEMAS,
 )
-from claimtrace.replay import (
+from provsleuth.replay import (
     REPLAY_SCHEMA,
     SUPPORTED_REPLAY_SCHEMAS,
     replay_run,
@@ -37,7 +38,7 @@ def _write_json(path, value):
 
 
 def _project(tmp_path, *, with_assets=False):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
     (tmp_path / "data.csv").write_text("x\n1\n", encoding="utf-8")
     (tmp_path / "analysis.py").write_text("print('analysis')\n", encoding="utf-8")
@@ -58,9 +59,9 @@ def _project(tmp_path, *, with_assets=False):
     _write_json(trace / "graph.json", graph)
     config = {
         "root": ".",
-        "graph": "claimtrace/graph.json",
-        "events": "claimtrace/events",
-        "assessments": "claimtrace/assessments",
+        "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events",
+        "assessments": "provsleuth/assessments",
     }
     if with_assets:
         terminology = {
@@ -115,14 +116,14 @@ def _project(tmp_path, *, with_assets=False):
         _write_json(trace / "logic" / "vocabulary.json", vocabulary)
         _write_json(trace / "logic" / "rules.json", rules)
         config["semantics"] = {
-            "terminologies": ["claimtrace/semantics/terms.json"],
+            "terminologies": ["provsleuth/semantics/terms.json"],
         }
         config["logic"] = {
-            "vocabularies": ["claimtrace/logic/vocabulary.json"],
-            "rule_packs": ["claimtrace/logic/rules.json"],
+            "vocabularies": ["provsleuth/logic/vocabulary.json"],
+            "rule_packs": ["provsleuth/logic/rules.json"],
         }
-    _write_json(tmp_path / "claimtrace.config.json", config)
-    return Config(tmp_path / "claimtrace.config.json")
+    _write_json(tmp_path / "provsleuth.config.json", config)
+    return Config(tmp_path / "provsleuth.config.json")
 
 
 def _file(manifest, path):
@@ -138,23 +139,38 @@ def test_release_manifest_is_deterministic_and_covers_exact_project_bytes(tmp_pa
     assert first == second
     release.validate_release_manifest(first)
     assert first["schema_version"] == "claimtrace.project-release/1"
+    assert first["tool"] == {"name": "provsleuth", "version": __version__}
     assert first["release_id"].startswith("release:sha256:")
-    assert _file(first, "claimtrace.config.json")["sha256"] == hashlib.sha256(
-        (tmp_path / "claimtrace.config.json").read_bytes()
+    assert _file(first, "provsleuth.config.json")["sha256"] == hashlib.sha256(
+        (tmp_path / "provsleuth.config.json").read_bytes()
     ).hexdigest()
-    assert _file(first, "claimtrace/graph.json")["roles"] == ["graph"]
+    assert _file(first, "provsleuth/graph.json")["roles"] == ["graph"]
     assert _file(first, "data.csv")["logical_ids"] == ["data:raw"]
     assert _file(first, "analysis.py")["logical_ids"] == ["code:analysis"]
-    assert _file(first, "claimtrace/semantics/terms.json")["logical_ids"] == [
+    assert _file(first, "provsleuth/semantics/terms.json")["logical_ids"] == [
         "study:terms"
     ]
-    assert _file(first, "claimtrace/logic/vocabulary.json")["logical_ids"] == [
+    assert _file(first, "provsleuth/logic/vocabulary.json")["logical_ids"] == [
         "study:vocabulary"
     ]
-    assert _file(first, "claimtrace/logic/rules.json")["logical_ids"] == [
+    assert _file(first, "provsleuth/logic/rules.json")["logical_ids"] == [
         "study:rules"
     ]
     assert any("cannot prove" in item for item in first["scope"]["limitations"])
+
+
+def test_legacy_claimtrace_release_tool_declaration_remains_valid(tmp_path):
+    cfg = _project(tmp_path)
+    manifest = release.create_release_manifest(cfg)
+    manifest["tool"]["name"] = "claimtrace"
+    core = {key: manifest[key] for key in manifest if key != "release_id"}
+    manifest["release_id"] = "release:sha256:" + release.canonical_sha256(core)
+
+    release.validate_release_manifest(manifest)
+    verification = release.verify_release_manifest(cfg, manifest)
+
+    assert verification["valid"] is True
+    assert verification["diff"]["changed_metadata_fields"] == ["tool"]
 
 
 def test_release_manifest_includes_content_addressed_event_files_and_ids(tmp_path):
@@ -190,7 +206,7 @@ def test_release_includes_current_pipeline_source_from_events_without_method_rev
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert source["outcome"] == "succeeded"
@@ -216,7 +232,7 @@ def test_release_labels_evolved_pipeline_path_as_current_source_not_historical_c
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert source["outcome"] == "succeeded"
@@ -246,13 +262,13 @@ def test_release_includes_validated_execution_provenance_and_schema_inventory(tm
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert source["outcome"] == "succeeded"
     certificate = replay_run(cfg, source["run_id"], attempts=2)["certificate"]
     proposal = create_method_assessment(
-        cfg, "claimtrace/primary.pipeline.json", "method:primary",
+        cfg, "provsleuth/primary.pipeline.json", "method:primary",
         {
             "verdict": "implements",
             "step_alignments": [
@@ -290,7 +306,7 @@ def test_release_includes_validated_execution_provenance_and_schema_inventory(tm
         item for item in manifest["files"]
         if "method_assessment" in item["roles"]
     )
-    contract_file = _file(manifest, "claimtrace/primary.pipeline.json")
+    contract_file = _file(manifest, "provsleuth/primary.pipeline.json")
     assert replay_file["logical_ids"] == [certificate["id"]]
     assert method_file["logical_ids"] == [proposal["id"]]
     assert contract_file["roles"] == ["pipeline_contract_current_source"]
@@ -346,7 +362,7 @@ def test_release_includes_validated_execution_provenance_and_schema_inventory(tm
 def test_release_fails_closed_on_invalid_execution_store_json(
         tmp_path, store_name, relative_path, error):
     cfg = _project(tmp_path)
-    path = tmp_path / "claimtrace" / store_name / relative_path
+    path = tmp_path / "provsleuth" / store_name / relative_path
     _write_json(path, {})
 
     with pytest.raises(release.ReleaseError, match=error):

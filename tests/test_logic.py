@@ -7,9 +7,9 @@ import shutil
 
 import pytest
 
-import claimtrace.logic as logic_module
-from claimtrace.config import Config
-from claimtrace.logic import (
+import provsleuth.logic as logic_module
+from provsleuth.config import Config
+from provsleuth.logic import (
     EVIDENCE_PLAN_SCHEMA,
     LogicError,
     append_derivation,
@@ -194,8 +194,8 @@ def _agent_input(*, failed="0", critical="0", include_scan=True, conflict=False)
 
 
 def _project(tmp_path, *, failed=0, critical=0, logic=True):
-    (tmp_path / "claimtrace").mkdir()
-    (tmp_path / "claimtrace" / "logic").mkdir()
+    (tmp_path / "provsleuth").mkdir()
+    (tmp_path / "provsleuth" / "logic").mkdir()
     (tmp_path / "results").mkdir()
     (tmp_path / "results" / "test.json").write_text(
         json.dumps({"release": "release-1", "failed": failed, "failed_conflict": 2}),
@@ -246,20 +246,20 @@ def _project(tmp_path, *, failed=0, critical=0, logic=True):
         ],
         "edges": [],
     }
-    (tmp_path / "claimtrace" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    vocabulary_path = tmp_path / "claimtrace" / "logic" / "vocabulary.json"
-    rules_path = tmp_path / "claimtrace" / "logic" / "rules.json"
+    (tmp_path / "provsleuth" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
+    vocabulary_path = tmp_path / "provsleuth" / "logic" / "vocabulary.json"
+    rules_path = tmp_path / "provsleuth" / "logic" / "rules.json"
     vocabulary_path.write_text(json.dumps(_vocabulary()), encoding="utf-8")
     rules_path.write_text(json.dumps(_rules()), encoding="utf-8")
-    (tmp_path / "claimtrace.config.json").write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+    (tmp_path / "provsleuth.config.json").write_text(json.dumps({
+        "root": ".", "graph": "provsleuth/graph.json",
         "logic": {
-            "derivations": "claimtrace/derivations",
-            "vocabularies": ["claimtrace/logic/vocabulary.json"],
-            "rule_packs": ["claimtrace/logic/rules.json"],
+            "derivations": "provsleuth/derivations",
+            "vocabularies": ["provsleuth/logic/vocabulary.json"],
+            "rule_packs": ["provsleuth/logic/rules.json"],
         },
     }), encoding="utf-8")
-    return Config(tmp_path / "claimtrace.config.json")
+    return Config(tmp_path / "provsleuth.config.json")
 
 
 def _make(cfg, agent_input=None, result_ids=None, vocabulary=None, rules=None):
@@ -633,7 +633,7 @@ def test_proof_identity_survives_project_copy_and_input_order(tmp_path):
     shutil.copytree(source, copied)
     second_input = _agent_input()
     second_input["facts"].reverse()
-    second = _make(Config(copied / "claimtrace.config.json"), second_input)
+    second = _make(Config(copied / "provsleuth.config.json"), second_input)
     assert first["derived"]["proof_id"] == second["derived"]["proof_id"]
     assert first["id"] == second["id"]
 

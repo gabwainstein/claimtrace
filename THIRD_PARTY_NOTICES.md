@@ -1,6 +1,6 @@
 # Third-party data and produced-work notices
 
-Claimtrace's original software and documentation are licensed under the repository's MIT license.
+ProvSleuth's original software and documentation are licensed under the repository's MIT license.
 That license does not relicense third-party datasets or outputs derived from them. The public demos
 carry the following separate terms and attribution.
 

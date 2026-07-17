@@ -18,7 +18,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.pipeline import Pipeline
 
-from claimtrace import check
+from provsleuth import check
 
 
 EXPECTED_HASHES = {

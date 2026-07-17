@@ -1,6 +1,6 @@
 # Demo: motor-imagery decoding with EEGBCI
 
-This is a compact, real-data Claimtrace example. It asks whether a fixed sensor-space pipeline can
+This is a compact, real-data ProvSleuth example. It asks whether a fixed sensor-space pipeline can
 distinguish imagined movement of both hands from imagined movement of both feet in one participant.
 It uses only participant `S001`, motor-imagery runs `06`, `10`, and `14` from PhysioNet's EEG Motor
 Movement/Imagery Dataset version 1.0.0.
@@ -26,7 +26,7 @@ For these runs, annotation `T1` means both fists/hands and `T2` means both feet.
 pins the three versioned EDF URLs to the SHA-256 values published in PhysioNet's
 `SHA256SUMS.txt`. The EDF files total about 7.5 MB and are ignored by Git.
 
-The Claimtrace example code is covered by the repository's MIT license. The PhysioNet source data
+The ProvSleuth example code is covered by the repository's MIT license. The PhysioNet source data
 are licensed separately under ODC Attribution 1.0. The prepared epochs, result artifacts, and SVG
 are a derived dataset and produced works; they are not relicensed as MIT. They carry this notice:
 “Contains information from the EEG Motor Movement/Imagery Dataset v1.0.0, which is made available
@@ -53,7 +53,7 @@ requirements also include SciPy. It does not capture the full OS, BLAS, wheel, o
 environment, so cross-platform byte identity is not claimed.
 
 The scripts write tracked JSON artifacts with explicit LF newlines. This keeps their checked-out
-bytes identical to the bytes hashed in Claimtrace receipts even when Git is configured to normalize
+bytes identical to the bytes hashed in ProvSleuth receipts even when Git is configured to normalize
 line endings on Windows.
 
 The fixed final criterion is intentionally simple: all three folds must be valid and the observed
@@ -68,8 +68,8 @@ it in place. Reported scores are rounded to six decimal places.
 ## Set up
 
 From a source checkout, enter this directory, create an isolated environment, and install the
-example dependencies plus the local Claimtrace checkout. The pinned scientific stack requires
-Python 3.11 or newer; this is an example-only constraint, while Claimtrace's core remains Python
+example dependencies plus the local ProvSleuth checkout. The pinned scientific stack requires
+Python 3.11 or newer; this is an example-only constraint, while ProvSleuth's core remains Python
 3.9+ and dependency-free.
 
 ```bash
@@ -86,7 +86,13 @@ The explicit config and working directory prevent an unrelated ancestor project 
 mutated. The following PowerShell commands assume `$python = ".venv/Scripts/python.exe"` and
 `$root = (Resolve-Path ".").Path`:
 
-The raw EDFs are intentionally not bundled. Before the initial fetch, `claimtrace check` and strict
+This checked-in demo predates the rename to ProvSleuth. Its existing content-addressed records
+retain the legacy `claimtrace.config.json`, `claimtrace/` store paths, and `claimtrace.*` protocol
+identifiers. Invoke the current `provsleuth` module with that explicit legacy config. Do not rename
+the existing paths or records in place; a new run appends new records under the legacy-configured
+store.
+
+The raw EDFs are intentionally not bundled. Before the initial fetch, `provsleuth check` and strict
 checking report `MISSING_FILE` for those three current graph nodes; this is an explicit setup
 boundary, not a green clean-checkout state. Run the complete wrapped sequence below before
 interpreting validation results. After the fetch and analysis steps, the checked-in declarations
@@ -95,37 +101,37 @@ can be reconciled with the locally materialized source files and receipts.
 ```powershell
 $config = Join-Path $root "claimtrace.config.json"
 
-& $python -m claimtrace --config $config run --input analysis/00_fetch.py `
+& $python -m provsleuth --config $config run --input analysis/00_fetch.py `
   --output data/S001R06.edf --output data/S001R10.edf --output data/S001R14.edf `
   --output data/source_manifest.json --param dataset=eegmmidb-1.0.0 --cwd $root `
   -- $python analysis/00_fetch.py
 
-& $python -m claimtrace --config $config run `
+& $python -m provsleuth --config $config run `
   --input data/S001R06.edf --input data/S001R10.edf --input data/S001R14.edf `
   --input data/source_manifest.json --input analysis/01_prepare.py `
   --output data/prepared_epochs.npz --output results/preprocessing.json `
   --param band_hz=7-30 --param epoch_seconds=1-2 --cwd $root `
   -- $python analysis/01_prepare.py
 
-& $python -m claimtrace --config $config run `
+& $python -m provsleuth --config $config run `
   --input data/prepared_epochs.npz --input results/preprocessing.json `
   --input analysis/02_analyze.py --output results/decoding.json `
   --param validation=leave-one-run-out --param permutations=199 --param thread_limits=1 `
   --seed numpy=20260714 `
   --cwd $root -- $python analysis/02_analyze.py
 
-& $python -m claimtrace --config $config run --input results/decoding.json `
+& $python -m provsleuth --config $config run --input results/decoding.json `
   --input analysis/03_figure.py --output figures/decoding.svg --cwd $root `
   -- $python analysis/03_figure.py
 
-& $python -m claimtrace --config $config snapshot
-& $python -m claimtrace --config $config verify
-& $python -m claimtrace --config $config evidence-plan claim:above-null --json
-& $python -m claimtrace --config $config derivations --json
-& $python -m claimtrace --config $config assessments --json
-& $python -m claimtrace --config $config check --strict --json
-& $python -m claimtrace --config $config lint --strict
-& $python -m claimtrace --config $config view --output research-map.html
+& $python -m provsleuth --config $config snapshot
+& $python -m provsleuth --config $config verify
+& $python -m provsleuth --config $config evidence-plan claim:above-null --json
+& $python -m provsleuth --config $config derivations --json
+& $python -m provsleuth --config $config assessments --json
+& $python -m provsleuth --config $config check --strict --json
+& $python -m provsleuth --config $config lint --strict
+& $python -m provsleuth --config $config view --output research-map.html
 ```
 
 The equivalent POSIX shell sequence is:
@@ -135,37 +141,37 @@ python=".venv/bin/python"
 config="$PWD/claimtrace.config.json"
 root="$PWD"
 
-"$python" -m claimtrace --config "$config" run \
+"$python" -m provsleuth --config "$config" run \
   --input analysis/00_fetch.py \
   --output data/S001R06.edf --output data/S001R10.edf --output data/S001R14.edf \
   --output data/source_manifest.json --param dataset=eegmmidb-1.0.0 --cwd "$root" \
   -- "$python" analysis/00_fetch.py
 
-"$python" -m claimtrace --config "$config" run \
+"$python" -m provsleuth --config "$config" run \
   --input data/S001R06.edf --input data/S001R10.edf --input data/S001R14.edf \
   --input data/source_manifest.json --input analysis/01_prepare.py \
   --output data/prepared_epochs.npz --output results/preprocessing.json \
   --param band_hz=7-30 --param epoch_seconds=1-2 --cwd "$root" \
   -- "$python" analysis/01_prepare.py
 
-"$python" -m claimtrace --config "$config" run \
+"$python" -m provsleuth --config "$config" run \
   --input data/prepared_epochs.npz --input results/preprocessing.json \
   --input analysis/02_analyze.py --output results/decoding.json \
   --param validation=leave-one-run-out --param permutations=199 --param thread_limits=1 \
   --seed numpy=20260714 --cwd "$root" -- "$python" analysis/02_analyze.py
 
-"$python" -m claimtrace --config "$config" run \
+"$python" -m provsleuth --config "$config" run \
   --input results/decoding.json --input analysis/03_figure.py \
   --output figures/decoding.svg --cwd "$root" -- "$python" analysis/03_figure.py
 
-"$python" -m claimtrace --config "$config" snapshot
-"$python" -m claimtrace --config "$config" verify
-"$python" -m claimtrace --config "$config" evidence-plan claim:above-null --json
-"$python" -m claimtrace --config "$config" derivations --json
-"$python" -m claimtrace --config "$config" assessments --json
-"$python" -m claimtrace --config "$config" check --strict --json
-"$python" -m claimtrace --config "$config" lint --strict
-"$python" -m claimtrace --config "$config" view --output research-map.html
+"$python" -m provsleuth --config "$config" snapshot
+"$python" -m provsleuth --config "$config" verify
+"$python" -m provsleuth --config "$config" evidence-plan claim:above-null --json
+"$python" -m provsleuth --config "$config" derivations --json
+"$python" -m provsleuth --config "$config" assessments --json
+"$python" -m provsleuth --config "$config" check --strict --json
+"$python" -m provsleuth --config "$config" lint --strict
+"$python" -m provsleuth --config "$config" view --output research-map.html
 ```
 
 `semantic-above-null.proposal.json` records the current agent input authored by
@@ -181,11 +187,11 @@ Actor strings are self-asserted metadata, not authenticated identities, and acce
 attributed judgement rather than certification of scientific truth.
 
 Users adapting the example must copy the proposal, replace `provenance.agent` with a truthful value,
-and pass that same identity to `claimtrace assess`. Do not resubmit the checked-in proposal under
+and pass that same identity to `provsleuth assess`. Do not resubmit the checked-in proposal under
 its recorded actor.
 
 `symbolic-decoding.proposal.json` is not a semantic assessment. It is a plan request with no
-agent-chosen facts: Claimtrace resolves the claim-owned evidence plan and materializes the complete
+agent-chosen facts: ProvSleuth resolves the claim-owned evidence plan and materializes the complete
 binding from `results/decoding.json`. A `derivable` result means derivable under
 `eegbci:decoding-rules`; it does not make the scientific claim true or validate that the rule and
 binding capture the intended meaning.
@@ -193,7 +199,7 @@ binding capture the intended meaning.
 The checked-in plan request records the current LF-stable release-hardening task; earlier
 derivations remain inspectable as stale history. A new actor who wants to record another derivation
 must copy the request, replace `provenance.agent`, and pass that same truthful identity to
-`claimtrace derive`; the README intentionally does not provide a command that impersonates a
+`provsleuth derive`; the README intentionally does not provide a command that impersonates a
 recorded actor.
 
 The checked-in mechanical receipts retain the executable and working-directory paths observed on

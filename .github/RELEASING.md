@@ -1,4 +1,4 @@
-# Releasing Claimtrace
+# Releasing ProvSleuth
 
 Releases are built from an exact tag by GitHub Actions. PyPI publication uses OpenID Connect (OIDC)
 Trusted Publishing; do not create a long-lived PyPI token for this workflow and do not publish the
@@ -9,12 +9,12 @@ archives from a workstation.
 1. Protect `main` with required CI checks and required review for changes to CODEOWNERS paths.
 2. Create a protected GitHub environment named `pypi`. Require a maintainer approval and restrict
    deployment to version tags.
-3. Add a GitHub Trusted Publisher for `claimtrace-provenance`. For an existing PyPI project, add it
+3. Add a GitHub Trusted Publisher for `provsleuth`. For an existing PyPI project, add it
    from that project's Publishing settings. Before the first release, register a pending publisher
    from the PyPI account's Publishing page. Use these exact values:
 
    - owner: `gabwainstein`
-   - repository: `claimtrace`
+   - repository: `provsleuth`
    - workflow: `release.yml`
    - environment: `pypi`
 
@@ -32,7 +32,7 @@ Work from a clean, reviewed commit on `main`. Before tagging:
 1. Leave one empty `## Unreleased` section and move all of its content under a new
    `## X.Y.Z - YYYY-MM-DD` heading. The workflow rejects a populated `Unreleased` section, an
    undated heading, and reuse of an older version heading.
-2. Set the same version in `pyproject.toml`, `src/claimtrace/__init__.py`, and `CITATION.cff`.
+2. Set the same version in `pyproject.toml`, `src/provsleuth/__init__.py`, and `CITATION.cff`.
 3. Run the full test and package gates locally or confirm them on the exact commit in CI:
 
    ```bash
@@ -43,13 +43,13 @@ Work from a clean, reviewed commit on `main`. Before tagging:
    ```
 
 4. Review the source archive and wheel inventories. Tests are intentionally excluded from the
-   source distribution, while the packaged Claimtrace skill and its references must be present.
+   source distribution, while the packaged ProvSleuth skill and its references must be present.
 5. Create a signed, annotated tag whose name is exactly `v` plus the package version, then push only
    that tag. The signing key or email must be configured so GitHub marks the tag object's signature
    as verified; local signature success alone does not satisfy the automated gate:
 
    ```bash
-   git tag -s vX.Y.Z -m "Claimtrace X.Y.Z"
+   git tag -s vX.Y.Z -m "ProvSleuth X.Y.Z"
    git push origin vX.Y.Z
    ```
 
@@ -86,10 +86,10 @@ Download the GitHub release assets, then verify both the checksums and provenanc
 
 ```bash
 sha256sum -c SHA256SUMS
-gh attestation verify claimtrace_provenance-X.Y.Z-py3-none-any.whl \
-  --repo gabwainstein/claimtrace
-python -m pip install --no-cache-dir claimtrace-provenance==X.Y.Z
-claimtrace --help
+gh attestation verify provsleuth-X.Y.Z-py3-none-any.whl \
+  --repo gabwainstein/provsleuth
+python -m pip install --no-cache-dir provsleuth==X.Y.Z
+provsleuth --help
 ```
 
 PyPI files are immutable. If a harmful release is published, do not replace its tag or archives.

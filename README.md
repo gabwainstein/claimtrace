@@ -1,4 +1,4 @@
-# claimtrace
+# ProvSleuth
 
 **A dependency-aware provenance + verification engine for scientific data analysis.**
 
@@ -6,14 +6,14 @@ Long analyses drift. You re-cut a dataset, swap a model, or fix a preprocessing 
 weeks later a figure, a supplementary table, and a sentence in your draft are *still* built on the
 old version, silently. Nobody re-ran them because nothing *told* anyone to.
 
-`claimtrace` is a tiny (stdlib-only) typed knowledge graph of your project — `question → hypothesis
+`provsleuth` is a tiny (stdlib-only) typed knowledge graph of your project — `question → hypothesis
 → prediction → data/code → artifacts → figures → claims → conclusion` — whose job is
 **propagation**: when a canonical choice changes, it lists every downstream result that is now
 stale. It also keeps a **lab-notebook journal** of every attempt (including dead-ends and
 retractions), captures content-addressed mechanical receipts around analysis commands, and runs
 **project-specific numeric checks** that confirm headline numbers still reproduce from disk.
 For the part that cannot be reduced to hashes, an external agent can submit a schema-constrained
-semantic assessment that compares what a result means with what a claim says. Claimtrace pins the
+semantic assessment that compares what a result means with what a claim says. ProvSleuth pins the
 exact nodes and evidence bytes, applies deterministic policy, and leaves acceptance to a separate
 review step. A separate normalization ledger lets projects define local terms, search only exact
 matches in locally locked ontology indexes, review an attributed SKOS mapping, and activate an
@@ -21,10 +21,10 @@ explicit release made from exact accepted mapping IDs. For formalizable claims, 
 data-only symbolic layer grounds complete typed
   facts from result artifacts and computes whether a pinned target is derivable under project-owned
   rules, without presenting that conditional proof as scientific truth. Opaque scripts can be
-  wrapped in an exact multistage contract: Claimtrace pins their input, code, method, anchor,
+  wrapped in an exact multistage contract: ProvSleuth pins their input, code, method, anchor,
   parameter, seed, and output declarations; a fresh-workspace replay then tests byte repeatability
   at the process boundary. Path-bearing internal outputs are automatically hashed as materialized
-  intermediates. For code that can import Claimtrace, an optional cooperative checkpoint API can
+  intermediates. For code that can import ProvSleuth, an optional cooperative checkpoint API can
   record that the child program reached every locked stage callsite in dependency order, and replay
   can compare that self-reported sequence. Pathless or in-memory values remain unobserved. A
   separately reviewed assessment checks whether the cited code anchors actually implement the
@@ -32,24 +32,24 @@ data-only symbolic layer grounds complete typed
 
 It was extracted from the system used to harden a neuroscience manuscript end-to-end — where a
 single un-propagated "use dataset version B, not A" decision had quietly left several figures and
-claims on the old partition. `claimtrace` exists so that can't happen silently.
+claims on the old partition. `provsleuth` exists so that can't happen silently.
 
 ---
 
 ## Why it's different from a pipeline / experiment tracker
 
-Tools like Make/Snakemake rebuild *files*; W&B/MLflow log *runs*; DVC versions *data*. `claimtrace`
+Tools like Make/Snakemake rebuild *files*; W&B/MLflow log *runs*; DVC versions *data*. `provsleuth`
 tracks the **semantic** layer they don't:
 
 - **Canonical-change propagation.** Declare a *concept* (`dataset_version`, `model`, `reference`)
-  with a canonical value. `claimtrace impact --set dataset_version=v3` prints the exact, ordered list
+  with a canonical value. `provsleuth impact --set dataset_version=v3` prints the exact, ordered list
   of every node that must update — across data, code, figures, *and the prose claims*.
-- **Staleness as a first-class error.** `claimtrace check` flags a figure that was rendered before its
+- **Staleness as a first-class error.** `provsleuth check` flags a figure that was rendered before its
   inputs changed (mtime *and* content-hash), a "current" result that secretly depends on a
   retired branch, and a claim that cites an off-version artifact.
 - **A real lab notebook.** Log nulls, dead-ends, and retractions — not just successes — so you
-  never silently re-try something that already failed. `claimtrace journal` reads it back by verdict.
-- **Numeric verification.** Structure isn't enough: `claimtrace verify` runs your own checks that open
+  never silently re-try something that already failed. `provsleuth journal` reads it back by verdict.
+- **Numeric verification.** Structure isn't enough: `provsleuth verify` runs your own checks that open
   the artifacts and confirm the actual numbers your claims assert still hold.
 - **Portable symbolic claims.** Project-owned JSON vocabularies, complete result-to-fact bindings,
   and finite rules let users or agents compute conditional claim states without executable policy
@@ -70,7 +70,7 @@ content-addressed JSON stores. All remain readable, diffable, and Git-auditable.
 
 ## Beta capability boundary
 
-Claimtrace is usable today for local, regular-file research workflows, but it is not a universal
+ProvSleuth is usable today for local, regular-file research workflows, but it is not a universal
 execution monitor or a scientific-truth oracle. This matrix states the current trust boundary:
 
 | Area | Beta status | Current boundary |
@@ -91,65 +91,78 @@ execution monitor or a scientific-truth oracle. This matrix states the current t
 For a published release:
 
 ```bash
-pip install claimtrace-provenance            # core engine (stdlib only)
-pip install "claimtrace-provenance[verify]"  # + numpy/pandas if your verifiers use them
+pip install provsleuth            # core engine (stdlib only)
+pip install "provsleuth[verify]"  # + numpy/pandas if your verifiers use them
 ```
 
-The PyPI distribution is named `claimtrace-provenance`; the installed Python package and command
-remain `claimtrace`. PyPI's shorter `claimtrace` distribution belongs to an unrelated molecular-
-figure project that exposes the same import and console-command names. Do not install both
-distributions in one environment: package files and the `claimtrace` entry point can overwrite one
-another. Use a fresh virtual environment and remove the unrelated distribution before installing
-this one.
+The PyPI distribution, Python package, and command are all named `provsleuth`. The project was
+previously named Claimtrace. Existing `claimtrace.*` protocol identifiers and checked-in legacy
+projects remain readable compatibility surfaces; new projects and commands use the ProvSleuth
+namespace. The unrelated PyPI distribution named `claimtrace` is not a dependency.
 
-From a source checkout (including before the first renamed distribution is published):
+When upgrading an environment from Claimtrace 0.3, remove the old distribution and install the new
+one, then update Python imports and shell commands:
 
 ```bash
-git clone https://github.com/gabwainstein/claimtrace && cd claimtrace && pip install -e .
+pip uninstall claimtrace-provenance
+pip install provsleuth
+# from claimtrace...  -> from provsleuth...
+# claimtrace ...      -> provsleuth ...
+```
+
+Do not rewrite an existing `claimtrace.config.json`, `claimtrace/` store, `claimtrace.*` schema
+value, or content-addressed record merely for the rename. ProvSleuth discovers the legacy config
+and keeps its legacy implicit paths. If both config filenames exist in one directory, discovery
+fails closed; pass one explicitly only while resolving that ambiguity.
+
+From a source checkout:
+
+```bash
+git clone https://github.com/gabwainstein/provsleuth && cd provsleuth && pip install -e .
 ```
 
 ## Quickstart
 
 ```bash
 cd my-analysis-project
-claimtrace init                       # empty planning-safe config + graph; strict checks pass now
-# claimtrace init --example           # optional runnable toy CSV + verifier instead
-claimtrace install-skill --dir .      # optional: install agent + Claude project-local skills
+provsleuth init                       # empty planning-safe config + graph; strict checks pass now
+# provsleuth init --example           # optional runnable toy CSV + verifier instead
+provsleuth install-skill --dir .      # optional: install agent + Claude project-local skills
 # ... author and review the graph; agents use graph-propose/graph-apply as described below ...
-claimtrace run --input data/raw.csv --input analysis/fit.py --output results/fit.json \
+provsleuth run --input data/raw.csv --input analysis/fit.py --output results/fit.json \
   -- python analysis/fit.py           # execute + capture a mechanical receipt
 # for an opaque multistep script, add a reviewed claimtrace.pipeline-contract/1 file;
 # --stage-checkpoints also requires one instrumented stage_checkpoint("<id>") call per stage:
-claimtrace run --pipeline-contract claimtrace/fit.pipeline.json --stage-checkpoints \
+provsleuth run --pipeline-contract provsleuth/fit.pipeline.json --stage-checkpoints \
   --input data/raw.csv --input analysis/fit.py --output results/fit.json \
   --param model=ols --seed numpy=7 -- python analysis/fit.py
-claimtrace replay <run-id>             # >=2 fresh workspaces; exact output-byte comparison
-claimtrace assess-method method-proposal.json --actor analysis-agent
-claimtrace review-method <assessment-id> --state accepted --actor methods-reviewer
-claimtrace check                      # paths exist? nothing stale? nothing on a retired branch?
-claimtrace check --strict --json      # deterministic graph + receipt reconciliation gate
-claimtrace impact --set model=v2      # what must change if I switch the canonical model?
-claimtrace downstream art:clean_data  # what depends on this artifact?
-claimtrace verify                     # do my headline numbers still reproduce from disk?
-claimtrace assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
-claimtrace assessments --json        # inspect proposals, reviews, findings, and staleness
+provsleuth replay <run-id>             # >=2 fresh workspaces; exact output-byte comparison
+provsleuth assess-method method-proposal.json --actor analysis-agent
+provsleuth review-method <assessment-id> --state accepted --actor methods-reviewer
+provsleuth check                      # paths exist? nothing stale? nothing on a retired branch?
+provsleuth check --strict --json      # deterministic graph + receipt reconciliation gate
+provsleuth impact --set model=v2      # what must change if I switch the canonical model?
+provsleuth downstream art:clean_data  # what depends on this artifact?
+provsleuth verify                     # do my headline numbers still reproduce from disk?
+provsleuth assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
+provsleuth assessments --json        # inspect proposals, reviews, findings, and staleness
 # optional normalization, after adding project terminology + locked ontology/index assets:
-claimtrace ontology-candidates "memory score" --language en --limit 25 --json  # exact matches only
-claimtrace map-term mapping.json --actor analysis-agent --language en --limit 25  # reuse that profile
-claimtrace review-mapping <mapping-id> --state accepted --actor reviewer
-claimtrace compile-semantic-policy policy.json --actor policy-owner  # still inactive
-claimtrace semantic-status --json    # recheck locks, reviews, release, and explicit activation
-claimtrace evidence-plan claim:gate --json  # inspect the claim-owned exact required bindings
-claimtrace derive plan-request.json --actor analysis-agent  # request automatic all-of materialization
-claimtrace derivations --json        # inspect conditional proof states and current validity
-claimtrace explain <derivation-or-proof-id> --json  # inspect one composite proof certificate
-claimtrace journal --status dead_end  # show me everything I already tried that didn't work
-claimtrace view --output research-map.html  # semantic trajectory + mechanical receipt overlay
+provsleuth ontology-candidates "memory score" --language en --limit 25 --json  # exact matches only
+provsleuth map-term mapping.json --actor analysis-agent --language en --limit 25  # reuse that profile
+provsleuth review-mapping <mapping-id> --state accepted --actor reviewer
+provsleuth compile-semantic-policy policy.json --actor policy-owner  # still inactive
+provsleuth semantic-status --json    # recheck locks, reviews, release, and explicit activation
+provsleuth evidence-plan claim:gate --json  # inspect the claim-owned exact required bindings
+provsleuth derive plan-request.json --actor analysis-agent  # request automatic all-of materialization
+provsleuth derivations --json        # inspect conditional proof states and current validity
+provsleuth explain <derivation-or-proof-id> --json  # inspect one composite proof certificate
+provsleuth journal --status dead_end  # show me everything I already tried that didn't work
+provsleuth view --output research-map.html  # semantic trajectory + mechanical receipt overlay
 ```
 
-Default `claimtrace init` creates an empty valid graph, configures no executable verifier, and
+Default `provsleuth init` creates an empty valid graph, configures no executable verifier, and
 invents no dataset or analysis path. It therefore can accompany a study before data, code, claims,
-or terminology policy exist, and `claimtrace check --strict` is green immediately. Add graph nodes
+or terminology policy exist, and `provsleuth check --strict` is green immediately. Add graph nodes
 only as their real project objects are planned or created. Use explicit `--example` when you want
 the small runnable CSV and row-count verifier instead. Both modes deliberately leave semantic
 assets empty. The
@@ -159,7 +172,7 @@ proposal, separate review, inactive release, and explicit activation lifecycle.
 ## Opaque or multistep scripts
 
 Many real analyses clean data, transform variables, fit models, and export results inside one
-script without materializing or printing every intermediate. Claimtrace handles that case as five
+script without materializing or printing every intermediate. ProvSleuth handles that case as five
 separate evidence questions instead of treating one successful exit code as proof of everything:
 
 1. A method node declares small, stable steps in `claimtrace.method-spec/1`. A claim explicitly
@@ -168,10 +181,10 @@ separate evidence questions instead of treating one successful exit code as proo
 2. A `claimtrace.pipeline-contract/1` document maps each method step to exact code nodes and
    SHA-256-pinned text-line anchors, declares a stage DAG, and gives every declared input/output an
    exact graph role. Parameters and seed names are an exact allow-list.
-3. `claimtrace run --pipeline-contract ...` records an event-v3 receipt and a portable computation
+3. `provsleuth run --pipeline-contract ...` records an event-v3 receipt and a portable computation
    identity. Any non-terminal stage output whose existing graph node has a path is automatically a
    materialized intermediate: its pre/post process-boundary bytes are captured separately from the
-   terminal outputs. `claimtrace replay` repeats that successful computation at least twice in
+   terminal outputs. `provsleuth replay` repeats that successful computation at least twice in
    newly created workspaces populated only with the declared project inputs, compares every
    terminal output and materialized intermediate with the original and other attempts by SHA-256
    plus size, compares stdout/stderr and visible undeclared workspace file-path deltas across
@@ -180,24 +193,24 @@ separate evidence questions instead of treating one successful exit code as proo
    `stage_checkpoint("<contract-stage-id>")` once after each stage body. The controller requires the
    exact contract stage set, dependency order, uniqueness, execution binding, and a caller path and
    line inside that stage's locked anchor. Each record also carries `reporter_pid`, which must equal
-   the exact PID returned when Claimtrace launched the direct child. Such a run uses event-v4;
+   the exact PID returned when ProvSleuth launched the direct child. Such a run uses event-v4;
    replay-v3 repeats the checkpoint protocol with fresh bindings and compares the normalized
    callsite sequence with the source run and every attempt.
 
    ```python
-   from claimtrace.pipeline import stage_checkpoint
+   from provsleuth.pipeline import stage_checkpoint
 
    # Run and validate the declared stage body first.
    stage_checkpoint("fit")
    ```
 
-   The call returns `False` and writes nothing outside a checkpoint-enabled Claimtrace child. It
+   The call returns `False` and writes nothing outside a checkpoint-enabled ProvSleuth child. It
    returns `True` after appending the bound record inside one. Recompute the code-anchor line range
-   and digest after adding the call, and keep the call itself inside that stage's anchor. Claimtrace
+   and digest after adding the call, and keep the call itself inside that stage's anchor. ProvSleuth
    always removes all reserved checkpoint environment variables before launching a run/replay child,
    then adds a fresh controller-created binding only for a traced run or replay attempt.
 5. An agent may submit a bounded `assess-method` proposal over the exact method, contract, code, and
-   anchors. Claimtrace computes the mechanical snapshot and drift checks; a different self-asserted
+   anchors. ProvSleuth computes the mechanical snapshot and drift checks; a different self-asserted
    actor must accept, reject, or contest the semantic judgement.
 
 This intentionally produces five distinct statements:
@@ -222,16 +235,16 @@ This intentionally produces five distinct statements:
 
 Replay does not isolate network access, external filesystem paths, databases, GPUs, clocks,
 schedulers, or every host-library and kernel detail. A child with an absolute path or inherited
-environment value can still write outside the fresh workspace; Claimtrace neither observes nor
+environment value can still write outside the fresh workspace; ProvSleuth neither observes nor
 prevents that write. It observes the direct child and workspace file-path pre/post state, not write
 causation or background descendants. Ordinary directory-only changes, including empty directories,
-are not recorded. Seeds and parameters are exact recorded declarations; Claimtrace does not
+are not recorded. Seeds and parameters are exact recorded declarations; ProvSleuth does not
 magically inject them into arbitrary code. If a script depends on hidden external state, either
 materialize and declare that state, wrap it in a deterministic adapter, or leave the result marked
 as only partially covered. A child can emit a cooperative checkpoint without performing the
 intended computation, so the trace is not an adversarial attestation. Legacy event-v2 receipts and
 replay-v1 certificates remain readable as historical evidence, but contain no materialized-
-intermediate evidence; Claimtrace does not infer it from a matching terminal output. Current
+intermediate evidence; ProvSleuth does not infer it from a matching terminal output. Current
 review-ready claim provenance requires an event-v3 source, or event-v4 when stage checkpoints are
 required.
 A replay-v1 certificate can retain eligibility only when its source is event-v3 and declares no
@@ -260,8 +273,8 @@ checkpoint capture for subsequent contract-bound runs:
 ```json
 {
   "execution": {
-    "replays": "claimtrace/replays",
-    "method_assessments": "claimtrace/method-assessments",
+    "replays": "provsleuth/replays",
+    "method_assessments": "provsleuth/method-assessments",
     "require_contracts": true,
     "require_replay": true,
     "require_method_assessments": true,
@@ -303,7 +316,7 @@ quarantined evidence cannot create a current claim binding.
 
 Natural drift in an older contract-bound receipt, its replay, or its method assessment remains
 visible but can become nonblocking historical information only after a genuine replacement exists.
-For run/replay drift, Claimtrace requires a strictly later successful run with the exact same
+For run/replay drift, ProvSleuth requires a strictly later successful run with the exact same
 pipeline output-role set, a current contract, current exact graph-output bindings, and a
 review-ready replay; when checkpoint policy is enabled, that replacement must be event-v4 with a
 current repeatable replay-v3 checkpoint trace. Method drift also needs a current accepted
@@ -343,7 +356,7 @@ created before those inventory keys existed.
 
 The content-addressed `release_id` is the correct object to sign, place in a transparency log, or
 anchor on a blockchain. That external commitment can make later substitution or omission
-detectable relative to the anchored manifest. It does not authenticate Claimtrace's self-asserted
+detectable relative to the anchored manifest. It does not authenticate ProvSleuth's self-asserted
 actor strings, prove that the committed release was complete before anchoring, or validate any
 scientific interpretation.
 
@@ -359,15 +372,16 @@ they are host-specific and can expose usernames or workspace layout in a public 
 From a source checkout, start with the stdlib-only [Palmer Penguins study](examples/penguin_study/).
 Its pinned CC0 source
 CSVs, deterministic raw-to-curated transformation, results, figure, run receipts, semantic-review
-history, and symbolic proof are checked in:
+history, and symbolic proof are checked in. This is a frozen Claimtrace-era fixture: its immutable
+records, paths, and hash-locked analysis import retain the former name. ProvSleuth can inspect and
+render that history, but the exact analysis is not a clean ProvSleuth-only rerun:
 
 ```bash
 cd examples/penguin_study
-claimtrace verify
-claimtrace check --strict --json
-claimtrace assessments --all --json
-claimtrace derivations --json
-claimtrace view --output research-map.html
+python -m provsleuth --config claimtrace.config.json check --strict --json
+python -m provsleuth --config claimtrace.config.json assessments --all --json
+python -m provsleuth --config claimtrace.config.json derivations --json
+python -m provsleuth --config claimtrace.config.json view --output research-map.html
 ```
 
 The narrow result is the classical aggregation reversal: among 342 complete records, the pooled
@@ -379,7 +393,7 @@ For a compact neuroscience example, see [EEGBCI motor-imagery decoding](examples
 It pins three PhysioNet EEGMMIDB files by official SHA-256, fits every CSP + LDA fold without using
 the held-out run, and compares the observed score with a within-run label-permutation null. Its raw
 EDFs are deliberately downloaded by the explicit fetch step rather than committed, and its optional MNE
-environment is isolated from Claimtrace's stdlib-only core. In the pinned S001 analysis the mean
+environment is isolated from ProvSleuth's stdlib-only core. In the pinned S001 analysis the mean
 balanced accuracy is `0.842262`, versus a null 95th percentile of `0.657738` (`p = 0.005`); that is
 a result for these three recordings, not a population or clinical-performance claim.
 
@@ -432,51 +446,51 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 
 | command | what it does |
 |---|---|
-| `claimtrace check` | structural integrity · missing files/manifests · scoped canonical drift · retired dependencies · manifest completeness · input/output hash drift · downstream staleness |
-| `claimtrace check --strict --json` | deterministic graph/receipt report; also blocks on lint, stale nodes, missing receipts, and declaration mismatches |
-| `claimtrace lint` | warn on non-standard vocabulary + load-bearing nodes with no `backbone` (`--strict` to fail) |
-| `claimtrace run ... -- COMMAND` | execute a direct child with explicit inputs/outputs and append content-addressed pre/post SHA-256 receipts |
-| `claimtrace run --pipeline-contract FILE ... -- COMMAND` | bind an opaque command to exact code/method/stage/input/output declarations and write event-v3 receipts with path-bearing intermediate capture |
-| `claimtrace run --pipeline-contract FILE --stage-checkpoints ... -- COMMAND` | additionally require one cooperative child checkpoint per locked contract stage; complete traces use event-v4 |
-| `claimtrace replay RUN_ID [--repeat N]` | repeat a successful contract-bound run in fresh workspaces and compare terminal/intermediate bytes plus any event-v4 cooperative sequence |
-| `claimtrace assess-method ENTRY --actor ID` | append a bounded external method-to-code conformance proposal over exact anchors |
-| `claimtrace method-assessments [--json]` / `review-method ID ...` | inspect immutable method-review leaves or append a distinct review decision |
-| `claimtrace view --output FILE` | render a standalone interactive trajectory with semantic, proof, contract, replay, method, and receipt details |
-| `claimtrace graph-hash` | print the canonical current graph hash for review or external anchoring |
-| `claimtrace graph-propose REQUEST --output FILE` | compile a bounded change request into a content-addressed proposal without mutating the graph |
-| `claimtrace graph-apply PROPOSAL` | atomically apply a reviewed proposal only if its exact base graph still matches |
-| `claimtrace release-create [--output FILE]` | collect a stable, exact-byte release manifest across configured graph and provenance stores |
-| `claimtrace release-verify MANIFEST` / `release-diff BEFORE AFTER` | recollect and verify a release, or compare two valid manifests |
-| `claimtrace impact --set concept=value` | ordered propagation to-do list for a canonical change |
-| `claimtrace downstream <id>` / `upstream <id>` | transitive dependents / dependencies |
-| `claimtrace node <id>` | a node and its edges |
-| `claimtrace log entry.json` | append a lab-notebook node (+ edges); use for nulls/dead-ends too |
-| `claimtrace journal [--status ...]` | every attempt grouped by verdict |
-| `claimtrace assess ENTRY --actor ID` | append an external-agent semantic proposal; claimtrace computes evidence snapshots and policy output |
-| `claimtrace assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
-| `claimtrace review ASSESSMENT_ID --state ... --actor ID` | append a separate-actor acceptance, rejection, contest, or supersession decision |
-| `claimtrace lock-ontology ENTRY --output FILE` | pin exact local ontology document and project-supplied index bytes; performs no fetch or OWL parsing |
-| `claimtrace ontology-candidates QUERY [--language TAG] [--limit N] [--json]` | return a content-addressed set of exact IRI, preferred-label, or synonym matches from configured locks |
-| `claimtrace map-term ENTRY --actor ID [--language TAG] [--limit N]` | append an attributed, inactive mapping proposal using the same candidate-search profile |
-| `claimtrace mappings [--state ...] [--all] [--json]` | list mapping history, current review leaves, drift, conflicts, and release eligibility |
-| `claimtrace review-mapping MAPPING_ID --state ... --actor ID` | append a separate-actor mapping review successor |
-| `claimtrace compile-semantic-policy ENTRY --actor ID` | compile exact accepted current mapping leaf IDs into an immutable inactive release |
-| `claimtrace semantic-status [--policy ID] [--json]` | recheck semantic assets, mappings, the active release, and optionally one exact inactive release |
-| `claimtrace evidence-plan CLAIM_ID [--json]` | show the claim-owned exact all-of binding plan and its pinned vocabulary/rule pack |
-| `claimtrace derive ENTRY --actor ID` | materialize a claim-owned evidence plan (preferred), select bindings for an unplanned claim, or import explicit typed facts |
-| `claimtrace derivations [--state ...] [--json]` | list derivations reevaluated against the current graph, artifacts, vocabulary, and rules |
-| `claimtrace explain DERIVATION_OR_PROOF_ID [--json]` | show one composite proof certificate, premises, assumptions, equivalent submissions, and effective state |
-| `claimtrace snapshot` | lock each render and its declared inputs into a versioned SHA-256 manifest |
-| `claimtrace verify` | run your project-specific numeric checks |
-| `claimtrace summary` | node/edge/concept counts |
-| `claimtrace init [--example]` | scaffold an empty planning-safe project, or explicitly install a runnable toy dataset and verifier |
-| `claimtrace install-skill [--target ...]` | install the packaged `claimtrace-log` skill without silently overwriting project customizations |
+| `provsleuth check` | structural integrity · missing files/manifests · scoped canonical drift · retired dependencies · manifest completeness · input/output hash drift · downstream staleness |
+| `provsleuth check --strict --json` | deterministic graph/receipt report; also blocks on lint, stale nodes, missing receipts, and declaration mismatches |
+| `provsleuth lint` | warn on non-standard vocabulary + load-bearing nodes with no `backbone` (`--strict` to fail) |
+| `provsleuth run ... -- COMMAND` | execute a direct child with explicit inputs/outputs and append content-addressed pre/post SHA-256 receipts |
+| `provsleuth run --pipeline-contract FILE ... -- COMMAND` | bind an opaque command to exact code/method/stage/input/output declarations and write event-v3 receipts with path-bearing intermediate capture |
+| `provsleuth run --pipeline-contract FILE --stage-checkpoints ... -- COMMAND` | additionally require one cooperative child checkpoint per locked contract stage; complete traces use event-v4 |
+| `provsleuth replay RUN_ID [--repeat N]` | repeat a successful contract-bound run in fresh workspaces and compare terminal/intermediate bytes plus any event-v4 cooperative sequence |
+| `provsleuth assess-method ENTRY --actor ID` | append a bounded external method-to-code conformance proposal over exact anchors |
+| `provsleuth method-assessments [--json]` / `review-method ID ...` | inspect immutable method-review leaves or append a distinct review decision |
+| `provsleuth view --output FILE` | render a standalone interactive trajectory with semantic, proof, contract, replay, method, and receipt details |
+| `provsleuth graph-hash` | print the canonical current graph hash for review or external anchoring |
+| `provsleuth graph-propose REQUEST --output FILE` | compile a bounded change request into a content-addressed proposal without mutating the graph |
+| `provsleuth graph-apply PROPOSAL` | atomically apply a reviewed proposal only if its exact base graph still matches |
+| `provsleuth release-create [--output FILE]` | collect a stable, exact-byte release manifest across configured graph and provenance stores |
+| `provsleuth release-verify MANIFEST` / `release-diff BEFORE AFTER` | recollect and verify a release, or compare two valid manifests |
+| `provsleuth impact --set concept=value` | ordered propagation to-do list for a canonical change |
+| `provsleuth downstream <id>` / `upstream <id>` | transitive dependents / dependencies |
+| `provsleuth node <id>` | a node and its edges |
+| `provsleuth log entry.json` | append a lab-notebook node (+ edges); use for nulls/dead-ends too |
+| `provsleuth journal [--status ...]` | every attempt grouped by verdict |
+| `provsleuth assess ENTRY --actor ID` | append an external-agent semantic proposal; ProvSleuth computes evidence snapshots and policy output |
+| `provsleuth assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
+| `provsleuth review ASSESSMENT_ID --state ... --actor ID` | append a separate-actor acceptance, rejection, contest, or supersession decision |
+| `provsleuth lock-ontology ENTRY --output FILE` | pin exact local ontology document and project-supplied index bytes; performs no fetch or OWL parsing |
+| `provsleuth ontology-candidates QUERY [--language TAG] [--limit N] [--json]` | return a content-addressed set of exact IRI, preferred-label, or synonym matches from configured locks |
+| `provsleuth map-term ENTRY --actor ID [--language TAG] [--limit N]` | append an attributed, inactive mapping proposal using the same candidate-search profile |
+| `provsleuth mappings [--state ...] [--all] [--json]` | list mapping history, current review leaves, drift, conflicts, and release eligibility |
+| `provsleuth review-mapping MAPPING_ID --state ... --actor ID` | append a separate-actor mapping review successor |
+| `provsleuth compile-semantic-policy ENTRY --actor ID` | compile exact accepted current mapping leaf IDs into an immutable inactive release |
+| `provsleuth semantic-status [--policy ID] [--json]` | recheck semantic assets, mappings, the active release, and optionally one exact inactive release |
+| `provsleuth evidence-plan CLAIM_ID [--json]` | show the claim-owned exact all-of binding plan and its pinned vocabulary/rule pack |
+| `provsleuth derive ENTRY --actor ID` | materialize a claim-owned evidence plan (preferred), select bindings for an unplanned claim, or import explicit typed facts |
+| `provsleuth derivations [--state ...] [--json]` | list derivations reevaluated against the current graph, artifacts, vocabulary, and rules |
+| `provsleuth explain DERIVATION_OR_PROOF_ID [--json]` | show one composite proof certificate, premises, assumptions, equivalent submissions, and effective state |
+| `provsleuth snapshot` | lock each render and its declared inputs into a versioned SHA-256 manifest |
+| `provsleuth verify` | run your project-specific numeric checks |
+| `provsleuth summary` | node/edge/concept counts |
+| `provsleuth init [--example]` | scaffold an empty planning-safe project, or explicitly install a runnable toy dataset and verifier |
+| `provsleuth install-skill [--target ...]` | install the packaged `provsleuth-log` skill without silently overwriting project customizations |
 
 New render locks use schema `claimtrace.render-manifest/2` and lowercase SHA-256 for the output and
 every declared transitive input. Unversioned SHA-1 manifests from earlier releases remain readable
-so their existing locks can be checked, but Claimtrace never writes that legacy form. To migrate
-without silently blessing changed files, first run `claimtrace check`; only after the legacy lock
-passes, run `claimtrace snapshot` and check again. Explicit unknown schemas, mixed SHA-1/SHA-256
+so their existing locks can be checked, but ProvSleuth never writes that legacy form. To migrate
+without silently blessing changed files, first run `provsleuth check`; only after the legacy lock
+passes, run `provsleuth snapshot` and check again. Explicit unknown schemas, mixed SHA-1/SHA-256
 fields, and malformed digests fail closed as `INVALID_MANIFEST`.
 
 The standalone trajectory is also a navigable canvas: use the mouse wheel or the visible controls
@@ -515,7 +529,7 @@ Allowed verdicts are `supports_as_written`, `supports_narrower_claim`,
 to exact JSON values with JSON Pointer or exact text line spans with a SHA-256 digest.
 
 The external agent must not provide `mechanical_snapshot`, `derived`, or a review decision.
-Claimtrace computes the node and artifact SHA-256 identities, resolves every anchor, detects later
+ProvSleuth computes the node and artifact SHA-256 identities, resolves every anchor, detects later
 node/file drift and conflicting active assessments, and derives the eligible relation and findings.
 A narrowing can activate `related`; it never becomes support for the original wording.
 `supports_as_written` and `contradicts_as_written` otherwise require complete alignment. The one
@@ -525,10 +539,10 @@ unstated population, exposure, comparator, outcome, direction, time scope, or in
 fail closed.
 
 ```bash
-claimtrace assess semantic-proposal.json --actor analysis-agent --json
-claimtrace assessments --state proposed --json
-claimtrace review assessment:sha256:<digest> --state accepted --actor separate-reviewer --json
-claimtrace assessments --all --json
+provsleuth assess semantic-proposal.json --actor analysis-agent --json
+provsleuth assessments --state proposed --json
+provsleuth review assessment:sha256:<digest> --state accepted --actor separate-reviewer --json
+provsleuth assessments --all --json
 ```
 
 Assessments are immutable, content-addressed JSON documents. A review appends one successor; it does
@@ -557,7 +571,7 @@ upstream graph edge or canonical concept; those remain the separate graph/receip
 
 ## Reviewed semantic normalization
 
-Scientific projects rarely use one vocabulary. Claimtrace now provides an optional normalization
+Scientific projects rarely use one vocabulary. ProvSleuth now provides an optional normalization
 layer that keeps the flexible judgement small and reviewable while making discovery, identity,
 drift, conflict, and activation deterministic. A project declares its own terminology and one or
 more local ontology locks:
@@ -565,10 +579,10 @@ more local ontology locks:
 ```json
 {
   "semantics": {
-    "terminologies": ["claimtrace/semantics/local-terms.json"],
-    "ontology_locks": ["claimtrace/semantics/domain.lock.json"],
-    "mappings": "claimtrace/semantics/mappings",
-    "policies": "claimtrace/semantics/policies",
+    "terminologies": ["provsleuth/semantics/local-terms.json"],
+    "ontology_locks": ["provsleuth/semantics/domain.lock.json"],
+    "mappings": "provsleuth/semantics/mappings",
+    "policies": "provsleuth/semantics/policies",
     "active_policy": null,
     "allow_external_sources": false,
     "require_active_policy": false,
@@ -586,7 +600,7 @@ remote resolver, or agent-generated fallback IRI. No match and ambiguity are rec
 not errors to hide.
 
 If discovery uses `--language` or `--limit`, pass the same flags to `map-term`. The proposal pins
-the candidate-set ID, and Claimtrace rejects a proposal whose recomputed profile does not reproduce
+the candidate-set ID, and ProvSleuth rejects a proposal whose recomputed profile does not reproduce
 that ID. Candidate JSON also carries the fixed project-supplied-index assertion and explicit
 limitations, so exact-byte integrity is not mistaken for verified RDF/OWL extraction.
 The candidate profile pins the runtime Unicode data version used for NFC, case folding, and
@@ -597,7 +611,7 @@ An ontology lock content-addresses its identity/version metadata and pins the SH
 every supplied source document and the supplied term index. The index is a bounded,
 project-supplied, unverified assertion used for deterministic search; v1 does **not** parse OWL/RDF or prove
 that each indexed label, definition, parent, or IRI was extracted from the locked ontology bytes.
-Likewise, declared imports are checked only against configured lock identities. Claimtrace does not
+Likewise, declared imports are checked only against configured lock identities. ProvSleuth does not
 discover or prove a complete `owl:imports` closure. Generate and review the index outside this
 trust boundary, record its generator/version in project provenance, and do not describe a green
 lock as ontology-semantic validation.
@@ -610,7 +624,7 @@ graph, config, another policy asset, or a provenance ledger.
 The lock request is path-based and differs from the stored lock document. Source paths are resolved
 relative to the configured `--output` file's directory. Place `domain.owl` and a reviewed
 `index.json` beside the future lock, declare
-`claimtrace/semantics/domain/domain.lock.json` in `semantics.ontology_locks`, and submit:
+`provsleuth/semantics/domain/domain.lock.json` in `semantics.ontology_locks`, and submit:
 
 ```json
 {
@@ -627,15 +641,15 @@ relative to the configured `--output` file's directory. Place `domain.owl` and a
 ```
 
 ```bash
-claimtrace lock-ontology lock-request.json \
-  --output claimtrace/semantics/domain/domain.lock.json --json
+provsleuth lock-ontology lock-request.json \
+  --output provsleuth/semantics/domain/domain.lock.json --json
 ```
 
 `max_ontology_bytes` bounds all configured locked ontology and index bytes hashed by one semantic
 operation. It defaults to 536,870,912 bytes (512 MiB); larger projects must opt in explicitly, up
 to the hard 274,877,906,944-byte (256 GiB) ceiling. Raising it increases worst-case validation time.
 
-The mapping proposal contains only a local-term identity and agent-authored input. Claimtrace
+The mapping proposal contains only a local-term identity and agent-authored input. ProvSleuth
 recomputes the bounded candidate set and snapshots the local term and selected candidate. An
 untruncated set contains every exact match; a truncated set preserves only the visible prefix plus
 the total count/truncation evidence and is never policy-eligible. The
@@ -675,10 +689,10 @@ must enumerate exact accepted, current, non-stale mapping leaf IDs:
 }
 ```
 
-`claimtrace compile-semantic-policy` stores that release without activating it. Check an inactive
+`provsleuth compile-semantic-policy` stores that release without activating it. Check an inactive
 release explicitly with
-`claimtrace semantic-status --policy semantic-policy:sha256:<digest> --json`. Activation is a
-separate reviewed edit that pins the returned ID in `semantics.active_policy`; Claimtrace never
+`provsleuth semantic-status --policy semantic-policy:sha256:<digest> --json`. Activation is a
+separate reviewed edit that pins the returned ID in `semantics.active_policy`; ProvSleuth never
 chooses “latest” or collects every accepted mapping implicitly. `semantic-status` and the strict
 report then re-evaluate the active release against current terminology, locked bytes, candidate
 sets, review leaves, conflicts, and store integrity. Set `require_active_policy` only after the
@@ -692,32 +706,32 @@ reinterpreted.
 
 ## Portable symbolic derivations
 
-Projects that need reproducible claim logic can add a small, data-only symbolic layer. Claimtrace
+Projects that need reproducible claim logic can add a small, data-only symbolic layer. ProvSleuth
 does not hard-code a scientific domain or ontology: each project defines portable JSON
 vocabularies (types, units, predicates, and renderers), function-free rules, result bindings, and
 claim targets. A user, workflow, or external agent can therefore adopt the same engine in any
-project without writing a Claimtrace plugin or allowing executable rule code.
+project without writing a ProvSleuth plugin or allowing executable rule code.
 
 The project owns the meaning-bearing policy. Each result node's `logic_bindings` contains a
 **complete fact-binding profile** that pins one input predicate, its polarity, and an extractor for
 every argument. Each claim-like node's `logic` declaration pins its exact target plus both the
 `vocabulary_id` and `rule_pack_id`. A claim can additionally own an exact all-of
-`logic_evidence_plan`: the requester then names only the claim, and Claimtrace materializes every
+`logic_evidence_plan`: the requester then names only the claim, and ProvSleuth materializes every
 required project-declared binding. For a claim without a plan, the binding-selection interface
-remains available as a fallback. Claimtrace reads the target and policy IDs from the claim, extracts
+remains available as a fallback. ProvSleuth reads the target and policy IDs from the claim, extracts
 and canonicalizes every typed argument from the result artifacts, and computes the proof. The
 request cannot supply a pointer, atom, target, polarity, rule, or proof step. One grounded fact has
 exactly one evidence binding. This keeps the adaptable part declarative while making extraction and
 inference deterministic. One result may expose profiles for multiple configured vocabularies; each
-proof still uses the single vocabulary pinned by its claim. `claimtrace check` validates every
+proof still uses the single vocabulary pinned by its claim. `provsleuth check` validates every
 declared target, binding, and evidence plan, including extraction against the current artifact.
 
 ```json
 {
   "logic": {
-    "derivations": "claimtrace/derivations",
-    "vocabularies": ["claimtrace/logic/vocabulary.json"],
-    "rule_packs": ["claimtrace/logic/rules.json"],
+    "derivations": "provsleuth/derivations",
+    "vocabularies": ["provsleuth/logic/vocabulary.json"],
+    "rule_packs": ["provsleuth/logic/rules.json"],
     "allow_external_packs": false,
     "require_derivations": false,
     "max_provenance_bytes": 68719476736
@@ -743,8 +757,8 @@ positive 64-bit byte budget for stream-hashing the scoped upstream provenance fi
 ```
 
 The plan is a top-level field on the claim, hypothesis, prediction, or conclusion node. Its
-`required_bindings` is a non-empty, duplicate-free list that Claimtrace canonicalizes by result and
-binding ID. Inspect the resolved plan with `claimtrace evidence-plan claim:gate --json`, then submit
+`required_bindings` is a non-empty, duplicate-free list that ProvSleuth canonicalizes by result and
+binding ID. Inspect the resolved plan with `provsleuth evidence-plan claim:gate --json`, then submit
 the claim-only request:
 
 ```json
@@ -774,12 +788,12 @@ polarity follows, `refutable` when only the opposite follows, `conflict` when bo
 `unknown` when neither follows. Missing information is not false, and a contradiction does not
 make arbitrary claims derivable. A fact with an explicit assumption remains visible in its proof,
 but any proof that depends on it is inactive. Multiple results remain premises of one composite
-proof; Claimtrace does not flatten them into misleading per-result support edges.
+proof; ProvSleuth does not flatten them into misleading per-result support edges.
 
 Equivalent active submissions share a canonical `proof_id` and reports group their
 `derivation_ids` rather than drawing duplicate proof nodes. If separate active derivations establish
 both the target and its explicit opposite for the same claim, vocabulary, rule pack, and target,
-Claimtrace emits `SYMBOLIC_CROSS_DERIVATION_CONFLICT` and suppresses both at claim level. This is
+ProvSleuth emits `SYMBOLIC_CROSS_DERIVATION_CONFLICT` and suppresses both at claim level. This is
 distinct from the single-derivation `conflict` state, but both fail closed for
 `require_derivations`.
 
@@ -805,33 +819,33 @@ drift to one opaque hash mismatch.
 
 ## Agent add-on
 
-The wheel includes a canonical `claimtrace-log` research skill. Install it into a project with
-`claimtrace install-skill --dir /path/to/project`; the default target writes both supported layouts.
+The wheel includes a canonical `provsleuth-log` research skill. Install it into a project with
+`provsleuth install-skill --dir /path/to/project`; the default target writes both supported layouts.
 Use `--target agents` or `--target claude` for one layout. A differing existing skill is preserved
 unless you explicitly pass `--force` after reviewing it.
 
 The source repository keeps synchronized, directly discoverable copies in:
 
-- [`.agents/skills/claimtrace-log/`](.agents/skills/claimtrace-log/) for agents that support the
+- [`.agents/skills/provsleuth-log/`](.agents/skills/provsleuth-log/) for agents that support the
   shared agent-skill layout.
-- [`.claude/skills/claimtrace-log/`](.claude/skills/claimtrace-log/) for Claude-compatible project
+- [`.claude/skills/provsleuth-log/`](.claude/skills/provsleuth-log/) for Claude-compatible project
   skills.
 
 The skill makes the safe workflow explicit: resolve and pin the absolute config, inspect the real
-script and file roles, execute new substantive analyses through `claimtrace run`, then log the
+script and file roles, execute new substantive analyses through `provsleuth run`, then log the
 scientific verdict separately and finish with deterministic strict checks. It records nulls,
 dead-ends, retractions, and superseded work as first-class outcomes. It never fabricates a receipt
 for historical work or infers a dependency from a filename. When asked to compare a result with a
 claim, the skill prepares only the external semantic `agent_input` proposal with exact anchors; it
 does not self-accept its judgement or inject computed fields. Where a project configures symbolic
 policy and a claim-owned plan, the same skill submits a `claimtrace.symbolic-plan-request/1`
-document containing only the claim ID, public note, and provenance. Claimtrace materializes every
+document containing only the claim ID, public note, and provenance. ProvSleuth materializes every
 required binding, the typed facts, and the pinned target. For an unplanned claim, the skill can fall
 back to `claimtrace.symbolic-selection/1` with existing result/binding IDs. The skill never creates
 pointers, atoms, rules, proof steps, or proof states.
 Agents still need the user or a scientifically independent reviewer to judge scientific meaning;
-Claimtrace automates integrity, grounding, conditional inference, reconciliation, propagation,
-policy checks, and display. Claimtrace itself enforces only that the first reviewer actor string
+ProvSleuth automates integrity, grounding, conditional inference, reconciliation, propagation,
+policy checks, and display. ProvSleuth itself enforces only that the first reviewer actor string
 differs from the proposer string; it does not authenticate people or establish independence.
 
 The skill has two explicit modes. Routine analysis mode may log work, assess result-to-claim
@@ -850,20 +864,20 @@ policy and review.
 ## Optional: a git pre-commit hook
 
 ```bash
-cp hooks/pre-commit .git/hooks/pre-commit   # runs `claimtrace check` (blocking) + `verify` (soft)
+cp hooks/pre-commit .git/hooks/pre-commit   # runs `provsleuth check` (blocking) + `verify` (soft)
 ```
 
 ## Trust boundary
 
-`claimtrace check`, `lint`, and the query commands are pure inspection. `claimtrace view` only reads
-the project and writes the explicitly requested HTML output. `claimtrace run` executes exactly the
-argv after `--` as a direct child with `shell=False`; `claimtrace verify` **executes your project's
+`provsleuth check`, `lint`, and the query commands are pure inspection. `provsleuth view` only reads
+the project and writes the explicitly requested HTML output. `provsleuth run` executes exactly the
+argv after `--` as a direct child with `shell=False`; `provsleuth verify` **executes your project's
 `verifiers.py`** (a plugin model, like `conftest.py` or a `Makefile`). Run executable commands only
 in projects you trust, and do not auto-run them on untrusted pull requests. `verify` exits 0 only
 after at least one registered check ran and all registered checks passed; it exits 2 with
 `NOT_CONFIGURED` or `NO_CHECKS` when no numeric verification actually occurred.
 
-`claimtrace` verifies that the *machinery* is internally consistent — paths exist, no cycles or
+`provsleuth` verifies that the *machinery* is internally consistent — paths exist, no cycles or
 dangling edges, claims cite on-backbone artifacts, headline numbers reproduce. It deliberately does
 **not** claim your science is correct: a green check means the declared provenance is internally
 coherent, not that the conclusion is right. That boundary is the point — it tells you what has *not*
@@ -903,14 +917,14 @@ The system deliberately keeps nine evidence layers separate:
   exact contract/code anchors plus a distinct actor's immutable decision. It cannot observe hidden
   runtime stages or establish that the method is scientifically appropriate.
 - The **semantic assessment ledger** stores an external agent's schema-constrained interpretation,
-  exact evidence anchors, claimtrace-computed hashes and policy findings, and a separate actor's
+  exact evidence anchors, ProvSleuth-computed hashes and policy findings, and a separate actor's
   immutable decision. It can detect drift and disagreement; it cannot make the interpretation true.
 - The **semantic normalization ledger** stores local-term definitions, exact locked source/index
   identities, attributed mapping proposals, immutable review leaves, and explicit policy releases.
   It can make normalization reproducible under those declarations; it cannot prove that a supplied
   index reflects OWL/RDF source semantics or that an accepted mapping is scientifically correct.
 - The **symbolic derivation ledger** stores typed premises grounded through project-owned complete
-  fact profiles, the pinned vocabulary and rule pack, and a Claimtrace-computed composite proof.
+  fact profiles, the pinned vocabulary and rule pack, and a ProvSleuth-computed composite proof.
   It establishes conditional derivability only; it cannot certify premise truth, scientific
   support, or equivalence between a formal target and the prose claim.
 
@@ -923,7 +937,7 @@ public ledger in a neutral build environment. Never edit a content-addressed rec
 control boundary. A process that can edit the graph, bindings, vocabulary, or rules can change the
 formal interpretation and produce a fresh derivation under that changed policy. Asset IDs are
 logical identifiers, not authorization or immutable content-hash pins. Stored derivations snapshot
-policy content and become stale when it changes, but Claimtrace does not decide whether a new
+policy content and become stale when it changes, but ProvSleuth does not decide whether a new
 version was authorized. Protect meaning-bearing files with repository review, `CODEOWNERS`, CI hash
 pins, signatures, or an equivalent control appropriate to the project. CLI `--actor` values and
 `provenance.agent` strings are attributed, bounded text, not authenticated identities.
@@ -954,11 +968,11 @@ write, that background descendants finished, or that network/database state was 
 therefore say `declared_only_not_observed`, `direct_child_only`, and
 `unattributed_pre_post_delta`; matching graph/run declarations means **declarations agree**, not
 independent runtime proof. `check --strict` is a deterministic gate within that explicit partial
-capture scope. Existing projects with render nodes must also run `claimtrace snapshot` once after a
+capture scope. Existing projects with render nodes must also run `provsleuth snapshot` once after a
 trusted render so manifest checks can pass.
 
 Event, replay-certificate, semantic-assessment, method-assessment, mapping, policy-release, review,
-and derivation files are create-only or append-only through the Claimtrace API, and
+and derivation files are create-only or append-only through the ProvSleuth API, and
 content addressing detects modification of surviving files and broken surviving references. Their
 local directories have no independently anchored head: deleting or omitting a complete event pair,
 replay certificate, assessment/review chain, mapping/review chain, semantic release, or derivation
@@ -970,13 +984,13 @@ does not validate the scientific meaning, restore omitted records, or make self-
 strings authenticated.
 
 Path checks reject static symbolic-link, junction, and reparse-point escapes, and cooperative local
-writers are serialized. Claimtrace does not defend a privileged process against an untrusted
+writers are serialized. ProvSleuth does not defend a privileged process against an untrusted
 same-identity process that actively swaps workspace directories between individual filesystem
 operations; do not run it elevated over an attacker-controlled checkout. Create-only publication
 also requires local hardlink support and fails closed with an actionable error when the filesystem
 cannot provide that atomic primitive.
 
-Runtime locks coordinate cooperating Claimtrace processes on one host; they are not distributed
+Runtime locks coordinate cooperating ProvSleuth processes on one host; they are not distributed
 locks for a shared network workspace. Direct concurrent edits to terminology, ontology, or index
 files are also outside the mapping/policy store lock. Such a race can publish an immediately stale
 record, but status, reports, and activation reload the assets and suppress stale policy rather than
@@ -990,8 +1004,8 @@ incremental reporting, and adapter boundaries around this deterministic core.
 
 ## License
 
-Claimtrace's original software and documentation are MIT licensed © Gabriel Wainstein. The example
+ProvSleuth's original software and documentation are MIT licensed © Gabriel Wainstein. The example
 datasets and data-derived artifacts keep their upstream terms; see the
-[third-party notices](https://github.com/gabwainstein/claimtrace/blob/main/THIRD_PARTY_NOTICES.md).
+[third-party notices](https://github.com/gabwainstein/provsleuth/blob/main/THIRD_PARTY_NOTICES.md).
 Developed with the assistance of Claude Code and
 Codex.

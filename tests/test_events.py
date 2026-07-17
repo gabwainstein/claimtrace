@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import claimtrace.events as events_module
-from claimtrace.cli import main
-from claimtrace.config import Config
-from claimtrace.events import (
+import provsleuth.events as events_module
+from provsleuth.cli import main
+from provsleuth.config import Config
+from provsleuth.events import (
     EventError,
     append_event,
     canonical_sha256,
@@ -21,7 +21,7 @@ from claimtrace.events import (
     materialize_runs,
     run_command,
 )
-from claimtrace.report import build_report
+from provsleuth.report import build_report
 
 
 def _capture_scope(writes="declared_snapshots_plus_unattributed_project_window"):
@@ -91,13 +91,13 @@ def _process_run_shared_output(config_path, project_root, token, start, results)
 
 def _project(tmp_path):
     tmp_path.mkdir(parents=True, exist_ok=True)
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
-        "events": "claimtrace/events",
+        "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events",
         "render_types": ["figure"],
         "input_types": ["data", "artifact", "code"],
         "run_output_types": ["artifact"],
@@ -371,7 +371,7 @@ def test_private_runtime_root_accepts_resolved_system_temp_symlink(
     monkeypatch.setattr(
         events_module.tempfile, "gettempdir", lambda: str(temp_alias),
     )
-    root = events_module._private_runtime_root("claimtrace-runtime-test")
+    root = events_module._private_runtime_root("provsleuth-runtime-test")
 
     assert root.parent == real_temp.resolve()
     assert root.is_dir()
@@ -702,7 +702,7 @@ def test_child_control_plane_mutation_is_a_contract_failure(tmp_path):
     result = run_command(
         cfg,
         [sys.executable, "-c",
-         "from pathlib import Path; Path('claimtrace/graph.json').write_text('{}')"],
+         "from pathlib import Path; Path('provsleuth/graph.json').write_text('{}')"],
         inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
     )
     assert result["exit_code"] == 3
@@ -716,7 +716,7 @@ def test_child_control_plane_mutation_is_a_contract_failure(tmp_path):
 
 def test_child_semantic_policy_mutation_is_a_contract_failure(tmp_path):
     cfg = _project(tmp_path)
-    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology = tmp_path / "provsleuth" / "terms.json"
     terminology.write_text(json.dumps({
         "schema_version": "claimtrace.local-terminology/1",
         "id": "study:terms",
@@ -730,14 +730,14 @@ def test_child_semantic_policy_mutation_is_a_contract_failure(tmp_path):
         }],
     }), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    config["semantics"] = {"terminologies": ["provsleuth/terms.json"]}
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     cfg = Config(cfg.config_path)
 
     result = run_command(
         cfg,
         [sys.executable, "-c",
-         "from pathlib import Path; Path('claimtrace/terms.json').write_text('{}')"],
+         "from pathlib import Path; Path('provsleuth/terms.json').write_text('{}')"],
         inputs=[], outputs=[], no_inputs=True, no_outputs=True, cwd=str(tmp_path),
     )
     assert result["exit_code"] == 3
@@ -788,7 +788,7 @@ def test_snapshot_limit_remains_hard_when_file_grows_after_open(tmp_path, monkey
 
 def test_semantic_control_plane_budget_blocks_launch(tmp_path):
     cfg = _project(tmp_path)
-    ontology = tmp_path / "claimtrace" / "ontology"
+    ontology = tmp_path / "provsleuth" / "ontology"
     ontology.mkdir()
     (ontology / "oversized.owl").write_bytes(b"xx")
     (ontology / "index.json").write_text("{}", encoding="utf-8")
@@ -798,7 +798,7 @@ def test_semantic_control_plane_budget_blocks_launch(tmp_path):
     }), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
     config["semantics"] = {
-        "ontology_locks": ["claimtrace/ontology/ontology.lock.json"],
+        "ontology_locks": ["provsleuth/ontology/ontology.lock.json"],
         "max_ontology_bytes": 1,
     }
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -816,7 +816,7 @@ def test_semantic_control_plane_budget_blocks_launch(tmp_path):
 
 def test_semantic_control_plane_rejects_member_path_controls_before_launch(tmp_path):
     cfg = _project(tmp_path)
-    ontology = tmp_path / "claimtrace" / "ontology"
+    ontology = tmp_path / "provsleuth" / "ontology"
     ontology.mkdir()
     (ontology / "index.json").write_text("{}", encoding="utf-8")
     (ontology / "ontology.lock.json").write_text(json.dumps({
@@ -825,7 +825,7 @@ def test_semantic_control_plane_rejects_member_path_controls_before_launch(tmp_p
     }), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
     config["semantics"] = {
-        "ontology_locks": ["claimtrace/ontology/ontology.lock.json"],
+        "ontology_locks": ["provsleuth/ontology/ontology.lock.json"],
     }
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     cfg = Config(cfg.config_path)
@@ -843,10 +843,10 @@ def test_semantic_control_plane_rejects_member_path_controls_before_launch(tmp_p
 def test_semantic_control_plane_rejects_reparse_source_before_launch(
         tmp_path, monkeypatch):
     cfg = _project(tmp_path)
-    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology = tmp_path / "provsleuth" / "terms.json"
     terminology.write_text("{}", encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    config["semantics"] = {"terminologies": ["provsleuth/terms.json"]}
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     cfg = Config(cfg.config_path)
     real_check = events_module._path_has_reparse_component
@@ -869,10 +869,10 @@ def test_semantic_control_plane_rejects_reparse_source_before_launch(
 def test_semantic_control_plane_snapshot_uses_exact_preflight_size(
         tmp_path, monkeypatch):
     cfg = _project(tmp_path)
-    terminology = tmp_path / "claimtrace" / "terms.json"
+    terminology = tmp_path / "provsleuth" / "terms.json"
     terminology.write_text("{}", encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["semantics"] = {"terminologies": ["claimtrace/terms.json"]}
+    config["semantics"] = {"terminologies": ["provsleuth/terms.json"]}
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     cfg = Config(cfg.config_path)
     real_snapshot = events_module.snapshot_file

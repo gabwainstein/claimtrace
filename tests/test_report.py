@@ -2,30 +2,30 @@
 import json
 import sys
 
-import claimtrace.assessment as assessment_module
-import claimtrace.report as report_module
+import provsleuth.assessment as assessment_module
+import provsleuth.report as report_module
 import pytest
-from claimtrace.assessment import (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
+from provsleuth.assessment import (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
                                    SUPPORTED_SCHEMA_VERSIONS, append_assessment,
                                    create_assessment, transition_review)
-from claimtrace.cli import main
-from claimtrace.config import Config
-from claimtrace.events import run_command
-from claimtrace.report import build_report, dumps_report
-from claimtrace.semantics import (append_mapping, append_mapping_review,
+from provsleuth.cli import main
+from provsleuth.config import Config
+from provsleuth.events import run_command
+from provsleuth.report import build_report, dumps_report
+from provsleuth.semantics import (append_mapping, append_mapping_review,
                                   append_semantic_policy, create_mapping_proposal,
                                   create_ontology_lock, create_semantic_policy,
                                   search_ontology_candidates)
 
 
 def _project(tmp_path, nodes, edges=()):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir(parents=True)
-    config = tmp_path / "claimtrace.config.json"
+    config = tmp_path / "provsleuth.config.json"
     config.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
-        "events": "claimtrace/events",
+        "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events",
         "render_types": ["figure"],
         "input_types": ["data", "artifact", "code"],
         "run_output_types": ["artifact"],
@@ -55,7 +55,7 @@ def _semantic_project(tmp_path):
     cfg = _project(tmp_path, [
         {"id": "data:x", "type": "data", "status": "current", "path": "data.txt"},
     ])
-    semantic_root = tmp_path / "claimtrace" / "semantics"
+    semantic_root = tmp_path / "provsleuth" / "semantics"
     ontology_root = semantic_root / "ontology"
     terminology_path = semantic_root / "local-terms.json"
     raw_path = ontology_root / "ontology.ttl"
@@ -105,10 +105,10 @@ def _semantic_project(tmp_path):
     )
     _write_json(lock_path, lock)
     cfg = _configure_semantics(cfg, {
-        "terminologies": ["claimtrace/semantics/local-terms.json"],
-        "ontology_locks": ["claimtrace/semantics/ontology/ontology.lock.json"],
-        "mappings": "claimtrace/semantics/mappings",
-        "policies": "claimtrace/semantics/policies",
+        "terminologies": ["provsleuth/semantics/local-terms.json"],
+        "ontology_locks": ["provsleuth/semantics/ontology/ontology.lock.json"],
+        "mappings": "provsleuth/semantics/mappings",
+        "policies": "provsleuth/semantics/policies",
         "active_policy": None,
         "allow_external_sources": False,
         "require_active_policy": False,
@@ -227,7 +227,7 @@ def test_bare_check_keeps_human_output(tmp_path, capsys):
     ])
     assert main(["--config", str(cfg.config_path), "check"]) == 0
     captured = capsys.readouterr()
-    assert "claimtrace check: OK" in captured.out
+    assert "provsleuth check: OK" in captured.out
     assert captured.err == ""
 
 
@@ -389,7 +389,7 @@ def test_legacy_contract_state_resolves_with_its_stored_snapshot_schema(
     stored = {
         "schema_version": "claimtrace.pipeline-contract-snapshot/1",
         "id": "pipeline-contract:sha256:" + "a" * 64,
-        "source": {"path": "claimtrace/legacy.pipeline.json"},
+        "source": {"path": "provsleuth/legacy.pipeline.json"},
     }
     start = {
         "schema_version": "claimtrace.event/2",
@@ -790,12 +790,12 @@ def test_corrupt_event_is_a_blocking_integrity_finding(tmp_path):
 def test_strict_check_does_not_execute_verifiers(tmp_path):
     cfg = _project(tmp_path, [])
     sentinel = tmp_path / "verifier-ran"
-    verifier = tmp_path / "claimtrace" / "verifiers.py"
+    verifier = tmp_path / "provsleuth" / "verifiers.py"
     verifier.write_text(
         "from pathlib import Path\nPath(r'" + str(sentinel) + "').touch()\n",
         encoding="utf-8",
     )
-    cfg.data["verifiers"] = "claimtrace/verifiers.py"
+    cfg.data["verifiers"] = "provsleuth/verifiers.py"
     assert build_report(cfg, strict=True)["exit_code"] == 0
     assert not sentinel.exists()
 

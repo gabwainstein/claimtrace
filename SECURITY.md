@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Until Claimtrace reaches 1.0, security fixes are made on the default branch and released in the
+Until ProvSleuth reaches 1.0, security fixes are made on the default branch and released in the
 next available version. Only the most recent published release is supported; older releases should
 be upgraded before a report is evaluated against current behavior.
 
@@ -11,7 +11,7 @@ be upgraded before a report is evaluated against current behavior.
 Please use [GitHub private vulnerability reporting][private-report] so the report, reproduction,
 and proposed fix are not exposed before users can update. Include:
 
-- the affected Claimtrace version or commit;
+- the affected ProvSleuth version or commit;
 - the operating system and Python version;
 - the smallest safe reproduction you can provide;
 - the security boundary that is crossed and the expected impact; and
@@ -44,16 +44,16 @@ The following are important limitations but are not, by themselves, vulnerabilit
   at its declared stage; matching bytes do not identify which stage wrote them or exclude a later
   rewrite inside that process;
 - replay children are not OS-sandboxed from the network or filesystem paths outside their fresh
-  workspace, so those external effects are neither prevented nor observed by Claimtrace;
+  workspace, so those external effects are neither prevented nor observed by ProvSleuth;
 - a secret-bearing replay override is redacted but its exact argv is intentionally not stored or
   committed, so its attempt outcome is diagnostic rather than review-ready source-command evidence;
 - project release manifests record explicitly configured external assets with exact absolute paths;
   review them before publication because they are host-specific and can disclose workspace layout;
 - a locally stored hash cannot prove that evidence was not removed before the hash was created;
-- `claimtrace verify` intentionally imports and executes the configured project verifier; run it
+- `provsleuth verify` intentionally imports and executes the configured project verifier; run it
   only for projects you trust; and
-- `claimtrace run` intentionally executes the command supplied after `--`.
+- `provsleuth run` intentionally executes the command supplied after `--`.
 
 When uncertain, report privately and let the maintainer classify the issue.
 
-[private-report]: https://github.com/gabwainstein/claimtrace/security/advisories/new
+[private-report]: https://github.com/gabwainstein/provsleuth/security/advisories/new

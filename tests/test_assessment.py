@@ -7,8 +7,8 @@ import threading
 
 import pytest
 
-import claimtrace.assessment as assessment_module
-from claimtrace.assessment import (
+import provsleuth.assessment as assessment_module
+from provsleuth.assessment import (
     LEGACY_SCHEMA_VERSION,
     SCHEMA_VERSION,
     SUPPORTED_SCHEMA_VERSIONS,
@@ -22,8 +22,8 @@ from claimtrace.assessment import (
     transition_review,
     validate_assessment_document,
 )
-from claimtrace.cli import main
-from claimtrace.config import Config
+from provsleuth.cli import main
+from provsleuth.config import Config
 
 
 FIXED_TIME = "2026-07-13T08:00:00.000Z"
@@ -42,16 +42,16 @@ def _process_review(config_path, assessment_id, actor, gate, output):
 
 
 def _project(tmp_path):
-    (tmp_path / "claimtrace").mkdir()
+    (tmp_path / "provsleuth").mkdir()
     (tmp_path / "results").mkdir()
     (tmp_path / "results" / "fit.json").write_text(
         json.dumps({"slope": 0.41, "r_squared": 0.19}), encoding="utf-8"
     )
-    (tmp_path / "claimtrace.config.json").write_text(json.dumps({
+    (tmp_path / "provsleuth.config.json").write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
     }), encoding="utf-8")
-    (tmp_path / "claimtrace" / "graph.json").write_text(json.dumps({
+    (tmp_path / "provsleuth" / "graph.json").write_text(json.dumps({
         "schema_version": "1.0",
         "nodes": [
             {
@@ -70,7 +70,7 @@ def _project(tmp_path):
         "edges": [],
         "concepts": {},
     }), encoding="utf-8")
-    return Config(tmp_path / "claimtrace.config.json")
+    return Config(tmp_path / "provsleuth.config.json")
 
 
 def _agent_input(verdict="supports_as_written", expected_slope=0.41):
@@ -887,5 +887,5 @@ def test_cli_rejects_agent_supplied_mechanical_or_derived_sections(tmp_path, cap
         "--actor", "agent:test",
     ]) == 2
     captured = capsys.readouterr()
-    assert "mechanical_snapshot and derived are computed by claimtrace" in captured.err
+    assert "mechanical_snapshot and derived are computed by provsleuth" in captured.err
     assert not cfg.assessments_path.exists()

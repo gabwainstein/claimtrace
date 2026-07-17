@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from claimtrace.assessment import (
+from provsleuth.assessment import (
     append_assessment,
     create_assessment,
     transition_review,
 )
-from claimtrace.config import Config
-from claimtrace.events import (
+from provsleuth.config import Config
+from provsleuth.events import (
     _fingerprint_transition,
     append_event,
     load_events,
@@ -22,19 +22,19 @@ from claimtrace.events import (
     materialize_runs,
     run_command,
 )
-from claimtrace.method_assessment import (
+from provsleuth.method_assessment import (
     append_method_assessment,
     create_method_assessment,
     transition_method_review,
 )
-from claimtrace.pipeline import canonical_sha256
-from claimtrace.replay import (
+from provsleuth.pipeline import canonical_sha256
+from provsleuth.replay import (
     append_replay_certificate,
     load_replay_certificates,
     replay_run,
 )
-from claimtrace.report import _claim_ancestry_intermediates, build_report
-from claimtrace.view import render_view
+from provsleuth.report import _claim_ancestry_intermediates, build_report
+from provsleuth.view import render_view
 from test_method_assessment import _agent_input as _method_agent_input
 from test_pipeline import _instrumented_project, _materialized_project, _project
 from test_report import _semantic_input
@@ -237,8 +237,8 @@ def _complete_project(
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
     config["require_assessments"] = True
     config["execution"] = {
-        "replays": "claimtrace/replays",
-        "method_assessments": "claimtrace/method-assessments",
+        "replays": "provsleuth/replays",
+        "method_assessments": "provsleuth/method-assessments",
         "require_contracts": True,
         "require_replay": True,
         "require_method_assessments": True,
@@ -253,7 +253,7 @@ def _complete_project(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=declared_outputs, cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json", scan_writes=False,
+        pipeline_contract="provsleuth/primary.pipeline.json", scan_writes=False,
     )
     replay_run(cfg, run["run_id"])
 
@@ -279,7 +279,7 @@ def _complete_project(
             "The exact declared code anchor implements the selected method step or steps."
         )
         method = create_method_assessment(
-            cfg, "claimtrace/primary.pipeline.json", method_id,
+            cfg, "provsleuth/primary.pipeline.json", method_id,
             agent_input, actor="agent:test",
             declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
             declared_outputs=declared_outputs,
@@ -375,14 +375,14 @@ def test_review_ready_replacement_keeps_stale_history_visible_but_nonblocking(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json", scan_writes=False,
+        pipeline_contract="provsleuth/primary.pipeline.json", scan_writes=False,
     )
     replay_run(cfg, new_run["run_id"])
 
     replacement_input = _method_agent_input()
     replacement_input["provenance"]["agent"] = "agent:replacement"
     replacement = create_method_assessment(
-        cfg, "claimtrace/primary.pipeline.json", "method:primary",
+        cfg, "provsleuth/primary.pipeline.json", "method:primary",
         replacement_input, actor="agent:replacement",
         declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
         declared_outputs=["results/fit.json"],
@@ -446,7 +446,7 @@ def test_unreplayed_new_run_does_not_demote_stale_historical_receipt(tmp_path):
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json", scan_writes=False,
+        pipeline_contract="provsleuth/primary.pipeline.json", scan_writes=False,
     )
     assert new_run["outcome"] == "succeeded"
 

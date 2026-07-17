@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# claimtrace pre-commit hook: block the commit if the dependency graph is broken; warn (soft) if a
+# provsleuth pre-commit hook: block the commit if the dependency graph is broken; warn (soft) if a
 # headline number drifted. Install with:  cp hooks/pre-commit .git/hooks/pre-commit
 set -u
 
-if ! command -v claimtrace >/dev/null 2>&1; then
-    echo "claimtrace not installed; skipping graph check." >&2
+if ! command -v provsleuth >/dev/null 2>&1; then
+    echo "provsleuth not installed; skipping graph check." >&2
     exit 0
 fi
 
-echo "[claimtrace] check…"
-if ! claimtrace check; then
-    echo "[claimtrace] graph check FAILED — fix the errors above or commit with --no-verify." >&2
+echo "[provsleuth] check…"
+if ! provsleuth check; then
+    echo "[provsleuth] graph check FAILED — fix the errors above or commit with --no-verify." >&2
     exit 1
 fi
 
-echo "[claimtrace] verify (soft)…"
-claimtrace verify || echo "[claimtrace] WARNING: a numeric check failed — a result may have drifted." >&2
+echo "[provsleuth] verify (soft)…"
+provsleuth verify || echo "[provsleuth] WARNING: a numeric check failed — a result may have drifted." >&2
 
 exit 0

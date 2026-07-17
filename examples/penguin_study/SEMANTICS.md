@@ -3,32 +3,36 @@
 This optional walkthrough adds one reviewed terminology mapping to the Palmer Penguins project.
 It is deliberately small: an external agent proposes a definition-level mapping, a different
 human actor reviews it, a release owner compiles the accepted leaf, and the project activates that
-exact release in configuration. Claimtrace computes the candidate set, snapshots, content IDs,
+exact release in configuration. ProvSleuth computes the candidate set, snapshots, content IDs,
 review chain, release validity, and drift checks.
 
 Run these commands in a **disposable copy** of this example. The checked-in configuration starts
 with `active_policy: null` and `require_active_policy: false`, so a study can begin before its
 terminology review is complete. The last step turns the policy into a strict project requirement.
 
+This checked-in project preserves its pre-rename `claimtrace.config.json`, `claimtrace/` paths,
+`claimtrace.*` schemas, and `urn:claimtrace:...` example namespace because those values are pinned
+by immutable records. The current executable and Python module are named `provsleuth`.
+
 The example ontology uses the explicitly project-owned
 `urn:claimtrace:example:penguin-study:` namespace. It does not pretend to use a canonical external
 ontology. Its Turtle document and reviewed index demonstrate exact-byte locking and the review
-lifecycle only. Claimtrace v1 does not parse the Turtle or prove that the supplied index was
+lifecycle only. ProvSleuth does not parse the Turtle or prove that the supplied index was
 correctly extracted from it.
 
 ## 1. Load and verify the local semantic assets
 
-From a source checkout, enter `examples/penguin_study`, then install Claimtrace or point Python at
+From a source checkout, enter `examples/penguin_study`, then install ProvSleuth or point Python at
 the source package as described in the main example README. In PowerShell:
 
 ```powershell
 $config = (Resolve-Path claimtrace.config.json).Path
 
-python -m claimtrace --config $config lock-ontology `
+python -m provsleuth --config $config lock-ontology `
   claimtrace/semantics/penguin-example-ontology/lock-request.json `
   --output claimtrace/semantics/penguin-example-ontology/ontology.lock.json
 
-$candidates = python -m claimtrace --config $config ontology-candidates `
+$candidates = python -m provsleuth --config $config ontology-candidates `
   "bill length" --language en --limit 25 --json | ConvertFrom-Json
 
 if ($candidates.total_match_count -ne 1 -or $candidates.truncated) {
@@ -60,7 +64,7 @@ $proposalPath = Join-Path (Get-Location) semantic-mapping.proposal.json
   [Text.UTF8Encoding]::new($false)
 )
 
-$proposal = python -m claimtrace --config $config map-term $proposalPath `
+$proposal = python -m provsleuth --config $config map-term $proposalPath `
   --actor "agent:semantic-demo" --language en --limit 25 --json | ConvertFrom-Json
 
 $proposal.id
@@ -68,7 +72,7 @@ $proposal.current_derived.effective_review_state
 ```
 
 The expected state is `proposed`. The actor string intentionally matches
-`agent_input.provenance.agent`; Claimtrace records that attribution but does not authenticate it.
+`agent_input.provenance.agent`; ProvSleuth records that attribution but does not authenticate it.
 The content ID may differ across runs because the immutable record includes its timestamp and
 Unicode normalization profile.
 
@@ -79,7 +83,7 @@ They should choose `rejected` or `contested` instead if the proposed meaning is 
 walkthrough records `accepted` under a different actor string:
 
 ```powershell
-$review = python -m claimtrace --config $config review-mapping $proposal.id `
+$review = python -m provsleuth --config $config review-mapping $proposal.id `
   --state accepted --actor "human:semantic-reviewer" --json | ConvertFrom-Json
 
 $review.id
@@ -92,7 +96,7 @@ append-only history; the accepted decision is a successor with its own content I
 
 ## 4. Compile an explicit, still-inactive release
 
-The release request enumerates the exact accepted leaf. It never asks Claimtrace to choose the
+The release request enumerates the exact accepted leaf. It never asks ProvSleuth to choose the
 newest mapping or collect every accepted mapping implicitly:
 
 ```powershell
@@ -107,13 +111,13 @@ $policyRequestPath = Join-Path (Get-Location) semantic-policy.request.json
   [Text.UTF8Encoding]::new($false)
 )
 
-$policy = python -m claimtrace --config $config compile-semantic-policy `
+$policy = python -m provsleuth --config $config compile-semantic-policy `
   $policyRequestPath --actor "human:semantic-release-owner" --json | ConvertFrom-Json
 
 $policy.id
 $policy.evaluation.valid
 $policy.evaluation.active
-python -m claimtrace --config $config semantic-status --policy $policy.id
+python -m provsleuth --config $config semantic-status --policy $policy.id
 ```
 
 The release should be valid but inactive. `semantic-status --policy` checks that exact inactive
@@ -135,8 +139,8 @@ $configDocument.semantics.require_active_policy = $true
   [Text.UTF8Encoding]::new($false)
 )
 
-python -m claimtrace --config $config semantic-status
-$check = python -m claimtrace --config $config check --strict --json | ConvertFrom-Json
+python -m provsleuth --config $config semantic-status
+$check = python -m provsleuth --config $config check --strict --json | ConvertFrom-Json
 $check.summary
 $check.semantics.active_policy.evaluation
 ```
@@ -152,17 +156,17 @@ the project-owned example vocabulary canonical.
 
 ## POSIX shell equivalent
 
-The same lifecycle uses only Python and the Claimtrace CLI; `jq` is not required:
+The same lifecycle uses only Python and the ProvSleuth CLI; `jq` is not required:
 
 ```bash
 set -euo pipefail
 config="$PWD/claimtrace.config.json"
 
-python3 -m claimtrace --config "$config" lock-ontology \
+python3 -m provsleuth --config "$config" lock-ontology \
   claimtrace/semantics/penguin-example-ontology/lock-request.json \
   --output claimtrace/semantics/penguin-example-ontology/ontology.lock.json
 
-candidates_json=$(python3 -m claimtrace --config "$config" ontology-candidates \
+candidates_json=$(python3 -m provsleuth --config "$config" ontology-candidates \
   "bill length" --language en --limit 25 --json)
 CANDIDATES_JSON="$candidates_json" python3 - <<'PY'
 import json
@@ -182,13 +186,13 @@ Path("semantic-mapping.proposal.json").write_text(
 )
 PY
 
-proposal_json=$(python3 -m claimtrace --config "$config" map-term \
+proposal_json=$(python3 -m provsleuth --config "$config" map-term \
   semantic-mapping.proposal.json --actor "agent:semantic-demo" \
   --language en --limit 25 --json)
 proposal_id=$(printf '%s' "$proposal_json" | \
   python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 
-review_json=$(python3 -m claimtrace --config "$config" review-mapping "$proposal_id" \
+review_json=$(python3 -m provsleuth --config "$config" review-mapping "$proposal_id" \
   --state accepted --actor "human:semantic-reviewer" --json)
 review_id=$(printf '%s' "$review_json" | \
   python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
@@ -207,11 +211,11 @@ Path("semantic-policy.request.json").write_text(
 )
 PY
 
-policy_json=$(python3 -m claimtrace --config "$config" compile-semantic-policy \
+policy_json=$(python3 -m provsleuth --config "$config" compile-semantic-policy \
   semantic-policy.request.json --actor "human:semantic-release-owner" --json)
 policy_id=$(printf '%s' "$policy_json" | \
   python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-python3 -m claimtrace --config "$config" semantic-status --policy "$policy_id"
+python3 -m provsleuth --config "$config" semantic-status --policy "$policy_id"
 
 POLICY_ID="$policy_id" python3 - <<'PY'
 import json
@@ -225,7 +229,7 @@ config["semantics"]["require_active_policy"] = True
 path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 -m claimtrace --config "$config" semantic-status
-python3 -m claimtrace --config "$config" check --strict --json | python3 -c \
+python3 -m provsleuth --config "$config" semantic-status
+python3 -m provsleuth --config "$config" check --strict --json | python3 -c \
   'import json,sys; d=json.load(sys.stdin); print(d["summary"], d["semantics"]["active_policy"]["evaluation"])'
 ```

@@ -3,11 +3,11 @@ import json
 import shutil
 from pathlib import Path
 
-from claimtrace import engine
-from claimtrace import events as events_module
-from claimtrace import replay as replay_module
-from claimtrace.config import Config
-from claimtrace.report import build_report
+from provsleuth import engine
+from provsleuth import events as events_module
+from provsleuth import replay as replay_module
+from provsleuth.config import Config
+from provsleuth.report import build_report
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "examples" / "widget_study" / "claimtrace.config.json"
@@ -237,11 +237,11 @@ def test_eeg_demo_clean_checkout_boundary_keeps_semantic_history_but_requires_fe
 
 def test_log_appends_node(tmp_path):
     proj = tmp_path
-    (proj / "claimtrace").mkdir()
-    (proj / "claimtrace.config.json").write_text(json.dumps({"root": ".", "graph": "claimtrace/graph.json"}))
-    (proj / "claimtrace" / "graph.json").write_text(json.dumps(
+    (proj / "provsleuth").mkdir()
+    (proj / "provsleuth.config.json").write_text(json.dumps({"root": ".", "graph": "provsleuth/graph.json"}))
+    (proj / "provsleuth" / "graph.json").write_text(json.dumps(
         {"concepts": {}, "nodes": [{"id": "data:x", "type": "data", "status": "current"}], "edges": []}))
-    c = Config(proj / "claimtrace.config.json")
+    c = Config(proj / "provsleuth.config.json")
     ok, msg = engine.log_entry(c, {
         "node": {"id": "exp:try1", "type": "experiment", "status": "null", "value": "no effect"},
         "edges": [{"from": "exp:try1", "to": "data:x", "rel": "related"}]})

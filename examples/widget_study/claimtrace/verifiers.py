@@ -1,10 +1,10 @@
-"""Numeric checks for the widget study. Run with `claimtrace verify`.
+"""Numeric checks for the widget study. Run with `provsleuth verify`.
 
-Paths are relative to the project root (claimtrace sets the working directory there).
+Paths are relative to the project root (ProvSleuth sets the working directory there).
 """
 import json
 
-from claimtrace import check, approx
+from provsleuth import check, approx
 
 
 @check("claim:slope — OLS slope ~ 2.0")

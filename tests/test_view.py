@@ -5,20 +5,20 @@ import sys
 
 import pytest
 
-import claimtrace.view as view_module
-from claimtrace.assessment import append_assessment, create_assessment, transition_review
-from claimtrace.config import Config
-from claimtrace.cli import main
-from claimtrace.engine import GraphError
-from claimtrace.events import run_command
-from claimtrace.logic import (EVIDENCE_PLAN_SCHEMA, append_derivation,
+import provsleuth.view as view_module
+from provsleuth.assessment import append_assessment, create_assessment, transition_review
+from provsleuth.config import Config
+from provsleuth.cli import main
+from provsleuth.engine import GraphError
+from provsleuth.events import run_command
+from provsleuth.logic import (EVIDENCE_PLAN_SCHEMA, append_derivation,
                               create_derivation, load_rule_pack, load_vocabulary)
-from claimtrace.report import build_report
-from claimtrace.view import render_view
+from provsleuth.report import build_report
+from provsleuth.view import render_view
 
 
 def _project(tmp_path, *, malicious_value=None):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir(parents=True)
     (tmp_path / "data.txt").write_text("evidence", encoding="utf-8")
     (tmp_path / "analysis.py").write_text("# deterministic pipeline", encoding="utf-8")
@@ -37,11 +37,11 @@ def _project(tmp_path, *, malicious_value=None):
         {"from": "artifact:result", "to": "claim:result", "rel": "supports"},
         {"from": "experiment:null", "to": "claim:result", "rel": "tried_before"},
     ]
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
-        "events": "claimtrace/events",
+        "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events",
         "render_types": [],
         "input_types": ["data", "artifact", "code"],
         "run_output_types": ["artifact"],
@@ -57,7 +57,7 @@ def _project(tmp_path, *, malicious_value=None):
 
 def _payload(html):
     match = re.search(
-        r'<script id="claimtrace-data" type="application/json">(.*?)</script>',
+        r'<script id="provsleuth-data" type="application/json">(.*?)</script>',
         html,
         flags=re.DOTALL,
     )
@@ -199,7 +199,7 @@ def _record_symbolic_proof(
                 "arguments": {"subject": {"var": "subject"}},
             },
         })
-    logic_dir = cfg.base / "claimtrace" / "logic"
+    logic_dir = cfg.base / "provsleuth" / "logic"
     logic_dir.mkdir()
     (logic_dir / "vocabulary.json").write_text(json.dumps(vocabulary), encoding="utf-8")
     (logic_dir / "rules.json").write_text(json.dumps(rules), encoding="utf-8")
@@ -243,9 +243,9 @@ def _record_symbolic_proof(
     cfg.graph_path.write_text(json.dumps(graph), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
     config["logic"] = {
-        "derivations": "claimtrace/derivations",
-        "vocabularies": ["claimtrace/logic/vocabulary.json"],
-        "rule_packs": ["claimtrace/logic/rules.json"],
+        "derivations": "provsleuth/derivations",
+        "vocabularies": ["provsleuth/logic/vocabulary.json"],
+        "rule_packs": ["provsleuth/logic/rules.json"],
     }
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     configured = Config(cfg.config_path)
@@ -1121,9 +1121,9 @@ def test_unknown_symbolic_evaluation_shows_checked_inputs_but_no_active_proof(tm
 def test_duplicate_submissions_render_as_one_canonical_proof_node(tmp_path):
     cfg = _project(tmp_path)
     cfg, first = _record_symbolic_proof(cfg)
-    vocabulary = load_vocabulary(cfg.base / "claimtrace" / "logic" / "vocabulary.json")
+    vocabulary = load_vocabulary(cfg.base / "provsleuth" / "logic" / "vocabulary.json")
     rules = load_rule_pack(
-        cfg.base / "claimtrace" / "logic" / "rules.json", vocabulary,
+        cfg.base / "provsleuth" / "logic" / "rules.json", vocabulary,
     )
     proposal = json.loads(json.dumps(first["agent_input"]))
     proposal["note"] = "Independent duplicate submission."
@@ -1148,9 +1148,9 @@ def test_duplicate_submissions_render_as_one_canonical_proof_node(tmp_path):
 def test_cross_derivation_opposites_render_as_one_claim_conflict_node(tmp_path):
     cfg = _project(tmp_path)
     cfg, positive = _record_symbolic_proof(cfg)
-    vocabulary = load_vocabulary(cfg.base / "claimtrace" / "logic" / "vocabulary.json")
+    vocabulary = load_vocabulary(cfg.base / "provsleuth" / "logic" / "vocabulary.json")
     rules = load_rule_pack(
-        cfg.base / "claimtrace" / "logic" / "rules.json", vocabulary,
+        cfg.base / "provsleuth" / "logic" / "rules.json", vocabulary,
     )
     proposal = json.loads(json.dumps(positive["agent_input"]))
     proposal["facts"][0]["atom"]["arguments"]["passed"]["value"] = False
@@ -1291,9 +1291,9 @@ def test_view_cli_requires_explicit_output_and_reports_summary(tmp_path, capsys)
 
 
 @pytest.mark.parametrize("target", [
-    "claimtrace/graph.json", "data.txt", "claimtrace/events/view.html",
-    "claimtrace/assessments/view.html", "claimtrace/derivations/view.html",
-    "claimtrace/semantics/mappings/view.html", "claimtrace/semantics/policies/view.html",
+    "provsleuth/graph.json", "data.txt", "provsleuth/events/view.html",
+    "provsleuth/assessments/view.html", "provsleuth/derivations/view.html",
+    "provsleuth/semantics/mappings/view.html", "provsleuth/semantics/policies/view.html",
     "out.txt.manifest.json",
 ])
 def test_view_refuses_to_overwrite_provenance_or_graph_files(tmp_path, target):
@@ -1304,10 +1304,10 @@ def test_view_refuses_to_overwrite_provenance_or_graph_files(tmp_path, target):
 
 def test_view_refuses_to_overwrite_configured_verifier(tmp_path):
     cfg = _project(tmp_path)
-    verifier = tmp_path / "claimtrace" / "verifiers.py"
+    verifier = tmp_path / "provsleuth" / "verifiers.py"
     verifier.write_text("# project verification policy\n", encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["verifiers"] = "claimtrace/verifiers.py"
+    config["verifiers"] = "provsleuth/verifiers.py"
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
     cfg = Config(cfg.config_path)
 

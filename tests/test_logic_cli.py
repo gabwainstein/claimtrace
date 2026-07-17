@@ -1,8 +1,8 @@
 """Focused command-line tests for project-owned symbolic logic assets."""
 import json
 
-from claimtrace.cli import main
-from claimtrace.config import Config
+from provsleuth.cli import main
+from provsleuth.config import Config
 
 
 def _term(type_id, value):
@@ -131,7 +131,7 @@ def _selection_proposal():
         "bindings": [
             {"result_id": "art:check", "binding_id": "gate:check-complete"},
         ],
-        "note": "Select a reviewed project binding; Claimtrace materializes the fact.",
+        "note": "Select a reviewed project binding; ProvSleuth materializes the fact.",
         "provenance": {"agent": "agent:test"},
     }
 
@@ -146,19 +146,19 @@ def _plan_request():
 
 
 def _project(tmp_path):
-    (tmp_path / "claimtrace" / "logic").mkdir(parents=True)
+    (tmp_path / "provsleuth" / "logic").mkdir(parents=True)
     (tmp_path / "results").mkdir()
     (tmp_path / "results" / "check.json").write_text(
         json.dumps({"release": "release-1", "ok": True, "not_ok": False}),
         encoding="utf-8",
     )
-    (tmp_path / "claimtrace" / "logic" / "vocabulary.json").write_text(
+    (tmp_path / "provsleuth" / "logic" / "vocabulary.json").write_text(
         json.dumps(_vocabulary()), encoding="utf-8",
     )
-    (tmp_path / "claimtrace" / "logic" / "rules.json").write_text(
+    (tmp_path / "provsleuth" / "logic" / "rules.json").write_text(
         json.dumps(_rules()), encoding="utf-8",
     )
-    (tmp_path / "claimtrace" / "graph.json").write_text(json.dumps({
+    (tmp_path / "provsleuth" / "graph.json").write_text(json.dumps({
         "schema_version": "1.0",
         "concepts": {},
         "nodes": [
@@ -195,14 +195,14 @@ def _project(tmp_path):
         ],
         "edges": [],
     }), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
         "logic": {
-            "derivations": "claimtrace/derivations",
-            "vocabularies": ["claimtrace/logic/vocabulary.json"],
-            "rule_packs": ["claimtrace/logic/rules.json"],
+            "derivations": "provsleuth/derivations",
+            "vocabularies": ["provsleuth/logic/vocabulary.json"],
+            "rule_packs": ["provsleuth/logic/rules.json"],
         },
     }), encoding="utf-8")
     proposal_path = tmp_path / "proposal.json"
@@ -346,7 +346,7 @@ def test_cli_rejects_computed_sections_and_does_not_append(tmp_path, capsys):
         "--config", str(cfg.config_path), "derive", str(proposal_path),
         "--actor", "agent:test",
     ]) == 2
-    assert "mechanical_snapshot and derived are computed by claimtrace" in capsys.readouterr().err
+    assert "mechanical_snapshot and derived are computed by provsleuth" in capsys.readouterr().err
     assert not cfg.derivations_path.exists()
 
 
@@ -366,10 +366,10 @@ def test_cli_rejects_non_string_asset_selection_without_crashing(tmp_path, capsy
 
 def test_cli_rejects_duplicate_configured_asset_ids(tmp_path, capsys):
     cfg, proposal_path = _project(tmp_path)
-    duplicate_path = tmp_path / "claimtrace" / "logic" / "duplicate.json"
+    duplicate_path = tmp_path / "provsleuth" / "logic" / "duplicate.json"
     duplicate_path.write_text(json.dumps(_vocabulary()), encoding="utf-8")
     config = json.loads(cfg.config_path.read_text(encoding="utf-8"))
-    config["logic"]["vocabularies"].append("claimtrace/logic/duplicate.json")
+    config["logic"]["vocabularies"].append("provsleuth/logic/duplicate.json")
     cfg.config_path.write_text(json.dumps(config), encoding="utf-8")
 
     assert main([

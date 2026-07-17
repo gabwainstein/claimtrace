@@ -1,0 +1,238 @@
+{
+  "id": "event:sha256:260a2a5cfd81cdd59135dd90bd1097746ccadd70c6a379f32d61fafd6e787c43",
+  "payload": {
+    "contract_errors": [],
+    "control_plane": {
+      "after": {
+        "event_ledger": {
+          "event_count": 22,
+          "event_ids_sha256": "742d88abd15f6f25f9d5a0e5ad8e60489f00e67d3644fcd2f5ea8473fc7bcbe4",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "before": {
+        "event_ledger": {
+          "event_count": 22,
+          "event_ids_sha256": "742d88abd15f6f25f9d5a0e5ad8e60489f00e67d3644fcd2f5ea8473fc7bcbe4",
+          "integrity_issue_count": 0,
+          "state": "valid"
+        },
+        "files": [
+          {
+            "file_version_id": "file:sha256:363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "path": "claimtrace.config.json",
+            "sha256": "363696fad802ccb2939e677da77f75f83db618879043ca90f2d3d963b4a91981",
+            "size": 1316,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "path": "claimtrace/graph.json",
+            "sha256": "3ecb845adf3b9ce6e27d9d2cde507d3928da8f5c18ab52ddad1dc1a0def94764",
+            "size": 12814,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "path": "claimtrace/semantics/local-terms.json",
+            "sha256": "c482cf44e8e4c6905002c9b12cd68b5ebf7f5a610449e86b55fba81f73c1a52f",
+            "size": 476,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "path": "claimtrace/semantics/penguin-example-ontology/index.json",
+            "sha256": "81260e73f8fc49a885b596315676ade508ff8f7e6d3f79de6bd7a5fa4059a9d6",
+            "size": 702,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.lock.json",
+            "sha256": "2a9263c4f96bcced7277ebb91f63878213cdcf2c6aba36425976e9bf1a3889dc",
+            "size": 809,
+            "state": "stable"
+          },
+          {
+            "file_version_id": "file:sha256:d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "path": "claimtrace/semantics/penguin-example-ontology/ontology.ttl",
+            "sha256": "d6bd6374bc278baac1a981e1c8beff1b424d1d1a132981de7a04ff6f2a953302",
+            "size": 376,
+            "state": "stable"
+          }
+        ]
+      },
+      "concurrent_append_only_event_count": 0,
+      "forbidden_change_during_child": false
+    },
+    "direct_child_returncode": 0,
+    "duration_ns": 49864000,
+    "git_after": {
+      "branch": "main",
+      "head": "7a32044ac0424569a9126059a35ee63920a385bb",
+      "state": "captured",
+      "tracked_dirty": true,
+      "tracked_patch_sha256": "3e39c211ffd79d6700f226ff638146cf7f99e0f3436d193358b26e91f8c33c09",
+      "untracked_files": "not_captured"
+    },
+    "input_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784067851335149300,
+          "path": "data/penguins_clean.csv",
+          "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+          "size": 15241,
+          "state": "stable"
+        },
+        "path": "data/penguins_clean.csv",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784130015067363700,
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784130015067363700,
+          "path": "results/slopes.json",
+          "sha256": "eeeb1384697a897a85f760358334b585c1e97569a1395caac2bb6fd508817e6d",
+          "size": 1098,
+          "state": "stable"
+        },
+        "path": "results/slopes.json",
+        "transition": "unchanged"
+      },
+      {
+        "after": {
+          "file_version_id": "file:sha256:05e3ec739e25296ff37e1fdd88e2ff86b149e31ace698e1502eaddaad735b466",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784184161924352000,
+          "path": "analysis/03_figure.py",
+          "sha256": "05e3ec739e25296ff37e1fdd88e2ff86b149e31ace698e1502eaddaad735b466",
+          "size": 5159,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:05e3ec739e25296ff37e1fdd88e2ff86b149e31ace698e1502eaddaad735b466",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784184161924352000,
+          "path": "analysis/03_figure.py",
+          "sha256": "05e3ec739e25296ff37e1fdd88e2ff86b149e31ace698e1502eaddaad735b466",
+          "size": 5159,
+          "state": "stable"
+        },
+        "path": "analysis/03_figure.py",
+        "transition": "unchanged"
+      }
+    ],
+    "launch_error": null,
+    "lineage_coverage": {
+      "declared_inputs": "pre_and_post_hashed",
+      "declared_outputs": "pre_and_post_hashed",
+      "environment": "partial",
+      "git": "best_effort",
+      "overall": "partial",
+      "processes": "direct_child_only",
+      "reads": "declared_only_not_observed",
+      "write_attribution": "unattributed_pre_post_delta"
+    },
+    "outcome": "succeeded",
+    "output_transitions": [
+      {
+        "after": {
+          "file_version_id": "file:sha256:c745d3e6e5e1b22dd8c76e09cfb4175ed3b7befbc0feb0a60b431a825951ec88",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784213765182084500,
+          "path": "figures/bill_slopes.svg",
+          "sha256": "c745d3e6e5e1b22dd8c76e09cfb4175ed3b7befbc0feb0a60b431a825951ec88",
+          "size": 56077,
+          "state": "stable"
+        },
+        "before": {
+          "file_version_id": "file:sha256:c745d3e6e5e1b22dd8c76e09cfb4175ed3b7befbc0feb0a60b431a825951ec88",
+          "method": "sha256_stat_before_after",
+          "mtime_ns": 1784169683232535800,
+          "path": "figures/bill_slopes.svg",
+          "sha256": "c745d3e6e5e1b22dd8c76e09cfb4175ed3b7befbc0feb0a60b431a825951ec88",
+          "size": 56077,
+          "state": "stable"
+        },
+        "path": "figures/bill_slopes.svg",
+        "produced": false,
+        "transition": "unchanged"
+      }
+    ],
+    "plan_id": "recipe:sha256:306c61184ca5bbecc5f25dce14a41635a50b14c73569b5088f369d1e8e2f7601",
+    "receipt_integrity": "finalized",
+    "result_id": "result:sha256:30275958eb0d54ebfa785c5b6fabc2e4a5255ffb197cea76dff174a564611eef",
+    "start_event_id": "event:sha256:0ccf24504eaacdf03f51b943828ffd16a8ec19ca81dc93d035227a28fd6ccbf7",
+    "window_deltas": []
+  },
+  "recorded_at": "2026-07-16T14:56:05.684Z",
+  "run_id": "run:913daa4f-d13a-4990-82b5-ac467cf5df23",
+  "schema_version": "claimtrace.event/1",
+  "type": "run.finished"
+}

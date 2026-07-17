@@ -4,5 +4,5 @@
 /.github/workflows/ @gabwainstein
 /pyproject.toml @gabwainstein
 /MANIFEST.in @gabwainstein
-/src/claimtrace/ @gabwainstein
+/src/provsleuth/ @gabwainstein
 /SECURITY.md @gabwainstein

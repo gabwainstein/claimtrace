@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import claimtrace.events as events_module
-import claimtrace.pipeline as pipeline_module
-from claimtrace.config import Config
-from claimtrace.events import (
+import provsleuth.events as events_module
+import provsleuth.pipeline as pipeline_module
+from provsleuth.config import Config
+from provsleuth.events import (
     EventError,
     append_event,
     load_events,
@@ -19,7 +19,7 @@ from claimtrace.events import (
     materialize_runs,
     run_command,
 )
-from claimtrace.pipeline import (
+from provsleuth.pipeline import (
     LEGACY_SNAPSHOT_SCHEMA,
     PREVIOUS_SNAPSHOT_SCHEMA,
     SNAPSHOT_SCHEMA,
@@ -34,7 +34,7 @@ from claimtrace.pipeline import (
 
 
 def _project(tmp_path):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
     (tmp_path / "data").mkdir()
     (tmp_path / "analysis").mkdir()
@@ -75,8 +75,8 @@ def _project(tmp_path):
         "edges": [],
     }
     (trace / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    (tmp_path / "claimtrace.config.json").write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json", "events": "claimtrace/events",
+    (tmp_path / "provsleuth.config.json").write_text(json.dumps({
+        "root": ".", "graph": "provsleuth/graph.json", "events": "provsleuth/events",
     }), encoding="utf-8")
     lines = code_path.read_bytes().splitlines(keepends=True)
     def digest(start, end):
@@ -113,7 +113,7 @@ def _project(tmp_path):
     }
     contract_path = trace / "primary.pipeline.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
-    return Config(tmp_path / "claimtrace.config.json"), contract, contract_path
+    return Config(tmp_path / "provsleuth.config.json"), contract, contract_path
 
 
 def _materialized_project(tmp_path, *, random_intermediate=False):
@@ -162,7 +162,7 @@ def _instrumented_project(tmp_path):
     cfg, contract, contract_path = _project(tmp_path)
     code = (
         "from pathlib import Path\n"
-        "from claimtrace.pipeline import stage_checkpoint\n"
+        "from provsleuth.pipeline import stage_checkpoint\n"
         "rows = Path('data/raw.csv').read_text().splitlines()\n"
         "complete = [row for row in rows[1:] if row]\n"
         "stage_checkpoint('complete')\n"
@@ -189,7 +189,7 @@ def _instrumented_project(tmp_path):
 
 def _resolve(cfg):
     return resolve_pipeline_contract(
-        cfg, "claimtrace/primary.pipeline.json",
+        cfg, "provsleuth/primary.pipeline.json",
         declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
         declared_outputs=["results/fit.json"],
         parameters={"model": "ols"}, seeds={"numpy": "7"},
@@ -198,7 +198,7 @@ def _resolve(cfg):
 
 def _resolve_schema(cfg, snapshot_schema):
     return resolve_pipeline_contract(
-        cfg, "claimtrace/primary.pipeline.json",
+        cfg, "provsleuth/primary.pipeline.json",
         declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
         declared_outputs=["results/fit.json"],
         parameters={"model": "ols"}, seeds={"numpy": "7"},
@@ -210,6 +210,46 @@ def _advance_mtime(path):
     before = path.stat()
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
     assert path.stat().st_mtime_ns != before.st_mtime_ns
+
+
+def test_provsleuth_stage_trace_environment_is_accepted(tmp_path, monkeypatch):
+    for key in pipeline_module.STAGE_TRACE_ENVIRONMENT_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    trace_path = (tmp_path / "trace.jsonl").resolve()
+    source_root = tmp_path.resolve()
+    nonce = "a" * 64
+    contract_id = "pipeline-contract:sha256:" + "b" * 64
+    monkeypatch.setenv(pipeline_module.STAGE_TRACE_PATH_ENV, str(trace_path))
+    monkeypatch.setenv(pipeline_module.STAGE_TRACE_NONCE_ENV, nonce)
+    monkeypatch.setenv(pipeline_module.STAGE_TRACE_CONTRACT_ENV, contract_id)
+    monkeypatch.setenv(pipeline_module.STAGE_TRACE_ROOT_ENV, str(source_root))
+
+    assert pipeline_module._stage_trace_environment() == {
+        "path": str(trace_path),
+        "nonce": nonce,
+        "contract_id": contract_id,
+        "source_root": str(source_root),
+    }
+
+
+def test_conflicting_provsleuth_and_legacy_stage_trace_environment_is_rejected(
+        tmp_path, monkeypatch):
+    for key in pipeline_module.STAGE_TRACE_ENVIRONMENT_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(
+        pipeline_module.STAGE_TRACE_PATH_ENV,
+        str((tmp_path / "provsleuth.jsonl").resolve()),
+    )
+    monkeypatch.setenv(
+        pipeline_module.LEGACY_STAGE_TRACE_PATH_ENV,
+        str((tmp_path / "claimtrace.jsonl").resolve()),
+    )
+
+    with pytest.raises(
+        PipelineError,
+        match="conflicting ProvSleuth and legacy Claimtrace stage-trace path",
+    ):
+        pipeline_module._stage_trace_environment()
 
 
 def _readdress(snapshot):
@@ -500,7 +540,7 @@ def test_contract_role_mismatch_fails_closed(tmp_path):
     cfg, _contract, _path = _project(tmp_path)
     with pytest.raises(PipelineError, match="input paths differ"):
         resolve_pipeline_contract(
-            cfg, "claimtrace/primary.pipeline.json",
+            cfg, "provsleuth/primary.pipeline.json",
             declared_inputs=["analysis/pipeline.py"],
             declared_outputs=["results/fit.json"],
             parameters={"model": "ols"}, seeds={"numpy": "7"},
@@ -530,7 +570,7 @@ def test_input_and_terminal_output_same_path_is_rejected_before_launch(
             inputs=["data/raw.csv", "analysis/pipeline.py"],
             outputs=["data/raw.csv"], cwd=str(cfg.root),
             parameters={"model": "ols"}, seeds={"numpy": "7"},
-            pipeline_contract="claimtrace/primary.pipeline.json",
+            pipeline_contract="provsleuth/primary.pipeline.json",
             scan_writes=False,
         )
     assert launched is False
@@ -648,7 +688,7 @@ def test_contract_event_rejects_readdressed_malformed_pipeline_snapshot(tmp_path
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert result["outcome"] == "succeeded"
@@ -681,7 +721,7 @@ def test_parameter_and_seed_keys_are_exact_policy(tmp_path):
     cfg, _contract, _path = _project(tmp_path)
     with pytest.raises(PipelineError, match="parameter keys differ"):
         resolve_pipeline_contract(
-            cfg, "claimtrace/primary.pipeline.json",
+            cfg, "provsleuth/primary.pipeline.json",
             declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
             declared_outputs=["results/fit.json"],
             parameters={}, seeds={"numpy": "7"},
@@ -695,7 +735,7 @@ def test_contract_bound_run_writes_event_v3_and_portable_computation_id(tmp_path
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert result["outcome"] == "succeeded"
@@ -730,7 +770,7 @@ def test_instrumented_run_writes_event_v4_with_complete_cooperative_trace(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         stage_checkpoints=True, scan_writes=False,
     )
 
@@ -761,14 +801,19 @@ def test_non_checkpoint_run_scrubs_inherited_reserved_trace_environment(
     )
     # A partial inherited binding would make stage_checkpoint fail if it reached
     # the ordinary child. The controller must reserve and remove these variables.
-    monkeypatch.setenv("CLAIMTRACE_STAGE_TRACE_PATH", str(tmp_path / "outer.jsonl"))
+    monkeypatch.setenv(
+        "PROVSLEUTH_STAGE_TRACE_PATH", str(tmp_path / "outer-provsleuth.jsonl"),
+    )
+    monkeypatch.setenv(
+        "CLAIMTRACE_STAGE_TRACE_PATH", str(tmp_path / "outer-claimtrace.jsonl"),
+    )
 
     result = run_command(
         cfg, [sys.executable, "analysis/pipeline.py"],
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
 
@@ -784,8 +829,8 @@ def test_descendant_emitted_checkpoints_do_not_satisfy_direct_child_trace(
         "import subprocess\n"
         "import sys\n"
         "from pathlib import Path\n"
-        "from claimtrace.pipeline import stage_checkpoint\n"
-        "if os.environ.get('CLAIMTRACE_DESCENDANT') == '1':\n"
+        "from provsleuth.pipeline import stage_checkpoint\n"
+        "if os.environ.get('PROVSLEUTH_DESCENDANT') == '1':\n"
         "    rows = Path('data/raw.csv').read_text().splitlines()\n"
         "    complete = [row for row in rows[1:] if row]\n"
         "    stage_checkpoint('complete')\n"
@@ -794,7 +839,7 @@ def test_descendant_emitted_checkpoints_do_not_satisfy_direct_child_trace(
         "    stage_checkpoint('fit')\n"
         "else:\n"
         "    child_env = os.environ.copy()\n"
-        "    child_env['CLAIMTRACE_DESCENDANT'] = '1'\n"
+        "    child_env['PROVSLEUTH_DESCENDANT'] = '1'\n"
         "    raise SystemExit(subprocess.run([sys.executable, __file__], env=child_env).returncode)\n"
     )
     code_path = cfg.root / "analysis" / "pipeline.py"
@@ -818,7 +863,7 @@ def test_descendant_emitted_checkpoints_do_not_satisfy_direct_child_trace(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         stage_checkpoints=True, scan_writes=False,
     )
 
@@ -848,7 +893,7 @@ def test_exception_after_marker_creation_removes_private_trace_channel(
             inputs=["data/raw.csv", "analysis/pipeline.py"],
             outputs=["results/fit.json"], cwd=str(cfg.root),
             parameters={"model": "ols"}, seeds={"numpy": "7"},
-            pipeline_contract="claimtrace/primary.pipeline.json",
+            pipeline_contract="provsleuth/primary.pipeline.json",
             stage_checkpoints=True, scan_writes=True,
         )
 
@@ -872,7 +917,7 @@ def test_result_id_excludes_fresh_checkpoint_binding_material(
             inputs=["data/raw.csv", "analysis/pipeline.py"],
             outputs=["results/fit.json"], cwd=str(cfg.root),
             parameters={"model": "ols"}, seeds={"numpy": "7"},
-            pipeline_contract="claimtrace/primary.pipeline.json",
+            pipeline_contract="provsleuth/primary.pipeline.json",
             stage_checkpoints=True, scan_writes=False,
         )
 
@@ -996,7 +1041,7 @@ def test_zero_exit_with_missing_cooperative_checkpoint_fails_closed(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         stage_checkpoints=True, scan_writes=False,
     )
 
@@ -1050,7 +1095,7 @@ def test_readdressed_event_v3_cannot_replace_entrypoint_with_unrelated_command(t
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     stored, issues = load_events(cfg.events_path)
@@ -1099,7 +1144,7 @@ def test_stored_entrypoint_argv_safe_aliases_resolve_from_recorded_cwd(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     stored, issues = load_events(cfg.events_path)
@@ -1126,7 +1171,7 @@ def test_stored_entrypoint_argv_rejects_wrong_or_escaping_cwd_resolution(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     stored, issues = load_events(cfg.events_path)
@@ -1147,7 +1192,7 @@ def test_event_v3_requires_closed_intermediate_fields_and_exact_snapshot_role(tm
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     stored, issues = load_events(cfg.events_path)
@@ -1223,7 +1268,7 @@ def test_event_v3_rejects_legacy_snapshot_v1_even_when_readdressed(tmp_path):
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     stored, issues = load_events(cfg.events_path)
@@ -1232,7 +1277,7 @@ def test_event_v3_rejects_legacy_snapshot_v1_even_when_readdressed(tmp_path):
     payload = copy.deepcopy(start["payload"])
     plan = payload["plan"]
     plan["pipeline_contract"] = resolve_pipeline_contract(
-        cfg, "claimtrace/primary.pipeline.json",
+        cfg, "provsleuth/primary.pipeline.json",
         declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
         declared_outputs=["results/fit.json"],
         parameters={"model": "ols"}, seeds={"numpy": "7"},
@@ -1278,7 +1323,7 @@ def test_event_v3_and_v4_accept_stored_snapshot_v2(
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         stage_checkpoints=stage_checkpoints, scan_writes=False,
     )
 
@@ -1304,7 +1349,7 @@ def test_event_v3_hashes_and_links_materialized_intermediate_file(tmp_path):
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
     )
 
     assert result["outcome"] == "succeeded"
@@ -1339,7 +1384,7 @@ def test_event_v3_records_stable_preexisting_intermediate_as_unchanged(tmp_path)
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
 
@@ -1365,7 +1410,7 @@ def test_event_v3_missing_materialized_intermediate_is_contract_failure(tmp_path
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
 
@@ -1387,7 +1432,7 @@ def test_event_v3_does_not_promote_pathless_intermediate_to_file_receipt(tmp_pat
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
     )
 
     assert result["outcome"] == "succeeded"
@@ -1410,7 +1455,7 @@ def test_legacy_contract_event_v2_pair_remains_readable(tmp_path):
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     current, issues = load_events(cfg.events_path)
@@ -1421,7 +1466,7 @@ def test_legacy_contract_event_v2_pair_remains_readable(tmp_path):
     plan = copy.deepcopy(current_start["payload"]["plan"])
     plan.pop("declared_intermediates")
     plan["pipeline_contract"] = resolve_pipeline_contract(
-        cfg, "claimtrace/primary.pipeline.json",
+        cfg, "provsleuth/primary.pipeline.json",
         declared_inputs=["data/raw.csv", "analysis/pipeline.py"],
         declared_outputs=["results/fit.json"],
         parameters={"model": "ols"}, seeds={"numpy": "7"},
@@ -1499,7 +1544,7 @@ def test_contract_run_requires_entrypoint_as_exact_argv_path(tmp_path):
             inputs=["data/raw.csv", "analysis/pipeline.py"],
             outputs=["results/fit.json"], cwd=str(cfg.root),
             parameters={"model": "ols"}, seeds={"numpy": "7"},
-            pipeline_contract="claimtrace/primary.pipeline.json",
+            pipeline_contract="provsleuth/primary.pipeline.json",
             scan_writes=False,
         )
 
@@ -1521,7 +1566,7 @@ def test_contract_run_rejects_absolute_entrypoint_argv_before_launch(
             inputs=["data/raw.csv", "analysis/pipeline.py"],
             outputs=["results/fit.json"], cwd=str(cfg.root),
             parameters={"model": "ols"}, seeds={"numpy": "7"},
-            pipeline_contract="claimtrace/primary.pipeline.json",
+            pipeline_contract="provsleuth/primary.pipeline.json",
             scan_writes=False,
         )
     assert launched is False
@@ -1540,7 +1585,7 @@ def test_method_or_contract_drift_during_child_makes_run_contract_fail(tmp_path)
         inputs=["data/raw.csv", "analysis/pipeline.py"],
         outputs=["results/fit.json"], cwd=str(cfg.root),
         parameters={"model": "ols"}, seeds={"numpy": "7"},
-        pipeline_contract="claimtrace/primary.pipeline.json",
+        pipeline_contract="provsleuth/primary.pipeline.json",
         scan_writes=False,
     )
     assert result["outcome"] == "contract_failed"

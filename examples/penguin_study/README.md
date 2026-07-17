@@ -1,4 +1,4 @@
-# Palmer Penguins: a real-data Claimtrace demo
+# Palmer Penguins: a real-data ProvSleuth demo
 
 This example follows one compact scientific question through source acquisition, deterministic
 preprocessing, analysis, a figure, narrow claims, semantic-review history, and a symbolic rule.
@@ -19,7 +19,7 @@ paper and not a new biological discovery.
 - Teaching article: Horst AM, Hill AP, Gorman KB (2022),
   <https://journal.r-project.org/articles/RJ-2022-020/>.
 
-The example code and Claimtrace configuration follow this repository's MIT license. The Palmer
+The example code and ProvSleuth configuration follow this repository's MIT license. The Palmer
 Penguins CSVs remain separately available under CC0 and are not relicensed as MIT here; their source
 citation is retained even though CC0 does not require attribution.
 
@@ -28,13 +28,20 @@ preprocessing script repeats the package's documented transformation and refuses
 its output is byte-identical to the official curated CSV. The slope analysis then uses only records
 with non-missing bill length and depth.
 
-## Rebuild with mechanical receipts
+## Frozen Claimtrace-era reproduction record
 
-From a source checkout, enter this directory and use the explicit project config and root. The
-first command requires network access; the pinned hash gates fail closed if upstream bytes differ.
+This checked-in demo was recorded before the project was renamed. Its immutable receipts and
+content-addressed records therefore retain the legacy `claimtrace.config.json`, `claimtrace/`
+paths, and `claimtrace.*` protocol identifiers. The hash-locked `analysis/02_analyze.py` and
+imports the former `claimtrace` Python package; the mutable project verifier has been updated to
+import `provsleuth`. Consequently, the sequence below documents the original Claimtrace-era
+execution; it is not a runnable clean-environment ProvSleuth recipe. Do not edit the locked
+analysis script to make it run, because that would invalidate the checked-in run, replay,
+method-review, and render evidence. Do not install the unrelated PyPI package named `claimtrace`
+as a substitute.
 
-Install Claimtrace first (`python -m pip install -e ../..` from this directory), or point an
-uninstalled source checkout at the package for the current PowerShell session:
+The first historical command required network access; its pinned hash gates failed closed if
+upstream bytes differed. The original PowerShell sequence was:
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path ..\..\src).Path
@@ -88,7 +95,7 @@ python -m claimtrace --config $config lint --strict
 python -m claimtrace --config $config check --strict --json
 ```
 
-The equivalent POSIX shell sequence is:
+The equivalent historical POSIX shell sequence was:
 
 ```bash
 export PYTHONPATH="$(cd ../../src && pwd)"
@@ -138,6 +145,25 @@ python -m claimtrace --config "$config" verify
 python -m claimtrace --config "$config" lint --strict
 python -m claimtrace --config "$config" check --strict --json
 ```
+
+## Inspect the frozen fixture with ProvSleuth
+
+ProvSleuth can read and audit the legacy config, stores, schemas, and generated projection without
+rewriting them:
+
+```powershell
+$config = (Resolve-Path claimtrace.config.json).Path
+python -m provsleuth --config $config evidence-plan claim:sign-reversal --json
+python -m provsleuth --config $config derivations --json
+python -m provsleuth --config $config assessments --all --json
+python -m provsleuth --config $config method-assessments --json
+python -m provsleuth --config $config lint --strict
+python -m provsleuth --config $config check --strict --json
+python -m provsleuth --config $config view --output research-map.html
+```
+
+A new ProvSleuth-native Penguins demo should be built as a new provenance history rather than by
+renaming this fixture in place.
 
 The generated files are checked in. The analysis contract names four exact code-backed stages:
 complete-case selection, species grouping, descriptive OLS estimation, and result export. Its
@@ -189,8 +215,8 @@ certify either claim as true.
 Inspect the complete immutable history with:
 
 ```powershell
-python -m claimtrace --config $config assessments --all --json
-python -m claimtrace --config $config method-assessments --json
+python -m provsleuth --config $config assessments --all --json
+python -m provsleuth --config $config method-assessments --json
 ```
 
 The history intentionally retains a v1 framing mistake, its prematurely accepted review, and a
@@ -201,7 +227,7 @@ policy explicit. Review successors stay on their predecessor's schema, so old re
 silently reinterpreted after a policy change.
 
 All recorded `codex:/root/...` actor strings, including the current proposer and reviewer, are
-self-asserted task identities. Claimtrace records but does not authenticate them. Acceptance is an
+self-asserted task identities. ProvSleuth records but does not authenticate them. Acceptance is an
 attributed judgement, not proof that the scientific interpretation is true.
 
 The reported OLS estimates are rounded to six decimal places. The checked-in mechanical receipts
@@ -209,7 +235,7 @@ also retain the executable and working-directory paths observed on the producing
 authentic environment provenance but may disclose local workspace layout; audit this boundary
 before republishing a copied ledger, and do not edit content-addressed receipts in place.
 The historical analysis receipt embeds pipeline snapshot v2, whose original content address also
-contains code-file `mtime_ns`. Claimtrace validates that stored snapshot exactly, then ignores only
+contains code-file `mtime_ns`. ProvSleuth validates that stored snapshot exactly, then ignores only
 that volatile timestamp when comparing it with a fresh checkout; every content hash, size, graph
 node, method, stage, and anchor remains exact. Newly created contracts use timestamp-independent
 snapshot v3.
@@ -230,8 +256,8 @@ human review, explicit policy compilation, activation, and strict verification, 
 [semantic-normalization walkthrough](SEMANTICS.md) in a disposable copy of this study.
 
 ```powershell
-python -m claimtrace --config $config evidence-plan claim:sign-reversal --json
-python -m claimtrace --config $config derivations --json
+python -m provsleuth --config $config evidence-plan claim:sign-reversal --json
+python -m provsleuth --config $config derivations --json
 ```
 
 The derivation ledger retains the earlier proofs and the current proof rebuilt after checkpoint
@@ -255,5 +281,5 @@ is negative.
 Generate the interactive graph without declaring the HTML as a scientific graph node:
 
 ```powershell
-python -m claimtrace --config $config view --output research-map.html
+python -m provsleuth --config $config view --output research-map.html
 ```

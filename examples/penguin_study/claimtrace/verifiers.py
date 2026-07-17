@@ -8,7 +8,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-from claimtrace import check
+from provsleuth import check
 
 
 EXPECTED_HASHES = {

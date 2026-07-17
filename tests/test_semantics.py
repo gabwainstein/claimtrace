@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-import claimtrace.semantics as semantics
-import claimtrace.cli as claimtrace_cli
-from claimtrace.cli import main
-from claimtrace.config import Config
-from claimtrace.semantics import (
+import provsleuth.semantics as semantics
+import provsleuth.cli as provsleuth_cli
+from provsleuth.cli import main
+from provsleuth.config import Config
+from provsleuth.semantics import (
     SemanticError,
     append_mapping,
     append_mapping_review,
@@ -124,7 +124,7 @@ def _write_json(path, value):
 
 def _project(tmp_path, *, duplicate_memory=False, max_candidates=25,
              memory_kind="class"):
-    semantic_root = tmp_path / "claimtrace" / "semantics"
+    semantic_root = tmp_path / "provsleuth" / "semantics"
     ontology_root = semantic_root / "ontology"
     terminology_path = semantic_root / "local-terms.json"
     raw_path = ontology_root / "ontology.ttl"
@@ -563,20 +563,20 @@ def test_store_corruption_fails_closed_and_blocks_append(tmp_path):
 
 
 def _write_cli_config(tmp_path):
-    _write_json(tmp_path / "claimtrace" / "graph.json", {
+    _write_json(tmp_path / "provsleuth" / "graph.json", {
         "schema_version": "1.0", "concepts": {}, "nodes": [], "edges": [],
     })
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     _write_json(config_path, {
         "root": ".",
-        "graph": "claimtrace/graph.json",
+        "graph": "provsleuth/graph.json",
         "semantics": {
-            "terminologies": ["claimtrace/semantics/local-terms.json"],
+            "terminologies": ["provsleuth/semantics/local-terms.json"],
             "ontology_locks": [
-                "claimtrace/semantics/ontology/ontology.lock.json",
+                "provsleuth/semantics/ontology/ontology.lock.json",
             ],
-            "mappings": "claimtrace/semantics/mappings",
-            "policies": "claimtrace/semantics/policies",
+            "mappings": "provsleuth/semantics/mappings",
+            "policies": "provsleuth/semantics/policies",
             "active_policy": None,
             "require_active_policy": False,
         },
@@ -708,7 +708,7 @@ def test_cli_compile_policy_returns_nonzero_when_record_is_not_activatable(
     )
     request = tmp_path / "policy.json"
     _write_json(request, {"mapping_ids": [accepted["id"]], "note": "Release."})
-    real_evaluate = claimtrace_cli.evaluate_semantic_policy
+    real_evaluate = provsleuth_cli.evaluate_semantic_policy
 
     def invalid_after_record(config, policy):
         result = real_evaluate(config, policy)
@@ -720,7 +720,7 @@ def test_cli_compile_policy_returns_nonzero_when_record_is_not_activatable(
             }],
         }
 
-    monkeypatch.setattr(claimtrace_cli, "evaluate_semantic_policy", invalid_after_record)
+    monkeypatch.setattr(provsleuth_cli, "evaluate_semantic_policy", invalid_after_record)
     assert main([
         "--config", str(config_path), "compile-semantic-policy", str(request),
         "--actor", "owner:human", "--json",
@@ -748,7 +748,7 @@ def test_cli_semantic_status_suppresses_mixed_asset_snapshot(
     config = json.loads(config_path.read_text(encoding="utf-8"))
     config["semantics"]["active_policy"] = policy["id"]
     _write_json(config_path, config)
-    real_active = claimtrace_cli._evaluate_active_semantic_policy_from_snapshot
+    real_active = provsleuth_cli._evaluate_active_semantic_policy_from_snapshot
     mutated = False
 
     def mutate_after_active(configured, **kwargs):
@@ -761,7 +761,7 @@ def test_cli_semantic_status_suppresses_mixed_asset_snapshot(
         return result
 
     monkeypatch.setattr(
-        claimtrace_cli, "_evaluate_active_semantic_policy_from_snapshot",
+        provsleuth_cli, "_evaluate_active_semantic_policy_from_snapshot",
         mutate_after_active,
     )
     assert main([
@@ -779,7 +779,7 @@ def test_init_scaffolds_explicit_semantic_ontology_budget(tmp_path, capsys):
     assert main(["init", str(project)]) == 0
     capsys.readouterr()
     config = json.loads(
-        (project / "claimtrace.config.json").read_text(encoding="utf-8")
+        (project / "provsleuth.config.json").read_text(encoding="utf-8")
     )
     assert config["semantics"]["max_ontology_bytes"] == 536870912
 
@@ -970,15 +970,15 @@ def test_cli_ontology_lock_uses_honest_index_and_import_assertions(tmp_path, cap
 
 def test_ontology_lock_publication_is_atomic_create_only(tmp_path, monkeypatch):
     destination = tmp_path / "ontology.lock.json"
-    original_link = claimtrace_cli.os.link
+    original_link = provsleuth_cli.os.link
 
     def raced_link(source, target):
         Path(target).write_text("competitor\n", encoding="utf-8")
         return original_link(source, target)
 
-    monkeypatch.setattr(claimtrace_cli.os, "link", raced_link)
+    monkeypatch.setattr(provsleuth_cli.os, "link", raced_link)
     with pytest.raises(SemanticError, match="refusing to overwrite"):
-        claimtrace_cli._atomic_create_text(destination, "intended\n")
+        provsleuth_cli._atomic_create_text(destination, "intended\n")
     assert destination.read_text(encoding="utf-8") == "competitor\n"
 
 
@@ -1247,7 +1247,7 @@ def test_batch_language_limit_profiles_share_a_bounded_work_budget(
 def test_configured_asset_raw_bytes_have_an_aggregate_preparse_budget(
         tmp_path, monkeypatch):
     cfg, paths = _project(tmp_path)
-    invalid_second = tmp_path / "claimtrace" / "semantics" / "second.json"
+    invalid_second = tmp_path / "provsleuth" / "semantics" / "second.json"
     invalid_second.write_text(" " * 100, encoding="utf-8")
     cfg.semantic_terminology_paths.append(invalid_second)
     monkeypatch.setattr(

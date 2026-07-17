@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from claimtrace import engine
-from claimtrace.config import Config
+from provsleuth import engine
+from provsleuth.config import Config
 
 
 def _method(method_id="method:primary", *, status="current", steps=None):
@@ -41,14 +41,14 @@ def _claim(claim_type="claim", *, methods=None):
 
 
 def _config(tmp_path, nodes):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir(parents=True)
     (trace / "graph.json").write_text(json.dumps({
         "schema_version": "1.0", "concepts": {}, "nodes": nodes, "edges": [],
     }), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
-        "root": ".", "graph": "claimtrace/graph.json",
+        "root": ".", "graph": "provsleuth/graph.json",
     }), encoding="utf-8")
     return Config(config_path)
 

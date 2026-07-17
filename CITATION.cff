@@ -1,11 +1,11 @@
 cff-version: 1.2.0
-message: "If you use Claimtrace in research, please cite this software record."
-title: "Claimtrace: dependency-aware provenance and verification for scientific analysis"
+message: "If you use ProvSleuth in research, please cite this software record."
+title: "ProvSleuth: deterministic research provenance and claim verification"
 type: software
 authors:
   - family-names: Wainstein
     given-names: Gabriel
-repository-code: "https://github.com/gabwainstein/claimtrace"
-url: "https://github.com/gabwainstein/claimtrace"
-version: 0.3.0
+repository-code: "https://github.com/gabwainstein/provsleuth"
+url: "https://github.com/gabwainstein/provsleuth"
+version: 0.4.0
 license: MIT

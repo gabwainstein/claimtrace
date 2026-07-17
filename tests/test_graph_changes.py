@@ -7,21 +7,21 @@ from pathlib import Path
 
 import pytest
 
-from claimtrace.config import Config
-from claimtrace import graph_changes
+from provsleuth.config import Config
+from provsleuth import graph_changes
 
 
 def _project(tmp_path: Path, graph: dict) -> Config:
-    (tmp_path / "claimtrace").mkdir()
-    (tmp_path / "claimtrace.config.json").write_text(
-        json.dumps({"root": ".", "graph": "claimtrace/graph.json"}),
+    (tmp_path / "provsleuth").mkdir()
+    (tmp_path / "provsleuth.config.json").write_text(
+        json.dumps({"root": ".", "graph": "provsleuth/graph.json"}),
         encoding="utf-8",
     )
-    (tmp_path / "claimtrace" / "graph.json").write_text(
+    (tmp_path / "provsleuth" / "graph.json").write_text(
         json.dumps(graph, indent=2) + "\n",
         encoding="utf-8",
     )
-    return Config(tmp_path / "claimtrace.config.json")
+    return Config(tmp_path / "provsleuth.config.json")
 
 
 def _base_graph() -> dict:

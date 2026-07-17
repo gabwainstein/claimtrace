@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from claimtrace.config import Config
-from claimtrace.method_assessment import (
+from provsleuth.config import Config
+from provsleuth.method_assessment import (
     MethodAssessmentError,
     append_method_assessment,
     append_method_review_transition,
@@ -22,7 +22,7 @@ FIXED_TIME = "2026-07-15T01:00:00.000Z"
 
 
 def _project(tmp_path):
-    trace = tmp_path / "claimtrace"
+    trace = tmp_path / "provsleuth"
     trace.mkdir()
     (tmp_path / "data").mkdir()
     (tmp_path / "analysis").mkdir()
@@ -69,11 +69,11 @@ def _project(tmp_path):
     }
     graph_path = trace / "graph.json"
     graph_path.write_text(json.dumps(graph), encoding="utf-8")
-    config_path = tmp_path / "claimtrace.config.json"
+    config_path = tmp_path / "provsleuth.config.json"
     config_path.write_text(json.dumps({
         "root": ".",
-        "graph": "claimtrace/graph.json",
-        "execution": {"method_assessments": "claimtrace/method-assessments"},
+        "graph": "provsleuth/graph.json",
+        "execution": {"method_assessments": "provsleuth/method-assessments"},
     }), encoding="utf-8")
     lines = code_path.read_bytes().splitlines(keepends=True)
 
@@ -136,7 +136,7 @@ def _agent_input(verdict="implements", alignments=None):
 def _make(cfg, agent_input=None, recorded_at=FIXED_TIME):
     return create_method_assessment(
         cfg,
-        "claimtrace/primary.pipeline.json",
+        "provsleuth/primary.pipeline.json",
         "method:primary",
         agent_input or _agent_input(),
         actor="agent:test",
