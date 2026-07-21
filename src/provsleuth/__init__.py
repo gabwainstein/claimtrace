@@ -13,5 +13,5 @@ correct — that boundary is deliberate.
 """
 from .verify import check, registry, approx  # noqa: F401
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = ["check", "registry", "approx", "__version__"]

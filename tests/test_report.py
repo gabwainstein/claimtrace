@@ -1,5 +1,6 @@
 """Tests for strict and machine-readable graph plus receipt reports."""
 import json
+import hashlib
 import sys
 
 import provsleuth.assessment as assessment_module
@@ -11,6 +12,11 @@ from provsleuth.assessment import (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION,
 from provsleuth.cli import main
 from provsleuth.config import Config
 from provsleuth.events import run_command
+from provsleuth.deliberation import (CANDIDATE_SET_REQUEST_SCHEMA,
+                                    PROPOSAL_REQUEST_SCHEMA,
+                                    append_record as append_deliberation_record,
+                                    create_proposal as create_deliberation_proposal,
+                                    freeze_candidate_set)
 from provsleuth.report import build_report, dumps_report
 from provsleuth.semantics import (append_mapping, append_mapping_review,
                                   append_semantic_policy, create_mapping_proposal,
@@ -568,11 +574,148 @@ def test_json_report_is_one_deterministic_document(tmp_path, capsys):
     assert main(["--config", str(cfg.config_path), "check", "--json"]) == 0
     captured = capsys.readouterr()
     parsed = json.loads(captured.out)
-    assert parsed["report_schema_version"] == "1.7"
+    assert parsed["report_schema_version"] == "1.8"
+    assert parsed["deliberations"]["automatic_activation"] is False
     assert parsed["semantics"]["mapping_history"] == []
     assert parsed["semantics"]["active_policy"]["configured"] is False
     assert parsed["fatal"] is None
     assert captured.err == ""
+
+
+def test_report_projects_deliberation_as_advisory_record_not_active_support(tmp_path):
+    source = "The observed value increased in this sample.\n"
+    (tmp_path / "paper.txt").write_text(source, encoding="utf-8")
+    cfg = _project(tmp_path, [{
+        "id": "doc:paper", "type": "artifact", "status": "current",
+        "path": "paper.txt",
+    }])
+    data = (tmp_path / "paper.txt").read_bytes()
+    document = create_deliberation_proposal(cfg, {
+        "schema_version": PROPOSAL_REQUEST_SCHEMA,
+        "round_id": "round:report", "phase": "claim_extraction",
+        "subject_key": "claim:increase",
+        "source_anchor": {
+            "node_id": "doc:paper", "start_byte": 0, "end_byte": len(data),
+            "span_sha256": hashlib.sha256(data).hexdigest(),
+        },
+        "payload": {
+            "claim_text": "The observed value increased in this sample.",
+            "claim_kind": "descriptive", "speech_act": "assertion",
+            "polarity": "positive", "qualifiers": ["in this sample"],
+        },
+        "rationale": "Exact candidate for independent review.",
+    }, actor="agent:extractor", independence_group="model:extractor")
+    append_deliberation_record(cfg, document)
+
+    report = build_report(cfg, strict=True)
+    projection = report["deliberations"]
+    assert projection["records"][0]["proposal_id"] == document["proposal_id"]
+    assert projection["open_groups"][0]["candidate_ids"] == [document["candidate_id"]]
+    assert projection["automatic_activation"] is False
+    assert projection["scientific_truth_established"] is False
+
+
+def test_deliberation_info_findings_are_nonblocking_and_absent_when_empty(tmp_path):
+    source = "The observed value increased in this sample.\n"
+    (tmp_path / "paper.txt").write_text(source, encoding="utf-8")
+    cfg = _project(tmp_path, [{
+        "id": "doc:paper", "type": "data", "status": "current",
+        "path": "paper.txt",
+    }])
+
+    empty = build_report(cfg, strict=True)
+    empty_codes = {item["code"] for item in empty["findings"]}
+    assert "DELIBERATION_PANEL_INSUFFICIENT_REVIEW" not in empty_codes
+    assert "DELIBERATION_OPEN_PROPOSAL_GROUP" not in empty_codes
+    assert empty["ok"] is True
+
+    data = (tmp_path / "paper.txt").read_bytes()
+    proposal = create_deliberation_proposal(cfg, {
+        "schema_version": PROPOSAL_REQUEST_SCHEMA,
+        "round_id": "round:report-info", "phase": "claim_extraction",
+        "subject_key": "claim:increase",
+        "source_anchor": {
+            "node_id": "doc:paper", "start_byte": 0, "end_byte": len(data),
+            "span_sha256": hashlib.sha256(data).hexdigest(),
+        },
+        "payload": {
+            "claim_text": "The observed value increased in this sample.",
+            "claim_kind": "descriptive", "speech_act": "assertion",
+            "polarity": "positive", "qualifiers": ["in this sample"],
+        },
+        "rationale": "Exact candidate awaiting procedural review.",
+    }, actor="agent:extractor", independence_group="context:extractor",
+       recorded_at="2026-07-18T00:00:00Z")
+    append_deliberation_record(cfg, proposal)
+
+    open_report = build_report(cfg, strict=True)
+    open_finding = next(
+        item for item in open_report["findings"]
+        if item["code"] == "DELIBERATION_OPEN_PROPOSAL_GROUP"
+    )
+    assert open_finding["severity"] == "info"
+    assert open_finding["blocking"] is False
+    assert open_report["ok"] is True
+
+    candidate_set = freeze_candidate_set(cfg, {
+        "schema_version": CANDIDATE_SET_REQUEST_SCHEMA,
+        "round_id": "round:report-info", "phase": "claim_extraction",
+        "subject_key": "claim:increase",
+    }, actor="orchestrator:freeze", recorded_at="2026-07-18T00:00:10Z")
+    append_deliberation_record(cfg, candidate_set)
+
+    frozen_report = build_report(cfg, strict=True)
+    insufficient = next(
+        item for item in frozen_report["findings"]
+        if item["code"] == "DELIBERATION_PANEL_INSUFFICIENT_REVIEW"
+    )
+    assert insufficient["severity"] == "info"
+    assert insufficient["blocking"] is False
+    assert frozen_report["deliberations"]["panels"][0]["status"] == (
+        "insufficient_review"
+    )
+    assert frozen_report["deliberations"]["open_groups"] == []
+    assert frozen_report["ok"] is True
+
+
+def test_deep_deliberation_json_is_reported_as_store_integrity_not_fatal(
+        tmp_path, capsys):
+    cfg = _project(tmp_path, [])
+    cfg.deliberation_path.mkdir(parents=True)
+    (cfg.deliberation_path / "malformed.json").write_text(
+        "[" * 300 + "0" + "]" * 300, encoding="utf-8",
+    )
+
+    report = build_report(cfg, strict=True)
+    integrity = next(
+        item for item in report["findings"]
+        if item["code"] == "DELIBERATION_STORE_INTEGRITY"
+    )
+    assert report["fatal"] is None
+    assert report["exit_code"] == 1
+    assert integrity["severity"] == "error"
+    assert integrity["blocking"] is True
+    assert "JSON nesting exceeds the 256-level limit" in integrity["detail"]
+
+    assert main([
+        "--config", str(cfg.config_path), "check", "--strict", "--json",
+    ]) == 1
+    checked = json.loads(capsys.readouterr().out)
+    assert checked["fatal"] is None
+    assert checked["exit_code"] == 1
+    assert any(
+        item["code"] == "DELIBERATION_STORE_INTEGRITY"
+        for item in checked["findings"]
+    )
+
+    assert main([
+        "--config", str(cfg.config_path), "deliberations", "--json",
+    ]) == 2
+    status_capture = capsys.readouterr()
+    status = json.loads(status_capture.out)
+    assert status["integrity"] == "error"
+    assert status["integrity_issues"][0]["code"] == "DELIBERATION_RECORD_INVALID"
+    assert status_capture.err == ""
 
 
 def test_semantic_report_separates_review_history_from_explicit_activation(tmp_path):

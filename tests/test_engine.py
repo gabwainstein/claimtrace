@@ -3,6 +3,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from provsleuth import engine
 from provsleuth import events as events_module
 from provsleuth import replay as replay_module
@@ -233,6 +235,58 @@ def test_eeg_demo_clean_checkout_boundary_keeps_semantic_history_but_requires_fe
     codes = {item["code"] for item in report["findings"]}
     assert {"DERIVATION_STALE", "MISSING_CLAIM_DERIVATION"} <= codes
     assert "UNASSESSED_CLAIM_DEPENDENCY" not in codes
+
+
+def _mini_project(tmp_path, nodes, edges=()):
+    (tmp_path / "provsleuth").mkdir(exist_ok=True)
+    (tmp_path / "provsleuth.config.json").write_text(json.dumps(
+        {"root": ".", "graph": "provsleuth/graph.json"}))
+    (tmp_path / "provsleuth" / "graph.json").write_text(json.dumps(
+        {"concepts": {}, "nodes": list(nodes), "edges": list(edges)}))
+    return Config(tmp_path / "provsleuth.config.json")
+
+
+def test_node_path_outside_project_root_is_refused_and_reported(tmp_path):
+    outside = tmp_path.parent / "outside-secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    project = tmp_path / "proj"
+    project.mkdir()
+    c = _mini_project(project, [
+        {"id": "data:abs", "type": "data", "status": "current", "path": str(outside)},
+        {"id": "data:up", "type": "data", "status": "current", "path": "../outside-secret.txt"},
+    ])
+
+    # The resolver never hands back a path the project does not own.
+    for escaping in (str(outside), "../outside-secret.txt", "a/../../outside-secret.txt"):
+        assert c.within_root(escaping) is False
+        with pytest.raises(SystemExit):
+            c.resolve(escaping)
+    assert c.within_root("results/fit.json") is True
+
+    # Checking reports the bad paths instead of aborting, and never reads them.
+    problems, _pending = engine.compute_check(c)
+    flagged = {nid for code, nid, _detail in problems if code == "INVALID_NODE_PATH"}
+    assert flagged == {"data:abs", "data:up"}
+    assert not any(code == "MISSING_FILE" for code, _nid, _d in problems)
+
+
+def test_live_node_may_not_depend_on_planned_work(tmp_path):
+    c = _mini_project(tmp_path, [
+        {"id": "data:raw", "type": "data", "status": "planned"},
+        {"id": "art:fit", "type": "artifact", "status": "confirmed"},
+    ], [{"from": "data:raw", "to": "art:fit", "rel": "produces"}])
+    problems, _pending = engine.compute_check(c)
+    assert [(code, nid) for code, nid, _d in problems
+            if code == "DEPENDS_ON_PLANNED"] == [("DEPENDS_ON_PLANNED", "art:fit")]
+
+
+def test_planned_node_may_depend_on_planned_work(tmp_path):
+    c = _mini_project(tmp_path, [
+        {"id": "data:raw", "type": "data", "status": "planned"},
+        {"id": "art:fit", "type": "artifact", "status": "planned"},
+    ], [{"from": "data:raw", "to": "art:fit", "rel": "produces"}])
+    problems, _pending = engine.compute_check(c)
+    assert not any(code == "DEPENDS_ON_PLANNED" for code, _nid, _d in problems)
 
 
 def test_log_appends_node(tmp_path):

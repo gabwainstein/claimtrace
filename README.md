@@ -15,7 +15,13 @@ retractions), captures content-addressed mechanical receipts around analysis com
 For the part that cannot be reduced to hashes, an external agent can submit a schema-constrained
 semantic assessment that compares what a result means with what a claim says. ProvSleuth pins the
 exact nodes and evidence bytes, applies deterministic policy, and leaves acceptance to a separate
-review step. A separate normalization ledger lets projects define local terms, search only exact
+review step. When the claim wording or logic itself is disputed, an advisory multi-agent ledger can
+freeze exact-source alternatives, role-bound ballots, correlation groups, and dissent, then route
+at most one candidate to human review without activating it. A separate, immutable phase decision
+can approve or reject only the next planning step under the same snapshot; its actor is
+self-asserted, no human identity is authenticated, and it still activates nothing. A separate
+normalization ledger lets
+projects define local terms, search only exact
 matches in locally locked ontology indexes, review an attributed SKOS mapping, and activate an
 explicit release made from exact accepted mapping IDs. For formalizable claims, a separate
 data-only symbolic layer grounds complete typed
@@ -28,7 +34,9 @@ data-only symbolic layer grounds complete typed
   record that the child program reached every locked stage callsite in dependency order, and replay
   can compare that self-reported sequence. Pathless or in-memory values remain unobserved. A
   separately reviewed assessment checks whether the cited code anchors actually implement the
-  written method steps.
+  written method steps. Canonical reports can also be exported as a deterministic, content-addressed
+  retrieval graph and reduced to an explicitly bounded neighborhood for an external GraphRAG
+  consumer; retrieval never upgrades a declaration, review, or conditional proof into truth.
 
 It was extracted from the system used to harden a neuroscience manuscript end-to-end — where a
 single un-propagated "use dataset version B, not A" decision had quietly left several figures and
@@ -57,16 +65,23 @@ tracks the **semantic** layer they don't:
 - **Reviewed semantic normalization.** Local terminology, exact-byte ontology/index locks,
   deterministic exact candidate sets, immutable mapping reviews, and explicit releases make the
   chosen meaning inspectable without letting an agent silently invent or activate an identifier.
+- **Adversarial claim deliberation.** Independent proposal contexts, exact source anchors, a frozen
+  candidate union, phase-specific reviewer roles, and preserved blocking dissent provide a
+  deterministic route to human review. An attributed decision may gate the immediate next phase,
+  but neither votes nor that decision are truth or activation.
 - **Reviewable opaque-script provenance.** Closed pipeline contracts map written method steps to
   exact code line anchors. Contract-bound receipts and fresh-workspace replay test the declared
   input-to-output boundary, including path-bearing internal outputs. Optional cooperative
   checkpoints add a fail-closed, replayable record that program control reached each locked
   callsite, without pretending a child self-report independently observes the computation or hidden
   in-memory values.
+- **Bounded graph retrieval.** `graphrag-export` preserves the exact report states and neutral
+  review/proof boundaries; `graphrag-context` returns a deterministic neighborhood with explicit
+  node, edge, hop, and byte budgets instead of handing an agent the entire research history.
 
 No database, daemon, or cloud is required. The mutable semantic graph is plain JSON; run receipts,
-semantic assessments, semantic mappings/releases, and symbolic derivations use separate
-content-addressed JSON stores. All remain readable, diffable, and Git-auditable.
+semantic assessments, deliberations, semantic mappings/releases, and symbolic derivations use
+separate content-addressed JSON stores. All remain readable, diffable, and Git-auditable.
 
 ## Beta capability boundary
 
@@ -79,6 +94,7 @@ execution monitor or a scientific-truth oracle. This matrix states the current t
 | Graph, receipts, and replay | **Supported now** | Deterministic project graph, content-addressed receipts, staleness checks, and repeated comparison of declared regular-file outputs. |
 | Stage checkpoints | **Supported now, scoped** | The Python API accepts cooperative reports only from the exact launched direct-child PID. |
 | Semantic and symbolic policy | **Supported with review** | Humans or agents may submit constrained proposals; separate review, pinned vocabularies/rules, and deterministic policy decide what becomes active or derivable. |
+| Adversarial deliberation | **Supported as advisory review** | Provider-neutral candidates, ballots, and phase decisions are grounded and procedurally gated. Actor/group labels are self-asserted correlation metadata; ProvSleuth does not authenticate a human, and a decision never activates project state. |
 | Actual I/O and isolation | **Not provided** | Pre/post file bytes do not prove actual reads or write causation; replay is not hermetic against network or external-filesystem access. |
 | Notebooks and distributed work | **Partial** | Materialized outputs can be wrapped, but persistent kernels and worker processes cannot report protocol-v1 stage checkpoints directly. |
 | Databases, object stores, and directory datasets | **Partial** | Export regular files or a reviewed deterministic manifest/adapter; these stores are not first-class captured inputs. |
@@ -146,6 +162,12 @@ provsleuth downstream art:clean_data  # what depends on this artifact?
 provsleuth verify                     # do my headline numbers still reproduce from disk?
 provsleuth assess proposal.json --actor analysis-agent  # propose a grounded semantic judgement
 provsleuth assessments --json        # inspect proposals, reviews, findings, and staleness
+# optional adversarial panel; proposals remain advisory and a person supplies any decision:
+provsleuth deliberate-propose claim-candidate.json --actor extractor-a --independence-group group-a
+provsleuth deliberate-freeze candidate-set.json --actor panel-coordinator
+provsleuth deliberate-ballot source-ballot.json --actor reviewer-a --independence-group group-b
+provsleuth deliberations <candidate-set-id> --json
+provsleuth deliberate-decide phase-decision.json --actor study-owner --json  # immutable routing only
 # optional normalization, after adding project terminology + locked ontology/index assets:
 provsleuth ontology-candidates "memory score" --language en --limit 25 --json  # exact matches only
 provsleuth map-term mapping.json --actor analysis-agent --language en --limit 25  # reuse that profile
@@ -158,6 +180,8 @@ provsleuth derivations --json        # inspect conditional proof states and curr
 provsleuth explain <derivation-or-proof-id> --json  # inspect one composite proof certificate
 provsleuth journal --status dead_end  # show me everything I already tried that didn't work
 provsleuth view --output research-map.html  # semantic trajectory + mechanical receipt overlay
+provsleuth graphrag-export --output provsleuth/graphrag.json
+provsleuth graphrag-context claim:gate --max-hops 2 --max-bytes 262144 --json
 ```
 
 Default `provsleuth init` creates an empty valid graph, configures no executable verifier, and
@@ -299,7 +323,8 @@ semantic relation, producing receipt, current contract, and review-ready replay.
 documented partial boundary coverage. When `require_stage_checkpoints` is true, it additionally
 requires a complete source cooperative trace whose normalized stage/callsite sequence repeats in a
 current replay-v3 certificate. It explicitly does **not** mean scientific validity.
-Strict report schema 1.7 exposes `stage_checkpoint_state` and keeps
+Strict report schema 1.8 retains `stage_checkpoint_state`, adds the advisory deliberation
+projection, and keeps
 `stage_execution_observation` explicitly labeled as cooperative self-report rather than independent
 observation.
 
@@ -339,20 +364,21 @@ commit-signing, or equivalent governance system. Proposal output paths are calle
 not automatically discovered by the release manifest; retain a reviewed proposal in Git or model
 it as an explicit graph-backed document when that artifact must be part of the published record.
 
-`release-create` performs two complete collections and emits `claimtrace.project-release/1` only
+`release-create` performs two complete collections and emits `claimtrace.project-release/2` only
 when both inventories match. The manifest pins exact bytes, sizes, roles, and logical IDs for the
 configured graph, graph-backed artifacts, render locks, the current files at pipeline-contract
 source paths referenced by included records,
-event and review stores, semantic assets, symbolic assets, replay certificates, and method
-assessments. `release-verify` recollects the
+event and review stores, adversarial deliberation records, semantic assets, symbolic assets, replay
+certificates, and method assessments. `release-verify` recollects the
 project and fails on changed, missing, or newly in-scope files; `release-diff` gives an exact change
 set between two valid manifests.
 
-Release schema v1 remains compatible with both its canonical pre-checkpoint schema inventory and
-the current inventory. Newly created manifests use the current inventory, which now also names
-`claimtrace.stage-checkpoint/1`, `claimtrace.stage-trace-plan/1`, and
-`claimtrace.stage-trace/1`; validation still accepts an otherwise canonical release-v1 manifest
-created before those inventory keys existed.
+Legacy release-v1 manifests remain verifiable under their exact historical canonical inventories
+and scope, without retroactively adding deliberation records. New release-v2 manifests additionally
+declare the proposal, frozen-set, ballot, phase-decision, and status schemas and include every valid
+record in the configured deliberation store. Included panel actors, groups, recommendations, and
+decision actors remain self-asserted advisory evidence; release integrity does not authenticate a
+human or activate a candidate.
 
 The content-addressed `release_id` is the correct object to sign, place in a transparency log, or
 anchor on a blockchain. That external commitment can make later substitution or omission
@@ -456,6 +482,8 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `provsleuth assess-method ENTRY --actor ID` | append a bounded external method-to-code conformance proposal over exact anchors |
 | `provsleuth method-assessments [--json]` / `review-method ID ...` | inspect immutable method-review leaves or append a distinct review decision |
 | `provsleuth view --output FILE` | render a standalone interactive trajectory with semantic, proof, contract, replay, method, and receipt details |
+| `provsleuth graphrag-export [--output FILE]` | project the canonical report into a content-addressed, read-only retrieval graph without semantic upgrading |
+| `provsleuth graphrag-context SEED... [--max-hops N --max-nodes N --max-edges N --max-bytes N]` | return a deterministic bounded neighborhood with explicit omissions for an external retriever or agent |
 | `provsleuth graph-hash` | print the canonical current graph hash for review or external anchoring |
 | `provsleuth graph-propose REQUEST --output FILE` | compile a bounded change request into a content-addressed proposal without mutating the graph |
 | `provsleuth graph-apply PROPOSAL` | atomically apply a reviewed proposal only if its exact base graph still matches |
@@ -469,6 +497,11 @@ Full vocabulary (node types, edge relations, statuses) is in [`docs/SCHEMA.md`](
 | `provsleuth assess ENTRY --actor ID` | append an external-agent semantic proposal; ProvSleuth computes evidence snapshots and policy output |
 | `provsleuth assessments [--state ...] [--all] [--json]` | list current semantic assessments, or their immutable history with `--all` |
 | `provsleuth review ASSESSMENT_ID --state ... --actor ID` | append a separate-actor acceptance, rejection, contest, or supersession decision |
+| `provsleuth deliberate-propose ENTRY --actor ID --independence-group GROUP` | append one exact-source candidate for claim extraction, semantic interpretation, formalization, or rule validity |
+| `provsleuth deliberate-freeze ENTRY --actor ID` | freeze the complete current candidate union for one round, phase, and subject |
+| `provsleuth deliberate-ballot ENTRY --actor ID --independence-group GROUP` | append one eligible-role ballot over every non-owned frozen candidate |
+| `provsleuth deliberate-decide ENTRY --actor ID [--json]` | append one immutable attributed approval/rejection for the currently recommended candidate; no identity authentication or activation |
+| `provsleuth deliberations [CANDIDATE_SET_ID] [--json]` | show open groups or deterministic panel status without activating any candidate |
 | `provsleuth lock-ontology ENTRY --output FILE` | pin exact local ontology document and project-supplied index bytes; performs no fetch or OWL parsing |
 | `provsleuth ontology-candidates QUERY [--language TAG] [--limit N] [--json]` | return a content-addressed set of exact IRI, preferred-label, or synonym matches from configured locks |
 | `provsleuth map-term ENTRY --actor ID [--language TAG] [--limit N]` | append an attributed, inactive mapping proposal using the same candidate-search profile |
@@ -511,6 +544,64 @@ release. Its mapping drilldown shows the local definition, proposed relation and
 limitations, reviewer, live findings, release eligibility, and whether the exact mapping leaf is
 selected in the active release. Mapping policy remains a separate context layer rather than being
 drawn as a scientific-support edge.
+
+## Adversarial claim and rule deliberation
+
+ProvSleuth can coordinate provider-neutral, multi-agent review without asking one agent to invent a
+claim representation and then approve itself. The workflow has four sequential phases:
+`claim_extraction`, `semantic_interpretation`, `formalization`, and `rule_validity`. Each proposal is
+anchored to exact UTF-8 source bytes and pins the current graph hash, active semantic-policy ID, and
+configured logic-asset hashes. Later phases reference an exact stored candidate from the preceding
+phase and require its approved immutable phase decision under the same `round_id`, `subject_key`,
+and exact frozen mechanical snapshot. A missing or rejected decision, snapshot drift, skipped phase,
+or unresolved panel blocks progression.
+
+Proposers work in separate contexts, then `deliberate-freeze` closes the round over the complete
+candidate union. Reviewers submit phase-specific role ballots over every candidate they did not
+author. Rejects, abstentions, blocking objections, correlation groups, and multiple eligible
+alternatives remain visible. ProvSleuth does not break ties by candidate hash and does not count
+different actor labels as authenticated independence; `actor` and `independence_group` are
+self-asserted correlation metadata. They help expose shared contexts; they do not authenticate
+people or prove reviewer independence.
+
+Keep model use bounded: deterministic preflight validates source bytes, closed schemas, project
+snapshots, graph IDs, configured vocabularies, evidence bindings, method steps, and local ontology
+matches before any semantic call. For one material claim, the minimum review-ready topology is one
+proposer context plus the three distinct phase-role review contexts. Batch several subjects in one
+role-specific call when appropriate, append each returned request separately, and add more samples
+only for alternatives, ambiguity, dissent, missing roles, or high-risk inference. Later phases do
+not consume calls until the prior phase has a current recommendation and separate approved routing
+decision; renaming one shared context never creates independence.
+
+The strongest panel status is `recommended_for_human_review`, and it is available only when exactly
+one frozen candidate exists and passes every gate. Any other frozen alternative that is blocked,
+contested, or insufficient suppresses a recommendation. Other panel states are `contested`,
+`insufficient_review`, and `blocked`.
+
+After inspecting the complete frozen record, a separate person may submit a closed
+`claimtrace.deliberation-phase-decision-request/1` through `deliberate-decide`. The actor must differ
+from every proposer and balloter. ProvSleuth pins the complete ballot IDs, permits one immutable
+decision per set, and forbids later ballots. The stored
+`claimtrace.deliberation-phase-decision/1` record explicitly contains
+`human_identity_authenticated: false` and `automatic_activation: false`: the actor label is
+self-asserted and the system does not claim that a human was authenticated. An agent running the
+packaged skill must stop at the recommendation and must not submit the person's decision.
+Re-run targeted `deliberations --json` and inspect `phase_routing_state`; its process exit code still
+describes panel status (0 recommended, 1 contested/insufficient, 2 blocked), not approval of the
+separate routing decision.
+
+An approved decision is a planning-only routing gate. It can unlock only the immediate next phase
+under the unchanged round, subject, and snapshot. It cannot edit the graph, accept an assessment or
+mapping, activate a semantic release, change a vocabulary/evidence plan/rule pack, or produce a
+symbolic derivation. Those remain separate reviewable graph, semantic, or repository-governance
+workflows; once any project state changes, a new deliberation round is required.
+
+For rule candidates, the v1 mandatory competency matrix is implemented as authored
+`competency_cases` and the `legacy_relational_competency_matrix` mechanical check. It is a legacy
+fixture matrix across seven named categories. ProvSleuth executes the submitted cases and checks their
+typed mechanical behavior; it does not generate cases, exhaustively explore the domain, prove
+boundary completeness, or certify full rule competency. The installed agent skill includes the
+full protocol in `references/adversarial-deliberation.md`.
 
 ## Grounded semantic assessments
 
@@ -848,14 +939,17 @@ ProvSleuth automates integrity, grounding, conditional inference, reconciliation
 policy checks, and display. ProvSleuth itself enforces only that the first reviewer actor string
 differs from the proposer string; it does not authenticate people or establish independence.
 
-The skill has two explicit modes. Routine analysis mode may log work, assess result-to-claim
+The skill has three explicit modes. Routine analysis mode may log work, assess result-to-claim
 meaning, and submit premises under already configured policy, but it cannot edit meaning-bearing
-semantic assets. Semantic-authoring mode is entered only when the user asks for it. There an agent
-may inspect locked candidates, preserve ambiguity or no-match, and submit a concise mapping,
-vocabulary, or restricted-rule proposal. It still cannot invent an IRI, review its own proposal,
-activate a mapping release, or describe accepted normalization as scientific truth. The bundled
-`references/semantic-authoring.md` contains that operational boundary and is installed with the
-skill.
+semantic assets. Adversarial-deliberation mode is entered only when the user asks for multi-agent
+claim or logic review. It separates proposals from frozen candidate sets and role-bound ballots,
+preserves dissent, and can only route a candidate to human review. Semantic-authoring mode is also
+entered only when the user asks for it. There an agent may inspect locked candidates, preserve
+ambiguity or no-match, and submit a concise mapping, vocabulary, or restricted-rule proposal. It
+still cannot invent an IRI, review its own proposal, activate a mapping release, or describe
+accepted normalization as scientific truth. The bundled
+`references/adversarial-deliberation.md` and `references/semantic-authoring.md` contain these
+operational boundaries and are installed with the skill.
 
 An exact plan prevents the requesting agent from cherry-picking within that reviewed list. It does
 not establish that the list includes every scientifically relevant result; that remains repository
@@ -883,7 +977,7 @@ dangling edges, claims cite on-backbone artifacts, headline numbers reproduce. I
 coherent, not that the conclusion is right. That boundary is the point — it tells you what has *not*
 been re-derived, so a human still does the judging.
 
-The system deliberately keeps nine evidence layers separate:
+The system deliberately keeps ten evidence layers separate:
 
 - The **semantic graph** contains declared scientific assertions: hypotheses, predictions,
   methods, claims, conclusions, and their declared dependencies. A generic command wrapper must not
@@ -919,6 +1013,11 @@ The system deliberately keeps nine evidence layers separate:
 - The **semantic assessment ledger** stores an external agent's schema-constrained interpretation,
   exact evidence anchors, ProvSleuth-computed hashes and policy findings, and a separate actor's
   immutable decision. It can detect drift and disagreement; it cannot make the interpretation true.
+- The **adversarial deliberation ledger** stores exact-source candidate proposals, a frozen complete
+  candidate union, phase-role ballots, self-asserted correlation groups, dissent, deterministic
+  recommendation status, and an optional immutable phase decision. It can route an approved
+  candidate only to the immediate next planning phase; it cannot authenticate a person or
+  independence, select scientific truth, or activate any meaning-bearing artifact.
 - The **semantic normalization ledger** stores local-term definitions, exact locked source/index
   identities, attributed mapping proposals, immutable review leaves, and explicit policy releases.
   It can make normalization reproducible under those declarations; it cannot prove that a supplied
@@ -971,8 +1070,9 @@ independent runtime proof. `check --strict` is a deterministic gate within that 
 capture scope. Existing projects with render nodes must also run `provsleuth snapshot` once after a
 trusted render so manifest checks can pass.
 
-Event, replay-certificate, semantic-assessment, method-assessment, mapping, policy-release, review,
-and derivation files are create-only or append-only through the ProvSleuth API, and
+Event, replay-certificate, semantic-assessment, method-assessment, deliberation, mapping,
+policy-release, review, and derivation files are create-only or append-only through the ProvSleuth
+API, and
 content addressing detects modification of surviving files and broken surviving references. Their
 local directories have no independently anchored head: deleting or omitting a complete event pair,
 replay certificate, assessment/review chain, mapping/review chain, semantic release, or derivation

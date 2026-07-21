@@ -362,7 +362,7 @@ def test_report_projects_one_composite_active_proof_for_all_results(tmp_path):
 
     report = build_report(cfg, strict=True)
 
-    assert report["report_schema_version"] == "1.7"
+    assert report["report_schema_version"] == "1.8"
     assert report["scope"]["symbolic_logic"] == (
         "conditional_derivability_under_project_rules_not_truth"
     )

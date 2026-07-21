@@ -78,6 +78,9 @@ def test_explicit_legacy_config_retains_claimtrace_default_store_paths(tmp_path)
     assert cfg.graph_path == (project / "claimtrace" / "graph.json").resolve()
     assert cfg.events_path == (project / "claimtrace" / "events").absolute()
     assert cfg.assessments_path == (project / "claimtrace" / "assessments").absolute()
+    assert cfg.deliberation_path == (
+        project / "claimtrace" / "deliberations"
+    ).absolute()
     assert cfg.replays_path == (project / "claimtrace" / "replays").absolute()
     assert cfg.method_assessments_path == (
         project / "claimtrace" / "method-assessments"
@@ -110,6 +113,9 @@ def test_current_config_name_uses_provsleuth_default_store_paths(tmp_path):
     assert cfg.graph_path == (project / "provsleuth" / "graph.json").resolve()
     assert cfg.events_path == (project / "provsleuth" / "events").absolute()
     assert cfg.assessments_path == (project / "provsleuth" / "assessments").absolute()
+    assert cfg.deliberation_path == (
+        project / "provsleuth" / "deliberations"
+    ).absolute()
     assert cfg.replays_path == (project / "provsleuth" / "replays").absolute()
     assert cfg.method_assessments_path == (
         project / "provsleuth" / "method-assessments"
@@ -121,6 +127,38 @@ def test_current_config_name_uses_provsleuth_default_store_paths(tmp_path):
     assert cfg.semantic_policies_path == (
         project / "provsleuth" / "semantics" / "policies"
     ).resolve()
+
+
+def test_deliberation_store_accepts_distinct_project_contained_path(tmp_path):
+    graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
+    cfg = _project(tmp_path, graph, config={
+        "root": ".", "graph": "provsleuth/graph.json",
+        "deliberation": {"records": "provsleuth/advisory/deliberations"},
+    })
+
+    assert cfg.deliberation_path == (
+        tmp_path / "provsleuth" / "advisory" / "deliberations"
+    ).absolute()
+    assert cfg.deliberation_path.is_relative_to(cfg.base)
+
+
+@pytest.mark.parametrize("records,message", [
+    ("../outside-deliberations", "deliberation.records path escapes"),
+    ("provsleuth/events", "distinct non-nested directories"),
+    ("provsleuth/events/deliberations", "distinct non-nested directories"),
+    ("provsleuth", "distinct non-nested directories"),
+])
+def test_deliberation_store_rejects_escape_overlap_and_nesting(
+        tmp_path, records, message):
+    graph = {"schema_version": "1.0", "nodes": [], "edges": [], "concepts": {}}
+    config = {
+        "root": ".", "graph": "provsleuth/graph.json",
+        "events": "provsleuth/events",
+        "deliberation": {"records": records},
+    }
+
+    with pytest.raises(SystemExit, match=message):
+        _project(tmp_path, graph, config=config)
 
 
 def _make_directory_link(target, link):
@@ -171,7 +209,11 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
         repository / ".agents" / "skills" / "provsleuth-log",
         repository / ".claude" / "skills" / "provsleuth-log",
     ]
-    manifest = ("SKILL.md", "references/semantic-authoring.md")
+    manifest = (
+        "SKILL.md",
+        "references/adversarial-deliberation.md",
+        "references/semantic-authoring.md",
+    )
     expected_files = {
         relative: (canonical_root / relative).read_text(encoding="utf-8")
         for relative in manifest
@@ -194,12 +236,26 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
     assert '"candidate_query"' in expected_files[
         "references/semantic-authoring.md"
     ]
+    deliberation_reference = expected_files[
+        "references/adversarial-deliberation.md"
+    ]
+    assert "recommended_for_human_review" in deliberation_reference
+    assert "panel output is evidence for review, not authorization." in (
+        deliberation_reference
+    )
+    assert "Do not submit `deliberate-decide`" in expected
+    assert "claimtrace.deliberation-phase-decision-request/1" in (
+        deliberation_reference
+    )
+    assert "human_identity_authenticated: false" in deliberation_reference
 
     assert main(["install-skill", "--dir", str(tmp_path)]) == 0
     agents = tmp_path / ".agents" / "skills" / "provsleuth-log" / "SKILL.md"
     claude = tmp_path / ".claude" / "skills" / "provsleuth-log" / "SKILL.md"
     agents_reference = agents.parent / "references" / "semantic-authoring.md"
     claude_reference = claude.parent / "references" / "semantic-authoring.md"
+    agents_deliberation = agents.parent / "references" / "adversarial-deliberation.md"
+    claude_deliberation = claude.parent / "references" / "adversarial-deliberation.md"
     assert agents.read_text(encoding="utf-8") == expected
     assert claude.read_text(encoding="utf-8") == expected
     assert agents_reference.read_text(encoding="utf-8") == expected_files[
@@ -208,6 +264,16 @@ def test_packaged_skill_installs_both_layouts_without_silent_overwrite(tmp_path,
     assert claude_reference.read_text(encoding="utf-8") == expected_files[
         "references/semantic-authoring.md"
     ]
+    assert agents_deliberation.read_text(encoding="utf-8") == deliberation_reference
+    assert claude_deliberation.read_text(encoding="utf-8") == deliberation_reference
+    for installed_skill in (agents, claude):
+        assert "Do not submit `deliberate-decide`" in installed_skill.read_text(
+            encoding="utf-8"
+        )
+    for installed_reference in (agents_deliberation, claude_deliberation):
+        installed_text = installed_reference.read_text(encoding="utf-8")
+        assert "claimtrace.deliberation-phase-decision-request/1" in installed_text
+        assert "human_identity_authenticated: false" in installed_text
     assert "installed" in capsys.readouterr().out
 
     agents.write_text("project-specific skill\n", encoding="utf-8")
@@ -251,6 +317,9 @@ def test_concurrent_force_skill_installs_remain_bundle_coherent(
         version = local.version
         return {
             "SKILL.md": f"{version}-skill\n",
+            "references/adversarial-deliberation.md": (
+                f"{version}-deliberation\n"
+            ),
             "references/semantic-authoring.md": f"{version}-reference\n",
         }
 
@@ -283,13 +352,16 @@ def test_concurrent_force_skill_installs_remain_bundle_coherent(
     root = tmp_path / ".agents" / "skills" / "provsleuth-log"
     installed = (
         (root / "SKILL.md").read_text(encoding="utf-8"),
+        (root / "references" / "adversarial-deliberation.md").read_text(
+            encoding="utf-8"
+        ),
         (root / "references" / "semantic-authoring.md").read_text(encoding="utf-8"),
     )
     assert results == [0, 0]
     assert overlaps == []
     assert installed in {
-        ("A-skill\n", "A-reference\n"),
-        ("B-skill\n", "B-reference\n"),
+        ("A-skill\n", "A-deliberation\n", "A-reference\n"),
+        ("B-skill\n", "B-deliberation\n", "B-reference\n"),
     }
 
 

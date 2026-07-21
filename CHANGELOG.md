@@ -5,6 +5,46 @@ All notable changes to ProvSleuth are documented here. This project adheres to
 
 ## Unreleased
 
+### Fixed
+- Clamp graph node paths to the project root. `Config.resolve` previously returned an absolute node
+  path verbatim and joined a relative one without normalization, so graph content could make the
+  engine read, hash, and record a file outside the project, including as an `external` entry inside
+  a signed release manifest. Absolute and root-escaping node paths are now refused, normalization is
+  lexical so symlink and junction rejection still applies, and `check` reports the offending node as
+  `INVALID_NODE_PATH` instead of aborting the run. Configured external assets are unaffected.
+- Reject a settled result that depends on unexecuted work. Promoting `planned` to a standard
+  notebook status removed its `UNKNOWN_STATUS` lint without adding a dependency rule, so a `current`
+  or `confirmed` node could depend on a `planned` node with nothing reported. Such an edge is now
+  `DEPENDS_ON_PLANNED`; a `planned` node may still depend on other planned work, so planning-mode
+  graphs remain clean.
+
+## 0.5.0 - 2026-07-18
+
+### Added
+- Add a deterministic read-only `claimtrace.graphrag/1` projection of the canonical report and a
+  byte-, node-, edge-, and hop-bounded `claimtrace.graphrag-context/1` neighborhood for external
+  retrievers. Content addresses commit live review/proof state, unresolved references fail closed
+  by default, and declared support, attributed review, and conditional proof remain distinct.
+- Add a provider-neutral adversarial deliberation ledger and `deliberate-propose`,
+  `deliberate-freeze`, `deliberate-ballot`, `deliberate-decide`, and `deliberations` commands for
+  source-anchored claim extraction, semantic interpretation, formalization, and rule-validity
+  candidates. Frozen complete candidate unions, role-bound ballots, self-asserted correlation
+  groups, dissent, drift checks, and authored rule competency fixtures are deterministic. A panel is
+  `recommended_for_human_review` only when exactly one frozen candidate exists and is eligible; any
+  unresolved frozen alternative suppresses recommendation.
+- Add immutable `claimtrace.deliberation-phase-decision/1` approval/rejection records that pin the
+  complete ballot set. An approval gates only the immediate next phase under the same round,
+  subject, and frozen snapshot; a rejection, missing decision, or snapshot drift blocks progression.
+  Decision actors and correlation groups are self-asserted, no human identity is authenticated, and
+  neither a recommendation nor decision activates graph, semantic, logical, or derivation state.
+- Document that the v1 mandatory competency matrix, implemented as authored `competency_cases` and
+  the `legacy_relational_competency_matrix` check, is a legacy relational fixture matrix rather than
+  generated or exhaustive full-competency validation.
+- Package the deliberation protocol with the synchronized `provsleuth-log` skill, including the
+  explicit separate-review, unauthenticated-identity, and no-activation boundaries. Release-v2
+  manifests include exact proposal, frozen-set, ballot, phase-decision, and status schemas while
+  legacy release-v1 manifests retain their original scope.
+
 ## 0.4.0 - 2026-07-17
 
 ### Changed

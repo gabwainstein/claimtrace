@@ -26,13 +26,13 @@ def _method(method_id="method:primary", *, status="current", steps=None):
     }
 
 
-def _claim(claim_type="claim", *, methods=None):
+def _claim(claim_type="claim", *, methods=None, status="current"):
     if methods is None:
         methods = [{"method_id": "method:primary", "step_ids": ["clean", "fit"]}]
     return {
         "id": f"{claim_type}:primary",
         "type": claim_type,
-        "status": "current",
+        "status": status,
         "method_requirements": {
             "schema_version": "claimtrace.method-requirements/1",
             "methods": methods,
@@ -224,11 +224,56 @@ def test_claim_requirements_resolve_to_active_formalized_methods(tmp_path, targe
         engine.load_raw(cfg)
 
 
-def test_claim_requirements_reject_unknown_method_steps(tmp_path):
-    claim = _claim(methods=[{
+@pytest.mark.parametrize(
+    "status", sorted(engine.NOTEBOOK_STATUSES - {"current", "confirmed"}))
+def test_inactive_claim_preserves_inactive_method_provenance(tmp_path, status):
+    cfg = _config(tmp_path, [
+        _method(status=status),
+        _claim(status=status),
+    ])
+
+    raw = engine.load_raw(cfg)
+
+    assert raw["nodes"][1]["method_requirements"]["methods"] == [{
+        "method_id": "method:primary", "step_ids": ["clean", "fit"],
+    }]
+
+
+@pytest.mark.parametrize("claim_status", [None, "current", "confirmed"])
+def test_live_claim_rejects_inactive_method(tmp_path, claim_status):
+    cfg = _config(tmp_path, [
+        _method(status="superseded"),
+        _claim(status=claim_status),
+    ])
+
+    with pytest.raises(engine.GraphError, match="references inactive method node"):
+        engine.load_raw(cfg)
+
+
+@pytest.mark.parametrize("target, message", [
+    (None, "references missing method node"),
+    ({"id": "method:primary", "type": "code", "status": "superseded"},
+     "does not identify a method node"),
+    ({"id": "method:primary", "type": "method", "status": "superseded"},
+     "needs a method_spec"),
+])
+def test_inactive_claim_still_requires_a_valid_formalized_method(
+        tmp_path, target, message):
+    nodes = [_claim(status="superseded")]
+    if target is not None:
+        nodes.insert(0, target)
+
+    with pytest.raises(engine.GraphError, match=message):
+        engine.load_raw(_config(tmp_path, nodes))
+
+
+@pytest.mark.parametrize("claim_status", ["current", "planned", "null", "stale"])
+def test_claim_requirements_reject_unknown_method_steps(tmp_path, claim_status):
+    claim = _claim(status=claim_status, methods=[{
         "method_id": "method:primary", "step_ids": ["clean", "invented"],
     }])
-    cfg = _config(tmp_path, [_method(), claim])
+    method_status = "current" if claim_status == "current" else claim_status
+    cfg = _config(tmp_path, [_method(status=method_status), claim])
 
     with pytest.raises(engine.GraphError, match="references unknown method step"):
         engine.load_raw(cfg)

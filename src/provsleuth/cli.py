@@ -19,11 +19,19 @@ from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
                          AssessmentError, append_assessment, append_review_transition,
                          create_assessment, evaluate_assessment, load_assessments)
 from .config import CONFIG_NAME, LEGACY_CONFIG_NAME, load_config, strict_json_loads
+from .deliberation import (DeliberationError, append_record as append_deliberation_record,
+                           create_ballot as create_deliberation_ballot,
+                           create_phase_decision as create_deliberation_phase_decision,
+                           create_proposal as create_deliberation_proposal,
+                           deliberation_status, evaluate_candidate_set,
+                           freeze_candidate_set)
 from .engine import (ANNOT_RELS, GraphError, compute_check, downstream, impact,
                      lint_issues, load_graph, load_raw, log_entry, upstream)
 from .events import EventError, _event_lock, run_command
 from .graph_changes import (GraphChangeError, apply_graph_change_proposal,
                             build_graph_change_proposal, canonical_graph_hash)
+from .graphrag import (DEFAULT_MAX_CONTEXT_BYTES, GraphRAGError,
+                       bounded_context, build_projection)
 from .logic import (PLAN_REQUEST_SCHEMA, SELECTION_SCHEMA, LogicError, append_derivation,
                     configured_logic_assets, create_derivation,
                     create_derivation_from_bindings,
@@ -63,9 +71,9 @@ try:
 except Exception:
     pass
 
-GLYPH = {"current": "LIVE", "confirmed": "CONFIRMED", "null": "NULL", "dead_end": "DEAD-END",
+GLYPH = {"planned": "PLANNED", "current": "LIVE", "confirmed": "CONFIRMED", "null": "NULL", "dead_end": "DEAD-END",
          "retracted": "RETRACTED", "superseded": "SUPERSEDED", "stale": "STALE", "deprecated": "DEPRECATED"}
-JOURNAL_ORDER = ["current", "confirmed", "null", "dead_end", "retracted", "superseded", "stale", "deprecated"]
+JOURNAL_ORDER = ["planned", "current", "confirmed", "null", "dead_end", "retracted", "superseded", "stale", "deprecated"]
 MAX_CLI_JSON_INPUT_BYTES = 8 * 1024 * 1024
 MAX_CLI_TEXT_PUBLICATION_BYTES = 8 * 1024 * 1024
 
@@ -84,6 +92,8 @@ def cmd_check(args):
             report = build_fatal_report(exc, strict=args.strict, code="GRAPH_ERROR")
         except EventError as exc:
             report = build_fatal_report(exc, strict=args.strict, code="RECEIPT_ERROR")
+        except DeliberationError as exc:
+            report = build_fatal_report(exc, strict=args.strict, code="DELIBERATION_ERROR")
         except OSError as exc:
             report = build_fatal_report(exc, strict=args.strict, code="IO_ERROR")
         except SystemExit as exc:
@@ -202,6 +212,146 @@ def cmd_log(args):
     ok, msg = log_entry(cfg, entry, update=args.update)
     print(msg)
     return 0 if ok else 1
+
+
+def _read_deliberation_object(path_value, label):
+    return _read_cli_json_object(
+        path_value, label, DeliberationError, limit=MAX_CLI_JSON_INPUT_BYTES,
+    )
+
+
+def _deliberation_record_output(cfg, document, path):
+    record_id = (
+        document.get("proposal_id") or document.get("candidate_set_id")
+        or document.get("ballot_id") or document.get("decision_id")
+    )
+    return {
+        "record": document,
+        "record_id": record_id,
+        "stored_at": path.relative_to(cfg.deliberation_path).as_posix(),
+        "automatic_activation": False,
+        "human_activation_required": True,
+    }
+
+
+def cmd_deliberate_propose(args):
+    cfg = _cfg(args)
+    document = create_deliberation_proposal(
+        cfg,
+        _read_deliberation_object(args.entry, "deliberation proposal request"),
+        actor=args.actor,
+        independence_group=args.independence_group,
+    )
+    path = append_deliberation_record(cfg, document)
+    output = _deliberation_record_output(cfg, document, path)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"provsleuth deliberate-propose: {document['proposal_id']}")
+        print(f"  candidate: {document['candidate_id']}")
+        print("  state: proposed only; no semantic or rule activation")
+    return 0
+
+
+def cmd_deliberate_freeze(args):
+    cfg = _cfg(args)
+    document = freeze_candidate_set(
+        cfg,
+        _read_deliberation_object(args.entry, "candidate-set freeze request"),
+        actor=args.actor,
+    )
+    path = append_deliberation_record(cfg, document)
+    output = _deliberation_record_output(cfg, document, path)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"provsleuth deliberate-freeze: {document['candidate_set_id']}")
+        print(
+            f"  {len(document['candidate_ids'])} exact candidate(s) from "
+            f"{len(document['proposal_ids'])} proposal(s)"
+        )
+        print(
+            "  state: frozen for attributed review; reviewer identity and "
+            "independence labels are self-asserted"
+        )
+    return 0
+
+
+def cmd_deliberate_ballot(args):
+    cfg = _cfg(args)
+    document = create_deliberation_ballot(
+        cfg,
+        _read_deliberation_object(args.entry, "deliberation ballot request"),
+        actor=args.actor,
+        independence_group=args.independence_group,
+    )
+    path = append_deliberation_record(cfg, document)
+    output = _deliberation_record_output(cfg, document, path)
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"provsleuth deliberate-ballot: {document['ballot_id']}")
+        print(f"  role: {document['role']}; set: {document['candidate_set_id']}")
+        print("  state: attributed ballot; not a truth vote or activation")
+    return 0
+
+
+def cmd_deliberate_decide(args):
+    cfg = _cfg(args)
+    document = create_deliberation_phase_decision(
+        cfg,
+        _read_deliberation_object(args.entry, "deliberation phase-decision request"),
+        actor=args.actor,
+    )
+    path = append_deliberation_record(cfg, document)
+    output = _deliberation_record_output(cfg, document, path)
+    output["human_identity_authenticated"] = False
+    if args.json:
+        _write_json(output)
+    else:
+        print(f"provsleuth deliberate-decide: {document['decision_id']}")
+        print(
+            f"  decision: {document['decision']}; candidate: "
+            f"{document['candidate_id']}"
+        )
+        print(
+            "  state: attributed routing record only; no authenticated-human claim "
+            "and no graph, semantic, or rule activation"
+        )
+    return 0
+
+
+def cmd_deliberations(args):
+    cfg = _cfg(args)
+    output = (
+        evaluate_candidate_set(cfg, args.candidate_set_id)
+        if args.candidate_set_id else deliberation_status(cfg)
+    )
+    if args.json:
+        _write_json(output)
+    elif args.candidate_set_id:
+        print(f"provsleuth deliberations: {output['status']}")
+        print(f"  set: {output['candidate_set_id']}")
+        print(f"  recommendation: {output['recommended_candidate_id'] or 'none'}")
+        print("  human activation required: yes")
+    else:
+        print(
+            f"provsleuth deliberations: {len(output['panels'])} frozen panel(s), "
+            f"{len(output['open_groups'])} open group(s), integrity {output['integrity']}"
+        )
+        for item in output["panels"]:
+            print(
+                f"  {item['candidate_set_id']}  {item['phase']}  {item['status']}  "
+                f"recommendation={item['recommended_candidate_id'] or 'none'}"
+            )
+    if args.candidate_set_id:
+        return {
+            "recommended_for_human_review": 0,
+            "contested": 1,
+            "insufficient_review": 1,
+            "blocked": 2,
+        }[output["status"]]
+    return 0 if output.get("integrity", "ok") == "ok" else 2
 
 
 def _read_cli_json_object(path_value, label, error_type, *, limit):
@@ -1713,6 +1863,136 @@ def cmd_view(args):
     return 0
 
 
+def _path_is_inside(path, directory):
+    try:
+        path.relative_to(directory)
+        return True
+    except ValueError:
+        return False
+
+
+def _assert_safe_graphrag_destination(cfg, report, destination):
+    """Keep derived retrieval exports away from source, policy, and provenance bytes."""
+    destination = destination.resolve(strict=False)
+    protected = {cfg.config_path.resolve(), cfg.graph_path.resolve()}
+    if cfg.verifiers is not None:
+        protected.add(Path(cfg.verifiers).resolve(strict=False))
+    for path in (
+        *cfg.logic_vocabulary_paths,
+        *cfg.logic_rule_pack_paths,
+        *cfg.semantic_terminology_paths,
+        *cfg.semantic_ontology_lock_paths,
+    ):
+        protected.add(Path(path).resolve(strict=False))
+    for node in (report.get("graph") or {}).get("nodes") or []:
+        if node.get("path"):
+            declared = cfg.resolve(node["path"]).resolve(strict=False)
+            protected.add(declared)
+            protected.add(Path(str(declared) + ".manifest.json").resolve(strict=False))
+    for lock in (((report.get("semantics") or {}).get("assets") or {})
+                 .get("ontology_locks") or []):
+        declared = Path(lock["path"])
+        lock_path = (
+            declared if declared.is_absolute() else cfg.base / declared
+        ).resolve(strict=False)
+        for item in lock.get("documents") or []:
+            protected.add((lock_path.parent / item["path"]).resolve(strict=False))
+        index = lock.get("index") or {}
+        if index.get("path"):
+            protected.add((lock_path.parent / index["path"]).resolve(strict=False))
+    stores = (
+        cfg.events_path, cfg.assessments_path, cfg.deliberation_path,
+        cfg.derivations_path, cfg.semantic_mappings_path,
+        cfg.semantic_policies_path, cfg.replays_path,
+        cfg.method_assessments_path,
+    )
+    if destination in protected or any(
+            _path_is_inside(destination, Path(store).resolve(strict=False))
+            for store in stores):
+        raise GraphRAGError(
+            f"refusing to overwrite a graph-declared, policy, or provenance path: {destination}"
+        )
+
+
+def _publish_json_document(cfg, report, value, output_value, *, force, label):
+    """Publish canonical pretty JSON inside the project through the shared safe writer."""
+    output = Path(output_value)
+    if not output.is_absolute():
+        output = cfg.root / output
+    _assert_safe_graphrag_destination(cfg, report, output)
+    content = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False,
+    ) + "\n"
+    try:
+        state = _publish_text(
+            cfg.root, output, content, force=force, label=label,
+        )
+    except (_PublicationConflict, _UnsafePublicationPath, OSError) as exc:
+        raise GraphRAGError(f"cannot publish {label}: {exc}") from exc
+    return output, state
+
+
+def cmd_graphrag_export(args):
+    """Project the complete canonical report into deterministic graph retrieval data."""
+    cfg = _cfg(args)
+    report = build_report(cfg, strict=False)
+    projection = build_projection(report)
+    output = None
+    state = None
+    if args.output:
+        output, state = _publish_json_document(
+            cfg, report, projection, args.output, force=args.force,
+            label="GraphRAG projection",
+        )
+    if args.json or output is None:
+        _write_json(projection)
+    else:
+        display = output.resolve().relative_to(cfg.root.resolve()).as_posix()
+        print(f"provsleuth graphrag-export: {projection['projection_id']}")
+        print(
+            f"  {len(projection['nodes'])} nodes / {len(projection['edges'])} edges / "
+            f"{len(projection['unresolved_references'])} unresolved reference(s)"
+        )
+        print(f"  projection: {display} ({state})")
+        print("  scope: deterministic retrieval projection; no semantic endorsement or generation")
+    return 0
+
+
+def cmd_graphrag_context(args):
+    """Return one explicitly bounded deterministic neighborhood for an external retriever."""
+    cfg = _cfg(args)
+    report = build_report(cfg, strict=False)
+    projection = build_projection(report)
+    context = bounded_context(
+        projection,
+        args.seed,
+        max_hops=args.max_hops,
+        max_nodes=args.max_nodes,
+        max_edges=args.max_edges,
+        max_bytes=args.max_bytes,
+        traversable_only=not args.include_nontraversable,
+    )
+    output = None
+    state = None
+    if args.output:
+        output, state = _publish_json_document(
+            cfg, report, context, args.output, force=args.force,
+            label="GraphRAG bounded context",
+        )
+    if args.json or output is None:
+        _write_json(context)
+    else:
+        display = output.resolve().relative_to(cfg.root.resolve()).as_posix()
+        print(f"provsleuth graphrag-context: {context['context_id']}")
+        print(
+            f"  {len(context['nodes'])} nodes / {len(context['edges'])} edges / "
+            f"{len(context['request']['unknown_seed_ids'])} unknown seed(s)"
+        )
+        print(f"  context: {display} ({state})")
+        print("  scope: bounded retrieval context; exclusions remain explicit")
+    return 0
+
+
 PLANNING_GRAPH = {
     "schema_version": "1.0",
     "concepts": {},
@@ -1915,6 +2195,7 @@ def _init_locked(base: Path, args) -> int:
         {"root": ".", "graph": "provsleuth/graph.json",
          "verifiers": "provsleuth/verifiers.py" if example else None,
          "events": "provsleuth/events", "assessments": "provsleuth/assessments",
+         "deliberation": {"records": "provsleuth/deliberations"},
          "render_types": ["figure"], "input_types": ["data", "artifact", "code"],
          "run_output_types": ["artifact"], "require_assessments": False,
          "execution": {
@@ -2040,6 +2321,7 @@ def cmd_init(args):
 
 _SKILL_FILES = (
     "SKILL.md",
+    "references/adversarial-deliberation.md",
     "references/semantic-authoring.md",
 )
 
@@ -2193,6 +2475,53 @@ def main(argv=None):
                    choices=("accepted", "rejected", "contested", "superseded"))
     p.add_argument("--actor", required=True, help="identity making the review decision")
     p.add_argument("--json", action="store_true", help="emit the review transition as JSON")
+    p = sub.add_parser(
+        "deliberate-propose",
+        help="append one exact source-anchored claim, semantics, formalization, or rule candidate",
+    )
+    p.add_argument("entry", help="claimtrace.deliberation-proposal-request/1 JSON file")
+    p.add_argument("--actor", required=True, help="self-asserted proposal actor identity")
+    p.add_argument(
+        "--independence-group", required=True,
+        help="human-declared procedural independence class",
+    )
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser(
+        "deliberate-freeze",
+        help="freeze the complete current candidate union for one round and subject",
+    )
+    p.add_argument("entry", help="claimtrace.deliberation-candidate-set-request/1 JSON file")
+    p.add_argument("--actor", required=True, help="identity freezing the candidate union")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser(
+        "deliberate-ballot",
+        help="append one role-bound ballot over every non-owned frozen candidate",
+    )
+    p.add_argument("entry", help="claimtrace.deliberation-ballot-request/1 JSON file")
+    p.add_argument("--actor", required=True, help="self-asserted reviewer identity")
+    p.add_argument(
+        "--independence-group", required=True,
+        help="human-declared procedural independence class",
+    )
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser(
+        "deliberate-decide",
+        help="append an attributed phase-routing decision without activating project state",
+    )
+    p.add_argument(
+        "entry", help="claimtrace.deliberation-phase-decision-request/1 JSON file"
+    )
+    p.add_argument(
+        "--actor", required=True,
+        help="self-asserted decision-maker identity; not authenticated by ProvSleuth",
+    )
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser(
+        "deliberations",
+        help="show deterministic panel status without activating semantics or rules",
+    )
+    p.add_argument("candidate_set_id", nargs="?", help="optional exact frozen-set ID")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser(
         "lock-ontology",
         help="create a local exact-byte ontology/index lock; never fetches remote resources",
@@ -2366,6 +2695,32 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("view", help="render a deterministic standalone research-trajectory map")
     p.add_argument("--output", required=True, help="HTML file to write")
+    p = sub.add_parser(
+        "graphrag-export",
+        help="export the canonical report as a deterministic read-only retrieval graph",
+    )
+    p.add_argument("--output", help="project-relative JSON projection to create")
+    p.add_argument("--force", action="store_true", help="replace a differing projection file")
+    p.add_argument("--json", action="store_true", help="emit the projection as canonical JSON")
+    p = sub.add_parser(
+        "graphrag-context",
+        help="extract a bounded deterministic neighborhood from the report graph",
+    )
+    p.add_argument("seed", nargs="+", help="one or more exact projection node IDs")
+    p.add_argument("--max-hops", type=int, default=2)
+    p.add_argument("--max-nodes", type=int, default=64)
+    p.add_argument("--max-edges", type=int, default=128)
+    p.add_argument(
+        "--max-bytes", type=int, default=DEFAULT_MAX_CONTEXT_BYTES,
+        help="maximum canonical JSON bytes in the returned context",
+    )
+    p.add_argument(
+        "--include-nontraversable", action="store_true",
+        help="include explicitly non-traversable diagnostic relationships",
+    )
+    p.add_argument("--output", help="project-relative JSON context to create")
+    p.add_argument("--force", action="store_true", help="replace a differing context file")
+    p.add_argument("--json", action="store_true", help="emit the context as canonical JSON")
     p = sub.add_parser("init", help="scaffold a planning-safe ProvSleuth project")
     p.add_argument("dir", nargs="?", default=".")
     p.add_argument("--example", action="store_true",
@@ -2381,6 +2736,11 @@ def main(argv=None):
         "check": cmd_check, "lint": cmd_lint, "downstream": cmd_downstream, "upstream": cmd_upstream,
         "impact": cmd_impact, "node": cmd_node, "log": cmd_log, "journal": cmd_journal,
         "assess": cmd_assess, "assessments": cmd_assessments, "review": cmd_review,
+        "deliberate-propose": cmd_deliberate_propose,
+        "deliberate-freeze": cmd_deliberate_freeze,
+        "deliberate-ballot": cmd_deliberate_ballot,
+        "deliberate-decide": cmd_deliberate_decide,
+        "deliberations": cmd_deliberations,
         "lock-ontology": cmd_lock_ontology,
         "ontology-candidates": cmd_ontology_candidates,
         "map-term": cmd_map_term, "mappings": cmd_mappings,
@@ -2398,7 +2758,10 @@ def main(argv=None):
         "graph-apply": cmd_graph_apply,
         "release-create": cmd_release_create, "release-verify": cmd_release_verify,
         "release-diff": cmd_release_diff,
-        "view": cmd_view, "init": cmd_init, "install-skill": cmd_install_skill,
+        "view": cmd_view,
+        "graphrag-export": cmd_graphrag_export,
+        "graphrag-context": cmd_graphrag_context,
+        "init": cmd_init, "install-skill": cmd_install_skill,
     }
     try:
         return dispatch[args.cmd](args)
@@ -2424,6 +2787,12 @@ def main(argv=None):
         print(f"provsleuth: {_terminal_text(e)}", file=sys.stderr)
         return 2
     except MethodAssessmentError as e:
+        print(f"provsleuth: {_terminal_text(e)}", file=sys.stderr)
+        return 2
+    except GraphRAGError as e:
+        print(f"provsleuth: {_terminal_text(e)}", file=sys.stderr)
+        return 2
+    except DeliberationError as e:
         print(f"provsleuth: {_terminal_text(e)}", file=sys.stderr)
         return 2
 

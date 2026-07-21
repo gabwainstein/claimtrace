@@ -108,6 +108,143 @@ not create them.
 Annotations appear in `provsleuth journal` and `provsleuth node` but are skipped when computing
 dependents/ancestors, so they never create false staleness.
 
+## Adversarial deliberation documents
+
+Adversarial claim and rule deliberation lives under `deliberation.records` (default
+`provsleuth/deliberations`). It is separate from the graph, semantic-assessment store, semantic
+policy, and symbolic derivations. The ledger records attributed proposals, an exact frozen candidate
+union, role-bound ballots, and at most one phase decision per frozen set; it never activates a
+candidate or authenticates a person.
+
+Four immutable stored-record schemas are supported:
+
+| record | schema | content address |
+|---|---|---|
+| proposal | `claimtrace.deliberation-proposal/1` | `deliberation-proposal:sha256:<digest>`; equivalent candidate meaning also receives a shared `deliberation-candidate:sha256:<digest>` |
+| frozen candidate set | `claimtrace.deliberation-candidate-set/1` | `deliberation-set:sha256:<digest>` |
+| ballot | `claimtrace.deliberation-ballot/1` | `deliberation-ballot:sha256:<digest>` |
+| phase decision | `claimtrace.deliberation-phase-decision/1` | `deliberation-decision:sha256:<digest>` |
+
+`claimtrace.deliberation-status/1` is a recomputed projection, not an activation record. The report
+projects the complete records, evaluated panels, open proposal groups, and integrity issues under
+`deliberations`, with `human_activation_required: true`, `automatic_activation: false`, and
+`scientific_truth_established: false`. `human_activation_required` names the separate project
+governance boundary; it does not mean ProvSleuth authenticated a human.
+
+### Proposal phases and grounding
+
+`provsleuth deliberate-propose` accepts the closed
+`claimtrace.deliberation-proposal-request/1` shape: `schema_version`, `round_id`, `phase`,
+`subject_key`, `source_anchor`, `payload`, `rationale`, and optional `provenance`. CLI `--actor` and
+`--independence-group` are stored separately. Actor and group strings are self-asserted
+attribution, not authentication or proof of independent review.
+
+`source_anchor` names an existing graph node with a UTF-8 text `path`, zero-based `start_byte` and
+exclusive `end_byte`, plus an optional matching lowercase `span_sha256`. The stored proposal adds
+the exact excerpt, complete-source SHA-256 and size, and pins the current canonical graph hash,
+active semantic-policy ID, and configured vocabulary/rule-pack hashes. Live evaluation rechecks
+those exact bytes and project snapshot; drift blocks recommendation.
+
+The four phases are sequential:
+
+| phase | closed payload | required ballot roles |
+|---|---|---|
+| `claim_extraction` | exact-substring `claim_text`, `claim_kind`, `speech_act`, `polarity`, `qualifiers` | `source_verifier`, `coverage_reviewer`, `adversarial_falsifier` |
+| `semantic_interpretation` | `extraction_candidate_id`, `normalized_claim`, exact eight-dimension `frame`, `modality`, `quantifier`, `negation_scope`, `conditions`, `ambiguities`, `non_equivalences` | `semantic_reviewer`, `scope_reviewer`, `adversarial_falsifier` |
+| `formalization` | `interpretation_candidate_id`, exact configured `vocabulary_id`, typed `target`, closed all-of `evidence_plan`, `method_requirements`, `assumptions`, non-empty `non_equivalences` | `evidence_mapper`, `logic_critic`, `adversarial_falsifier` |
+| `rule_validity` | `formalization_candidate_id`, exact configured `vocabulary_id`, data-only `rule_pack`, `warrant`, `scope`, `assumptions`, non-empty `non_equivalences`, `competency_cases` | `logic_critic`, `domain_reviewer`, `adversarial_falsifier` |
+
+Each later-phase candidate must reference a stored proposal candidate from the immediately preceding
+phase and that candidate's approved, still-current phase decision. The upstream set and downstream
+proposal must share the exact `round_id`, `subject_key`, and frozen mechanical snapshot. A missing or
+rejected decision, skipped phase, changed snapshot, or decision that is no longer current blocks the
+proposal. This advances only the immutable planning record; changing the graph, semantic policy,
+vocabulary, evidence plan, rule pack, or other pinned project state requires a new round.
+
+Rule candidates are checked for finite typed syntax, acyclic dependencies among derived predicates,
+and the mandatory competency categories `positive`, `explicit_negative`, `missing_premise`,
+`boundary`, `unit_mismatch`, `conflict`, and `counterexample`. The v1 mandatory competency matrix is
+implemented through user- or agent-authored `competency_cases` and recorded by the
+`legacy_relational_competency_matrix` mechanical check; it is a legacy relational fixture matrix.
+Each case stores its declared expected and mechanically observed proof state, and ProvSleuth executes
+only the submitted cases. It does not generate cases, explore the input domain, prove boundary
+completeness, or establish full competency. A passing matrix is bounded mechanical behavior under
+those authored fixtures, not evidence that the rule warrant or scientific meaning is valid.
+
+### Frozen union and ballots
+
+`provsleuth deliberate-freeze` accepts exactly `schema_version`, `round_id`, `phase`, and
+`subject_key` under `claimtrace.deliberation-candidate-set-request/1`. It freezes all current
+proposals for that key, coalescing equivalent candidate meaning while retaining every proposal ID.
+An empty, stale, corrupt, oversized, or already frozen set is rejected. The stored record marks
+`candidate_union_complete: true` and `human_activation_required: true`.
+
+`provsleuth deliberate-ballot` accepts
+`claimtrace.deliberation-ballot-request/1`: `schema_version`, exact `candidate_set_id`, an eligible
+phase `role`, `evaluations`, and optional provenance. Every evaluation contains exactly
+`candidate_id`, `decision`, sorted unique closed `reason_codes`, `blocking`, and `rationale`.
+Decisions are `endorse`, `reject`, and `abstain`; rejection and abstention require a reason code,
+and an endorsement cannot block. One actor may submit one ballot per set and must evaluate every
+non-owned frozen candidate and no owned candidate. Ballots cannot be appended after a phase decision
+has frozen the exact reviewed ballot set.
+
+### Deterministic recommendation gate
+
+Ballot decisions are aggregated by `independence_group`, not actor count. These groups and all actor
+labels are self-asserted correlation metadata, not authenticated identities or proof of independent
+review. A group is an endorsement
+group only when all of its evaluations endorse, a reject group when any evaluation rejects, and
+otherwise an abstention group. One candidate is eligible for human review only when all of these
+conditions hold:
+
+- the ledger and live source/project snapshot have no blocking finding, the phase payload is
+  mechanically valid, and no evaluation is marked blocking;
+- at least three participant groups are represented;
+- either at least two proposer groups plus one external endorsement group, or at least one proposer
+  group plus two external endorsement groups, are present;
+- every required role endorses, and those roles can be assigned to distinct endorsing independence
+  groups;
+- at least two thirds of non-abstaining groups are endorsement groups.
+
+`recommended_for_human_review` requires exactly one frozen candidate and that candidate must be
+eligible. Another frozen alternative that is blocked, contested, or insufficient suppresses the
+recommendation. Multiple eligible alternatives yield `contested` with no content-hash tie-break.
+Material rejection or blocking also prevents recommendation; missing procedural coverage yields
+`insufficient_review`; integrity, drift, or mechanical failure yields `blocked`. These are scheduling
+and review states only.
+
+### Immutable phase decision
+
+`provsleuth deliberate-decide ENTRY --actor ID [--json]` accepts the closed
+`claimtrace.deliberation-phase-decision-request/1` shape: `schema_version`, exact
+`candidate_set_id`, exact `candidate_id`, `decision`, and `rationale`. `decision` is `approved` or
+`rejected`; the CLI supplies `actor` separately.
+
+The command runs under the deliberation-store lock and accepts only the set's current
+`recommended_for_human_review` candidate after the complete ballot set exists. The decision actor
+must differ from every proposer and balloter. Only one immutable decision is permitted for a set,
+and the stored record pins all reviewed `ballot_ids`. The stored record contains exactly
+`decision_id`, `schema_version`, `record_type`, `recorded_at`, `candidate_set_id`, `candidate_id`,
+`ballot_ids`, `decision`, `actor`, `rationale`, `human_identity_authenticated`, and
+`automatic_activation`; `record_type` is `phase_decision`, while both policy flags are `false`.
+
+The actor is self-asserted attribution. ProvSleuth does not authenticate a human, and the phase
+decision is not authorization for or activation of any graph, assessment, mapping, semantic policy,
+vocabulary, evidence plan, rule pack, or symbolic derivation. An approved decision only routes the
+candidate to the immediate next deliberation phase under the unchanged round, subject, and snapshot;
+a rejected decision unlocks nothing. Rule-validity approval routes only to external review and
+isolated testing. Actual project changes remain separate workflows and invalidate the frozen
+snapshot for further phase progression.
+
+The status projection exposes `phase_decision_id`, the complete `phase_decision`, and
+`phase_routing_state`. Routing states distinguish `awaiting_attributed_phase_decision`,
+`approved_for_next_phase`, `approved_for_external_application_review`,
+`rejected_by_attributed_reviewer`, `recorded_decision_not_current`, `panel_unresolved`, and
+`panel_unavailable`. For a targeted candidate set, `provsleuth deliberations` exits 0 for
+`recommended_for_human_review`, 1 for `contested` or `insufficient_review`, and 2 for `blocked`.
+That code reports panel status; callers must inspect `phase_routing_state` rather than treating exit
+0 as an approved phase decision.
+
 ## Semantic assessment documents
 
 Semantic assessments live under the configured `assessments` directory (default
@@ -1118,7 +1255,7 @@ source receipt with no declared intermediate retains its existing eligibility if
 condition passes **and that source receipt is event-v3**. An event-v2 source is always historical,
 non-current replay coverage.
 
-Report schema 1.7 projects `declared_intermediates` and compact
+Report schema 1.8 retains `declared_intermediates` and compact
 `intermediate_transitions` on each run separately from terminal outputs. Replay-v2 projections also
 retain their intermediate comparison flags and compact source fingerprints; replay-v1 projections
 use empty intermediate evidence rather than an inferred value. A declared materialized path binds
@@ -1128,7 +1265,7 @@ coverage but never promotes it to a terminal result-to-claim execution binding. 
 schema `claimtrace.view/5` renders the materialized path, transition, digest, and replay comparison
 as a separate run-detail group and repeats the no-stage-attribution boundary.
 
-For event-v4, report schema 1.7 also projects the closed trace plan, start binding, normalized source
+For event-v4, report schema 1.8 also projects the closed trace plan, start binding, normalized source
 trace, replay-v3 comparison, and claim-level `stage_checkpoint_state`. A complete source trace
 without matching current replay is `cooperative_report_complete_source_only`; matching current
 replay-v3 evidence is `cooperative_report_repeatable_current`. The adjacent
@@ -1222,13 +1359,14 @@ signed commit, or equivalent external control. Arbitrary proposal output files a
 automatically discovered by the release inventory; retain a reviewed proposal in version control
 or represent it as an explicitly modeled project document when it must be part of the release.
 
-`claimtrace.project-release/1` is a deterministic exact-byte inventory with a
+`claimtrace.project-release/2` is the current deterministic exact-byte inventory with a
 `release:sha256:` ID. Creation performs two complete collections and fails if the inventories do
 not match. Each file records a project-relative path or an exact configured external absolute path,
 SHA-256, size, roles, and logical IDs. External entries are host-specific and can expose usernames
 or workspace layout when a manifest is published. Scope
 includes configured control files, graph-backed files, render manifests, surviving event and review
-stores, semantic and symbolic assets, replay certificates, method assessments, and pipeline-
+stores, adversarial deliberation records, semantic and symbolic assets, replay certificates, method
+assessments, and pipeline-
 contract current-source paths referenced by included events or method assessments. The
 `pipeline_contract_current_source` role describes only the bytes currently at that path. Historical
 pipeline snapshots retain their normalized declaration and source fingerprint, not a copy of the
@@ -1237,25 +1375,59 @@ when those prior bytes must remain recoverable. Verification
 recollects the project and fails on modification, omission, or newly in-scope content; diff compares
 two individually valid manifests.
 
-Release manifest schema v1 has two accepted canonical schema inventories. The historical pre-stage-
-checkpoint inventory remains valid for release-v1 manifests created before the new keys existed.
-New manifests use the current inventory, which adds:
+Release-v2 adds the `deliberation_record` file role and exact proposal, frozen candidate-set,
+ballot, phase-decision, and status schema declarations. Its scope includes every valid JSON record in
+the configured deliberation store. Included actors, independence groups, ballots, recommendations,
+and decisions remain self-asserted advisory records: the manifest authenticates neither identity nor
+independence and does not activate any candidate.
 
-- `stage_checkpoint_record: claimtrace.stage-checkpoint/1`;
-- `stage_trace_plan: claimtrace.stage-trace-plan/1`; and
-- `stage_trace: claimtrace.stage-trace/1`.
-
-The current inventory also names event-v4 and replay-v3 in their dedicated current/supported fields.
-Validation accepts exactly the complete historical inventory or the complete current inventory; it
-does not accept an arbitrary mixture or partial set of schema declarations. The manifest's own
-schema remains `claimtrace.project-release/1` in both cases.
+Legacy `claimtrace.project-release/1` manifests remain valid only under one of their complete
+historical canonical schema inventories and their original scope, which excludes deliberation.
+Those accepted inventories cover the pre-stage-checkpoint, pre-portable-pipeline-snapshot, and final
+release-v1 protocol states. Validation never accepts an arbitrary mixture or partial inventory and
+never rewrites a v1 manifest to include later schemas or files.
 
 A release manifest has no built-in signer and no independently anchored head. Its release ID may be
 signed or committed to Git, a transparency log, or a blockchain by an external system. Such a
 commitment detects later differences relative to the exact manifest; it does not establish prior
 completeness, authenticate actor strings, or validate scientific meaning.
 
-## Config: render, execution, assessment, semantics, and logic policy
+## Deterministic GraphRAG projection and bounded context
+
+`provsleuth graphrag-export` builds `claimtrace.graphrag/1` from the canonical check report. It is
+a read-only retrieval projection, not a semantic reasoner. Existing graph, run, assessment,
+method-assessment, deliberation proposal/candidate/set/ballot/phase-decision, derivation, and proof
+identifiers are preserved exactly; an identifier collision fails closed. Phase decisions use node
+kind `deliberation_phase_decision`, authority `attributed_phase_routing_decision`, and the explicit
+relations `phase_decision_for_candidate_set`, `phase_decision_routes_candidate`, and
+`phase_decision_pins_ballot`. Findings without an existing ID receive a SHA-256 content address.
+Declared `supports` and `refutes` edges remain explicitly declaration-only, accepted assessments
+remain attributed judgments, deliberation candidates remain attributed grouped candidates rather
+than authenticated-independent judgments, phase decisions remain procedural routing rather than
+authenticated authorization, and symbolic proofs remain conditional consequences of the named
+project rules. None becomes scientific truth, support, or activation through export.
+
+The complete projection has a `projection_id` over its canonical content. A caller-supplied
+projection is rehashed before retrieval, so changing a review state or record while retaining its
+old ID is rejected. Cross-layer references that cannot be resolved remain listed in
+`unresolved_references`; `graphrag-context` refuses to retrieve from such a projection unless a
+caller explicitly opts into diagnostic use through the Python API.
+
+`claimtrace.graphrag-context/1` is an undirected discovery neighborhood that preserves every
+original edge direction in the returned records. It records known and unknown seeds, inclusion
+paths, and exact exclusion counts. The default limits are two hops, 64 nodes, 128 edges, and
+262,144 canonical UTF-8 bytes. Hard limits are eight hops, 512 nodes, 1,024 edges, and 1,048,576
+bytes. Records are never text-truncated: a candidate record is omitted with a byte-budget reason,
+and a required seed that cannot fit makes the request fail. `context_id` commits the source
+projection ID, request, included records, and omission accounting, so an equal ID cannot conceal
+different context bytes.
+
+These bounds control deterministic serialization size, not an external model's tokenizer count.
+An embedding index, vector database, reranker, or language model is deliberately outside the core.
+Such a consumer may rank or summarize the returned records, but it must preserve their IDs, states,
+authority labels, and exclusions rather than presenting generated prose as a ProvSleuth finding.
+
+## Config: render, execution, assessment, deliberation, semantics, and logic policy
 
 In `provsleuth.config.json`, `render_types` (default `["figure"]`) are the node types whose
 staleness is checked, and `input_types` (default `["data", "artifact", "code"]`) are the types that
@@ -1272,6 +1444,24 @@ dependency. Direct declarations require matching polarity; structural dependenci
 accepted active semantic relation. This policy does not turn an accepted assessment into
 scientific truth; it only requires that the attributed semantic review exists and remains grounded
 to the current nodes and artifact bytes.
+
+The optional closed `deliberation` object selects the advisory multi-agent record store:
+
+```json
+{
+  "deliberation": {
+    "records": "provsleuth/deliberations"
+  }
+}
+```
+
+`records` is project-local and must be distinct from every other configured control or provenance
+store. Deliberation has no `active`, `latest`, or `require_*` selector. Panel recommendations and
+phase decisions appear in reports, releases, and the standalone audit view but never satisfy
+semantic-assessment, normalization, or symbolic-derivation policy and never mutate project meaning.
+Neither a bare graph hash, semantic-policy ID, rule-pack ID, approved phase decision, nor their
+combination is activation proof; each actual activation or project mutation remains in its separate
+reviewable workflow.
 
 The optional closed `execution` object configures opaque-script evidence:
 

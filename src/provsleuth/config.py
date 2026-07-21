@@ -10,6 +10,9 @@ provsleuth.config.json schema (all paths relative to the config file's directory
     "graph":        "provsleuth/graph.json", # the graph file
     "events":       "provsleuth/events",     # content-addressed mechanical run receipts
     "assessments":  "provsleuth/assessments", # content-addressed semantic reviews
+    "deliberation": {                         # optional adversarial semantic proposals
+      "records": "provsleuth/deliberations"
+    },
     "verifiers":    "provsleuth/verifiers.py", # optional: project-specific numeric checks
     "render_types": ["figure"],              # node types whose staleness is checked
     "input_types":  ["data", "artifact", "code"], # types that count as staleness INPUTS to a render
@@ -193,6 +196,23 @@ class Config:
                 raise SystemExit(f"provsleuth: config field {key!r} must be a list of strings")
         if "require_assessments" in data and not isinstance(data["require_assessments"], bool):
             raise SystemExit("provsleuth: config field 'require_assessments' must be a boolean")
+        deliberation = data.get("deliberation", {})
+        if not isinstance(deliberation, dict):
+            raise SystemExit("provsleuth: config field 'deliberation' must be an object")
+        unknown_deliberation = set(deliberation) - {"records"}
+        if unknown_deliberation:
+            raise SystemExit(
+                "provsleuth: unknown deliberation config field(s): "
+                + ", ".join(
+                    _safe_config_display(item) for item in sorted(unknown_deliberation)
+                )
+            )
+        if "records" in deliberation and (
+                not isinstance(deliberation["records"], str)
+                or not deliberation["records"]):
+            raise SystemExit(
+                "provsleuth: deliberation.records must be a non-empty string"
+            )
         execution = data.get("execution", {})
         if not isinstance(execution, dict):
             raise SystemExit("provsleuth: config field 'execution' must be an object")
@@ -339,6 +359,22 @@ class Config:
         )
         self.assessments_path = lexical_path(
             data.get("assessments", f"{self.store_prefix}/assessments")
+        )
+        self.deliberation = deliberation
+
+        def project_store_path(value: str, label: str) -> Path:
+            resolved = lexical_path(value)
+            try:
+                resolved.relative_to(self.base)
+            except ValueError as exc:
+                raise SystemExit(
+                    f"provsleuth: {label} path escapes the project config directory: {value}"
+                ) from exc
+            return resolved
+
+        self.deliberation_path = project_store_path(
+            deliberation.get("records", f"{self.store_prefix}/deliberations"),
+            "deliberation.records",
         )
         v = data.get("verifiers")
         self.verifiers = (self.base / v).resolve() if v else None
@@ -525,7 +561,8 @@ class Config:
                     "verifier, or logic asset"
                 )
         provenance_stores = [
-            self.events_path, self.assessments_path, self.derivations_path,
+            self.events_path, self.assessments_path, self.deliberation_path,
+            self.derivations_path,
             self.semantic_mappings_path, self.semantic_policies_path,
             self.replays_path, self.method_assessments_path,
         ]
@@ -543,8 +580,9 @@ class Config:
                             pass
                 if nested:
                     raise SystemExit(
-                        "provsleuth: event, assessment, derivation, semantic-mapping, "
-                        "semantic-policy, replay, and method-assessment stores must be distinct "
+                        "provsleuth: event, assessment, deliberation, derivation, "
+                        "semantic-mapping, semantic-policy, replay, and method-assessment "
+                        "stores must be distinct "
                         "non-nested directories"
                     )
         for source in semantic_sources:
@@ -563,9 +601,40 @@ class Config:
                     )
 
     def resolve(self, relpath: str) -> Path:
-        """Resolve a node path (relative to project root) to an absolute path."""
+        """Resolve a node path (relative to project root) to an absolute path.
+
+        Node paths are graph content, so they are clamped to the project root the
+        same way configured store paths are.  Without this an absolute or
+        ``..``-traversing node path would make the engine read, hash, and publish
+        a file outside the project -- including into a signed release manifest.
+        Normalization is lexical (``abspath``, not ``resolve``) so a symlink or
+        junction still reaches the loader that rejects it.
+        """
         rp = Path(relpath)
-        return rp if rp.is_absolute() else (self.root / rp)
+        if rp.is_absolute():
+            raise SystemExit(
+                f"provsleuth: node path must be project-relative, not absolute: {relpath}"
+            )
+        resolved = Path(os.path.abspath(str(self.root / rp)))
+        try:
+            resolved.relative_to(self.root)
+        except ValueError as exc:
+            raise SystemExit(
+                f"provsleuth: node path escapes the project root: {relpath}"
+            ) from exc
+        return resolved
+
+    def within_root(self, relpath: str) -> bool:
+        """Whether ``resolve`` would accept this node path, without raising.
+
+        Reporting commands use this to record an out-of-root path as a finding
+        instead of aborting the whole run; publishing paths keep the hard failure.
+        """
+        try:
+            self.resolve(relpath)
+        except SystemExit:
+            return False
+        return True
 
 
 def load_config(start: str | os.PathLike | None = None,

@@ -38,8 +38,10 @@ ANNOT_RELS = {"supersedes", "superseded_by", "refutes", "retracts", "tried_befor
               "evidenced_by"}
 # statuses that nothing CURRENT may depend on (a live result must not build on a killed branch)
 RETIRED = {"deprecated", "retracted", "dead_end", "superseded"}
+# statuses that nothing LIVE may depend on (a live result must not build on unexecuted work)
+UNEXECUTED = {"planned"}
 # lab-notebook verdict statuses (an attempt + where it ended up)
-NOTEBOOK_STATUSES = {"current", "confirmed", "null", "dead_end", "retracted",
+NOTEBOOK_STATUSES = {"planned", "current", "confirmed", "null", "dead_end", "retracted",
                      "superseded", "stale", "deprecated"}
 # node types the tool understands (free-form is allowed, but unknown types get no type checks)
 KNOWN_TYPES = {"question", "hypothesis", "prediction", "data", "artifact", "code", "figure",
@@ -216,7 +218,16 @@ def _validate_method_semantics(graph, graph_name):
                     f"{graph_name}: claim-like node {claim['id']!r} reference {method_id!r} "
                     "does not identify a method node"
                 )
-            if method.get("status") not in {None, "current", "confirmed"}:
+            # Inactive claims are part of the audit trail and must be able to retain
+            # the exact inactive method that produced them.  Only a live claim is
+            # forbidden from relying on an inactive method; missing nodes, wrong
+            # node types, absent method specs, and unknown steps remain invalid for
+            # every claim lifecycle state.  A missing status remains live for
+            # backward compatibility with older graphs.
+            active_statuses = {None, "current", "confirmed"}
+            claim_is_active = claim.get("status") in active_statuses
+            method_is_active = method.get("status") in active_statuses
+            if claim_is_active and not method_is_active:
                 raise GraphError(
                     f"{graph_name}: claim-like node {claim['id']!r} references inactive "
                     f"method node {method_id!r}"
@@ -542,6 +553,14 @@ def structural_issues(cfg, raw=None):
     for d in dups:
         out.append(("DUPLICATE_ID", d, "id declared more than once (later silently wins, earlier lost)"))
 
+    # A node path is graph content, so it must stay inside the project root; otherwise
+    # the engine would read, hash, and publish a file the project does not own.
+    for n in node_list:
+        p = n.get("path")
+        if isinstance(p, str) and p and not cfg.within_root(p):
+            out.append(("INVALID_NODE_PATH", n.get("id", "-"),
+                        f"path must be project-relative and inside the project root: {p}"))
+
     valid_edges = []
     for e in edges:
         if (not all(k in e for k in ("from", "to", "rel"))
@@ -632,9 +651,21 @@ def compute_check(cfg, raw=None):
     pending = []
     dirty_roots = {}
 
+    # An out-of-root node path is already reported by structural_issues above. Checking
+    # is a reporting command, so the remaining checks skip that path rather than letting
+    # the resolve guard abort the whole run.
+    unsafe_paths = {nid for (code, nid, _detail) in problems if code == "INVALID_NODE_PATH"}
+
+    def _node_path(nid, node):
+        """The declared node path, or None when absent or not root-contained."""
+        p = node.get("path")
+        if not p or nid in unsafe_paths:
+            return None
+        return p
+
     # 1. file existence
     for nid, n in nodes.items():
-        p = n.get("path")
+        p = _node_path(nid, n)
         if p and not cfg.resolve(p).exists():
             problems.append(("MISSING_FILE", nid, p))
 
@@ -672,6 +703,19 @@ def compute_check(cfg, raw=None):
             if ust in RETIRED and n.get("status") == "current":
                 problems.append(("READS_RETIRED", nid, f"depends on {ust} {u}"))
 
+    # 3b. a live node must not depend on work that has not been executed yet.
+    #     `planned` is a standard planning-mode status, so it produces no lint of
+    #     its own; a settled result resting on it is the silent-staleness case
+    #     this tool exists to catch.
+    for nid, n in nodes.items():
+        nst = n.get("status")
+        if nst not in ("current", "confirmed"):
+            continue
+        for (u, r) in up.get(nid, []):
+            if nodes.get(u, {}).get("status") in UNEXECUTED:
+                problems.append(("DEPENDS_ON_PLANNED", nid,
+                                 f"{nst} but depends on planned {u}"))
+
     # 4. a claim must not transitively depend on evidence from a conflicting canonical binding
     for dependent, claim in nodes.items():
         if claim.get("type") != "claim":
@@ -693,12 +737,13 @@ def compute_check(cfg, raw=None):
     for nid, n in nodes.items():
         if n.get("type") not in cfg.render_types:
             continue
-        t = _mtime(n.get("path", "")) if n.get("path") else None
+        own_p = _node_path(nid, n)
+        t = _mtime(own_p) if own_p else None
         if t is None:
             continue
         for u in _ancestors(nid, up):
             un = nodes.get(u, {})
-            up_p = un.get("path")
+            up_p = _node_path(u, un)
             if not up_p or un.get("status") == "deprecated" or un.get("type") not in cfg.input_types:
                 continue
             tu = _mtime(up_p)
@@ -708,7 +753,7 @@ def compute_check(cfg, raw=None):
 
     # 6. content-hash staleness: a render's locked manifest inputs changed since the snapshot
     for nid, n in nodes.items():
-        if n.get("type") not in cfg.render_types or not n.get("path"):
+        if n.get("type") not in cfg.render_types or not _node_path(nid, n):
             continue
         man = cfg.resolve(n["path"] + ".manifest.json")
         if not man.exists():

@@ -13,6 +13,7 @@ externally retained signature, transparency-log entry, or other anchor.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -21,26 +22,28 @@ import stat
 from pathlib import Path, PurePosixPath
 
 from . import (
-    __version__, assessment, engine, events, logic, method_assessment,
-    pipeline, replay, semantics,
+    __version__, assessment, deliberation, engine, events, logic,
+    method_assessment, pipeline, replay, semantics,
 )
 from .config import MAX_CONFIG_BYTES, strict_json_loads
 
 
-MANIFEST_SCHEMA = "claimtrace.project-release/1"
+LEGACY_MANIFEST_SCHEMA = "claimtrace.project-release/1"
+MANIFEST_SCHEMA = "claimtrace.project-release/2"
 RELEASE_ID_RE = re.compile(r"^release:sha256:([0-9a-f]{64})$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MAX_GRAPH_BYTES = 256 * 1024 * 1024
 _CHUNK_BYTES = 1024 * 1024
-_FILE_ROLES = frozenset({
+_V1_FILE_ROLES = frozenset({
     "assessment", "config", "derivation", "event", "graph", "graph_artifact",
     "logic_rule_pack", "logic_vocabulary", "ontology_document", "ontology_index",
     "ontology_lock", "method_assessment", "pipeline_contract_current_source",
     "render_manifest", "replay_certificate",
     "semantic_mapping", "semantic_policy", "semantic_terminology", "verifier",
 })
+_FILE_ROLES = _V1_FILE_ROLES | {"deliberation_record"}
 
-_INCLUSIONS = [
+_V1_INCLUSIONS = [
     "exact config and graph bytes",
     (
         "all valid JSON event, replay-certificate, method-assessment, assessment, "
@@ -58,7 +61,7 @@ _INCLUSIONS = [
         "render-manifest sidecar"
     ),
 ]
-_EXCLUSIONS = [
+_V1_EXCLUSIONS = [
     (
         "project files that are neither configured, locked, provenance-store JSON, "
         "nor referenced by a graph node path"
@@ -70,7 +73,7 @@ _EXCLUSIONS = [
         "state not already captured by included run receipts"
     ),
 ]
-_LIMITATIONS = [
+_V1_LIMITATIONS = [
     (
         "The manifest establishes exact-byte integrity and discoverable-scope coverage, "
         "not scientific truth, semantic correctness, methodological adequacy, or "
@@ -103,6 +106,36 @@ _LIMITATIONS = [
         "Configured external assets are recorded with exact absolute paths. Those "
         "entries are host-specific and can disclose usernames or workspace layout in "
         "a published manifest."
+    ),
+]
+
+_INCLUSIONS = [
+    "exact config and graph bytes",
+    (
+        "all valid JSON event, replay-certificate, method-assessment, assessment, "
+        "semantic-mapping, semantic-policy, derivation, and deliberation records "
+        "in their configured stores"
+    ),
+    (
+        "configured verifier, semantic terminology and ontology-lock assets, locked "
+        "ontology documents and indexes, symbolic vocabulary and rule-pack assets, and "
+        "the current files at pipeline-contract source paths referenced by included "
+        "provenance records"
+    ),
+    (
+        "every regular file referenced by a graph node path and every required "
+        "render-manifest sidecar"
+    ),
+]
+_EXCLUSIONS = list(_V1_EXCLUSIONS)
+_LIMITATIONS = [
+    *_V1_LIMITATIONS,
+    (
+        "Included deliberation actors, independence groups, ballots, recommendations, "
+        "and phase-routing decisions are self-asserted review records. They do not "
+        "authenticate identity, eliminate Sybil or correlated-review risk, establish "
+        "semantic or rule correctness, or activate graph changes, semantic policy, "
+        "evidence plans, or symbolic rules."
     ),
 ]
 
@@ -307,7 +340,7 @@ def _require_store_match(actual: list[Path], expected: list[Path], label: str) -
         raise ReleaseError(f"{label} inventory is incomplete: {'; '.join(detail)}")
 
 
-def _collect_stores(cfg, targets: dict) -> list[dict]:
+def _collect_stores(cfg, targets: dict, *, include_deliberation: bool = True) -> list[dict]:
     inventories = []
 
     def add_pipeline_contract_current_source(snapshot: object, origin: str) -> None:
@@ -503,6 +536,38 @@ def _collect_stores(cfg, targets: dict) -> list[dict]:
     inventories.append(_store_inventory(
         cfg, derivation_root, "derivation", len(derivation_expected),
     ))
+
+    if include_deliberation:
+        try:
+            deliberation_documents, deliberation_issues = deliberation.load_records(cfg)
+        except deliberation.DeliberationError as exc:
+            raise ReleaseError(f"deliberation-store integrity failed: {exc}") from exc
+        if deliberation_issues:
+            raise ReleaseError("deliberation-store integrity failed: " + "; ".join(
+                item.get("detail", str(item)) for item in deliberation_issues
+            ))
+        deliberation_root = deliberation.deliberation_path(cfg)
+        deliberation_expected = []
+        for document in deliberation_documents:
+            try:
+                record_id = deliberation.validate_record(document)
+            except deliberation.DeliberationError as exc:
+                raise ReleaseError(
+                    f"deliberation-store integrity failed: {exc}"
+                ) from exc
+            digest = record_id.rsplit(":", 1)[1]
+            path = deliberation_root / f"{digest}.json"
+            deliberation_expected.append(path)
+            _add_target(
+                targets, cfg, path, "deliberation_record", logical_id=record_id,
+            )
+        _require_store_match(
+            _json_paths(deliberation_root, recursive=False), deliberation_expected,
+            "deliberation store",
+        )
+        inventories.append(_store_inventory(
+            cfg, deliberation_root, "deliberation_record", len(deliberation_expected),
+        ))
     return inventories
 
 
@@ -580,7 +645,7 @@ def _collect_logic_assets(cfg, targets: dict) -> None:
         )
 
 
-def _collect_once(cfg) -> dict:
+def _collect_once(cfg, *, include_deliberation: bool = True) -> dict:
     targets = {}
     config_snapshot, config_bytes = _read_file_once(
         cfg.config_path, capture=True, limit=MAX_CONFIG_BYTES,
@@ -618,7 +683,9 @@ def _collect_once(cfg) -> dict:
 
     _collect_semantic_assets(cfg, targets)
     _collect_logic_assets(cfg, targets)
-    stores = _collect_stores(cfg, targets)
+    stores = _collect_stores(
+        cfg, targets, include_deliberation=include_deliberation,
+    )
     if cfg.semantic_active_policy is not None and not any(
             "semantic_policy" in target["roles"]
             and cfg.semantic_active_policy in target["logical_ids"]
@@ -665,6 +732,11 @@ def _schema_versions() -> dict:
     return {
         "assessment_current": assessment.SCHEMA_VERSION,
         "assessment_supported": sorted(assessment.SUPPORTED_SCHEMA_VERSIONS),
+        "deliberation_ballot": deliberation.BALLOT_SCHEMA,
+        "deliberation_candidate_set": deliberation.CANDIDATE_SET_SCHEMA,
+        "deliberation_phase_decision": deliberation.PHASE_DECISION_SCHEMA,
+        "deliberation_proposal": deliberation.PROPOSAL_SCHEMA,
+        "deliberation_status": deliberation.STATUS_SCHEMA,
         "derivation": logic.DERIVATION_SCHEMA,
         "event_current": events.CONTRACT_EVENT_SCHEMA,
         "event_stage_checkpoint_current": events.STAGE_CONTRACT_EVENT_SCHEMA,
@@ -695,6 +767,49 @@ def _schema_versions() -> dict:
         "stage_trace": pipeline.STAGE_TRACE_SCHEMA,
         "stage_trace_plan": pipeline.STAGE_TRACE_PLAN_SCHEMA,
     }
+
+
+_FINAL_V1_SCHEMA_VERSIONS = {
+    "assessment_current": "claimtrace.semantic-assessment/2",
+    "assessment_supported": [
+        "claimtrace.semantic-assessment/1", "claimtrace.semantic-assessment/2",
+    ],
+    "derivation": "claimtrace.symbolic-derivation/1",
+    "event_current": "claimtrace.event/3",
+    "event_stage_checkpoint_current": "claimtrace.event/4",
+    "event_supported": [
+        "claimtrace.event/1", "claimtrace.event/2", "claimtrace.event/3",
+        "claimtrace.event/4",
+    ],
+    "graph": "1.0",
+    "local_terminology": "claimtrace.local-terminology/1",
+    "logic_rule_pack": "claimtrace.symbolic-rules/1",
+    "logic_vocabulary": "claimtrace.symbolic-vocabulary/1",
+    "method_assessment": "claimtrace.method-conformance-assessment/1",
+    "method_requirements": "claimtrace.method-requirements/1",
+    "method_spec": "claimtrace.method-spec/1",
+    "ontology_index": "claimtrace.ontology-index/1",
+    "ontology_lock": "claimtrace.ontology-lock/1",
+    "pipeline_contract": "claimtrace.pipeline-contract/1",
+    "pipeline_contract_snapshot_current": "claimtrace.pipeline-contract-snapshot/3",
+    "pipeline_contract_snapshot_supported": [
+        "claimtrace.pipeline-contract-snapshot/1",
+        "claimtrace.pipeline-contract-snapshot/2",
+        "claimtrace.pipeline-contract-snapshot/3",
+    ],
+    "render_manifest": "claimtrace.render-manifest/2",
+    "replay_certificate_current": "claimtrace.replay-certificate/2",
+    "replay_certificate_stage_checkpoint_current": "claimtrace.replay-certificate/3",
+    "replay_certificate_supported": [
+        "claimtrace.replay-certificate/1", "claimtrace.replay-certificate/2",
+        "claimtrace.replay-certificate/3",
+    ],
+    "semantic_mapping": "claimtrace.semantic-mapping/1",
+    "semantic_policy": "claimtrace.semantic-policy/1",
+    "stage_checkpoint_record": "claimtrace.stage-checkpoint/1",
+    "stage_trace": "claimtrace.stage-trace/1",
+    "stage_trace_plan": "claimtrace.stage-trace-plan/1",
+}
 
 
 _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS = {
@@ -774,39 +889,91 @@ _PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS = {
 }
 
 
-def _manifest_core(state: dict) -> dict:
+def _manifest_core(
+        state: dict, *, schema_version: str = MANIFEST_SCHEMA,
+        schemas: dict | None = None) -> dict:
+    if schema_version == MANIFEST_SCHEMA:
+        inclusions = _INCLUSIONS
+        exclusions = _EXCLUSIONS
+        limitations = _LIMITATIONS
+        canonical_schemas = _schema_versions()
+    elif schema_version == LEGACY_MANIFEST_SCHEMA:
+        inclusions = _V1_INCLUSIONS
+        exclusions = _V1_EXCLUSIONS
+        limitations = _V1_LIMITATIONS
+        canonical_schemas = _FINAL_V1_SCHEMA_VERSIONS
+    else:
+        raise ReleaseError(f"unsupported release manifest schema: {schema_version!r}")
     return {
-        "schema_version": MANIFEST_SCHEMA,
+        "schema_version": schema_version,
         "tool": {"name": "provsleuth", "version": __version__},
-        "schemas": _schema_versions(),
+        "schemas": copy.deepcopy(schemas if schemas is not None else canonical_schemas),
         "scope": {
-            "inclusions": list(_INCLUSIONS),
-            "exclusions": list(_EXCLUSIONS),
-            "limitations": list(_LIMITATIONS),
+            "inclusions": list(inclusions),
+            "exclusions": list(exclusions),
+            "limitations": list(limitations),
             "inventory": state["inventory"],
         },
         "files": state["files"],
     }
 
 
-def create_release_manifest(cfg) -> dict:
-    """Create a deterministic manifest after two complete, matching collections."""
-    first = _collect_once(cfg)
-    second = _collect_once(cfg)
+def _create_release_manifest(cfg, schema_version: str) -> dict:
+    if schema_version not in {MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}:
+        raise ReleaseError(f"unsupported release manifest schema: {schema_version!r}")
+    if schema_version == MANIFEST_SCHEMA:
+        first = _collect_once(cfg)
+        second = _collect_once(cfg)
+    else:
+        first = _collect_once(cfg, include_deliberation=False)
+        second = _collect_once(cfg, include_deliberation=False)
     if canonical_bytes(first) != canonical_bytes(second):
         raise ReleaseError(
             "project changed between the two release-manifest collection passes"
         )
-    core = _manifest_core(second)
+    core = _manifest_core(second, schema_version=schema_version)
     return {"release_id": f"release:sha256:{canonical_sha256(core)}", **core}
 
 
+def create_release_manifest(cfg) -> dict:
+    """Create a deterministic current manifest after two matching collections."""
+    return _create_release_manifest(cfg, MANIFEST_SCHEMA)
+
+
 def validate_release_manifest(document: object) -> None:
-    """Validate v1 shape, canonical ordering, and the deterministic release ID."""
+    """Validate v1/v2 shape, canonical ordering, and deterministic release ID."""
     if not isinstance(document, dict) or set(document) != {
             "release_id", "schema_version", "tool", "schemas", "scope", "files"}:
         raise ReleaseError("release manifest has unknown or missing top-level fields")
-    if document["schema_version"] != MANIFEST_SCHEMA:
+    schema_version = document["schema_version"]
+    if schema_version == MANIFEST_SCHEMA:
+        allowed_schema_declarations = (_schema_versions(),)
+        inclusions = _INCLUSIONS
+        exclusions = _EXCLUSIONS
+        limitations = _LIMITATIONS
+        allowed_file_roles = _FILE_ROLES
+        required_store_roles = {
+            "event", "assessment", "semantic_mapping", "semantic_policy",
+            "derivation", "replay_certificate", "method_assessment",
+            "deliberation_record",
+        }
+        schema_label = "v2"
+    elif schema_version == LEGACY_MANIFEST_SCHEMA:
+        allowed_schema_declarations = (
+            _FINAL_V1_SCHEMA_VERSIONS,
+            _PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS,
+            _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS,
+        )
+        inclusions = _V1_INCLUSIONS
+        exclusions = _V1_EXCLUSIONS
+        limitations = _V1_LIMITATIONS
+        allowed_file_roles = _V1_FILE_ROLES
+        required_store_roles = {
+            "event", "assessment", "semantic_mapping", "semantic_policy",
+            "derivation", "replay_certificate", "method_assessment",
+        }
+        schema_label = "v1"
+    else:
         raise ReleaseError(f"unsupported release manifest schema: {document['schema_version']!r}")
     if (not isinstance(document["tool"], dict)
             or set(document["tool"]) != {"name", "version"}
@@ -820,11 +987,9 @@ def validate_release_manifest(document: object) -> None:
                      and all(isinstance(item, str) for item in value)))
             for key, value in document["schemas"].items()):
         raise ReleaseError("release manifest schema declarations are invalid")
-    if document["schemas"] not in (
-            _schema_versions(), _PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS,
-            _PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS):
+    if document["schemas"] not in allowed_schema_declarations:
         raise ReleaseError(
-            "release manifest schema declarations are not canonical for schema v1"
+            f"release manifest schema declarations are not canonical for schema {schema_label}"
         )
     scope = document["scope"]
     if (not isinstance(scope, dict)
@@ -834,9 +999,11 @@ def validate_release_manifest(document: object) -> None:
                        for key in ("inclusions", "exclusions", "limitations"))
             or not isinstance(scope["inventory"], dict)):
         raise ReleaseError("release manifest scope is invalid")
-    if (scope["inclusions"] != _INCLUSIONS or scope["exclusions"] != _EXCLUSIONS
-            or scope["limitations"] != _LIMITATIONS):
-        raise ReleaseError("release manifest scope policy is not canonical for schema v1")
+    if (scope["inclusions"] != inclusions or scope["exclusions"] != exclusions
+            or scope["limitations"] != limitations):
+        raise ReleaseError(
+            f"release manifest scope policy is not canonical for schema {schema_label}"
+        )
     files = document["files"]
     if not isinstance(files, list):
         raise ReleaseError("release manifest files must be a list")
@@ -872,8 +1039,24 @@ def validate_release_manifest(document: object) -> None:
                 )
         if not item["roles"]:
             raise ReleaseError(f"release manifest file #{index} has no role")
-        if not set(item["roles"]) <= _FILE_ROLES:
+        if not set(item["roles"]) <= allowed_file_roles:
             raise ReleaseError(f"release manifest file #{index} has an unknown role")
+        if "deliberation_record" in item["roles"]:
+            if len(item["logical_ids"]) != 1 or not any(
+                    pattern.fullmatch(item["logical_ids"][0]) for pattern in (
+                        deliberation.PROPOSAL_ID_RE,
+                        deliberation.CANDIDATE_SET_ID_RE,
+                        deliberation.BALLOT_ID_RE,
+                        deliberation.PHASE_DECISION_ID_RE,
+                    )):
+                raise ReleaseError(
+                    f"release manifest file #{index} has an invalid deliberation id"
+                )
+            digest = item["logical_ids"][0].rsplit(":", 1)[1]
+            if PurePosixPath(item["path"]).name != f"{digest}.json":
+                raise ReleaseError(
+                    f"release manifest file #{index} has a mismatched deliberation path"
+                )
         if not isinstance(item["sha256"], str) or not SHA256_RE.fullmatch(item["sha256"]):
             raise ReleaseError(f"release manifest file #{index} has an invalid SHA-256")
         if (not isinstance(item["size"], int) or isinstance(item["size"], bool)
@@ -908,10 +1091,7 @@ def validate_release_manifest(document: object) -> None:
     for item in stores:
         if (not isinstance(item, dict)
                 or set(item) != {"role", "location", "path", "record_count"}
-                or item["role"] not in {
-                    "event", "assessment", "semantic_mapping", "semantic_policy",
-                    "derivation", "replay_certificate", "method_assessment",
-                }
+                or item["role"] not in required_store_roles
                 or item["location"] not in {"project", "external"}
                 or not isinstance(item["path"], str) or not item["path"]
                 or not isinstance(item["record_count"], int)
@@ -920,10 +1100,6 @@ def validate_release_manifest(document: object) -> None:
         store_roles.append(item["role"])
     if store_roles != sorted(set(store_roles)):
         raise ReleaseError("release manifest store inventory is not canonical")
-    required_store_roles = {
-        "event", "assessment", "semantic_mapping", "semantic_policy", "derivation",
-        "replay_certificate", "method_assessment",
-    }
     if set(store_roles) != required_store_roles:
         raise ReleaseError("release manifest store inventory is incomplete")
     expected_role_counts = [
@@ -992,7 +1168,7 @@ def diff_release_manifests(before: dict, after: dict) -> dict:
                 "after": right,
             })
     metadata_fields = [
-        field for field in ("tool", "schemas", "scope")
+        field for field in ("schema_version", "tool", "schemas", "scope")
         if before[field] != after[field]
     ]
     equal = not added and not removed and not changed and not metadata_fields
@@ -1010,8 +1186,13 @@ def diff_release_manifests(before: dict, after: dict) -> dict:
 def verify_release_manifest(cfg, document: dict) -> dict:
     """Recollect the project and report drift, omissions, or integrity failures."""
     validate_release_manifest(document)
+    limitations = (
+        _V1_LIMITATIONS
+        if document["schema_version"] == LEGACY_MANIFEST_SCHEMA
+        else _LIMITATIONS
+    )
     try:
-        current = create_release_manifest(cfg)
+        current = _create_release_manifest(cfg, document["schema_version"])
     except ReleaseError as exc:
         return {
             "valid": False,
@@ -1019,7 +1200,7 @@ def verify_release_manifest(cfg, document: dict) -> dict:
             "current_release_id": None,
             "errors": [str(exc)],
             "diff": None,
-            "limitations": list(_LIMITATIONS),
+            "limitations": list(limitations),
         }
     difference = diff_release_manifests(document, current)
     file_scope_valid = (
@@ -1034,12 +1215,13 @@ def verify_release_manifest(cfg, document: dict) -> dict:
         "current_release_id": current["release_id"],
         "errors": [],
         "diff": difference,
-        "limitations": list(_LIMITATIONS),
+        "limitations": list(limitations),
     }
 
 
 __all__ = [
-    "MANIFEST_SCHEMA", "RELEASE_ID_RE", "ReleaseError", "canonical_bytes",
-    "canonical_sha256", "create_release_manifest", "validate_release_manifest",
-    "verify_release_manifest", "diff_release_manifests",
+    "LEGACY_MANIFEST_SCHEMA", "MANIFEST_SCHEMA", "RELEASE_ID_RE", "ReleaseError",
+    "canonical_bytes", "canonical_sha256", "create_release_manifest",
+    "validate_release_manifest", "verify_release_manifest",
+    "diff_release_manifests",
 ]

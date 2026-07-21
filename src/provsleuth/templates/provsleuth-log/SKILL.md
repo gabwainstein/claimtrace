@@ -1,6 +1,6 @@
 ---
 name: provsleuth-log
-description: Capture substantive research commands and negative outcomes; propose grounded claim assessments and typed symbolic premises; and, when explicitly requested, draft reviewable semantic normalizations, ontology mappings, vocabularies, and restricted rules. Use while starting or running a ProvSleuth project, resolving scientific terminology, interpreting evidence, testing derivability, or sweeping research work. Never invent identifiers or dependencies, activate semantic policy, self-review, author computed proofs, or certify scientific support.
+description: Capture substantive research commands and negative outcomes; propose grounded claim assessments and typed symbolic premises; and, when explicitly requested, run adversarial claim/logic deliberation or draft reviewable semantic normalizations, ontology mappings, vocabularies, and restricted rules. Use while starting or running a ProvSleuth project, resolving scientific terminology, interpreting evidence, testing derivability, or sweeping research work. Never invent identifiers or dependencies, activate semantic or logical policy, self-review, author computed proofs, or certify scientific support.
 ---
 
 # Log research work
@@ -616,6 +616,39 @@ certificate, and reviewed method-to-code judgement separate. None can substitute
    non-repeatability, replay conflict, capture failure, or undeclared workspace writes as historical
    drift.
 
+## Deliberate claim semantics adversarially
+
+Enter this branch only when the user explicitly asks for multi-agent claim extraction, semantic
+interpretation, formalization, or rule-validity review. Read
+`references/adversarial-deliberation.md` completely before acting.
+
+- Keep independent proposal contexts separate until every candidate is stored. Record truthful
+  actor, model/context provenance when known, and one honest `independence_group`; aliases or
+  repeated samples from the same shared context are not independent reviewers.
+- Anchor every proposal to exact UTF-8 source bytes and the current graph, semantic-policy, and
+  logic-asset snapshot. Never reconstruct an unavailable source span from memory.
+- Freeze the complete current candidate union before showing candidates to ballot reviewers.
+  Ballots must use an eligible phase role, cover every non-owned candidate, and preserve rejection,
+  abstention, blocking objections, ambiguity, and non-equivalence.
+- Treat `recommended_for_human_review` as a routing result, not consensus or truth. `contested`,
+  `insufficient_review`, and store or snapshot failures remain unresolved; never break ties by
+  content hash, majority rhetoric, or a preferred narrative. Never report a recommendation while
+  any other frozen candidate remains blocked, contested, or insufficiently reviewed.
+- Stop at the recommendation boundary. Do not submit `deliberate-decide` or claim to be the human
+  decision-maker. A separate person may append one immutable attributed phase decision, but its
+  actor string is self-asserted and `human_identity_authenticated: false`; ProvSleuth cannot prove
+  that the actor is human. An approved decision only unlocks the immediately following phase when
+  round, subject, and graph/policy/logic snapshot all remain exact. A rejection, missing decision,
+  changed snapshot, or unresolved panel blocks the chain and requires a new review or round.
+- Treat the v1 mandatory competency matrix, implemented through authored `competency_cases` and the
+  `legacy_relational_competency_matrix` check, as a legacy matrix of relational fixtures.
+  ProvSleuth replays the submitted cases and checks category presence; it does not generate a full
+  competency suite, search the input domain, or validate the scientific warrant exhaustively.
+- Never use a panel result to mutate the graph, accept an assessment or mapping, activate a semantic
+  release, edit an evidence plan, install a vocabulary/rule pack, or author a derivation. A human
+  must inspect the frozen candidates, dissent, anchors, and snapshots, then make any change through
+  the separate reviewable workflow.
+
 ## Author semantic policy
 
 Enter this branch only when the user explicitly asks to normalize terminology or author semantic
@@ -684,6 +717,11 @@ policy. Routine logging must not edit meaning-bearing policy. Read
   that proof into separate per-result `supports` edges. Missing premises produce `unknown`; explicit
   positive and negative conclusions produce `conflict` rather than arbitrary explosion. Treat
   cross-proof conflicts and drift-inactivated proofs as unresolved, visible states.
+- Treat adversarial deliberation as an advisory ledger only. Its actor and independence-group
+  strings are self-asserted correlation metadata, its ballots are not authenticated votes, and a
+  phase-decision actor is not authenticated as human. Even an approved phase decision is only an
+  immutable routing gate: it cannot activate meaning-bearing policy, mutate the project, or
+  establish scientific support.
 
 ## Sweep a session
 

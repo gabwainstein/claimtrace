@@ -9,6 +9,22 @@ import pytest
 import provsleuth.release as release
 from provsleuth import __version__
 from provsleuth.config import Config
+from provsleuth.deliberation import (
+    BALLOT_REQUEST_SCHEMA,
+    BALLOT_SCHEMA,
+    CANDIDATE_SET_REQUEST_SCHEMA,
+    CANDIDATE_SET_SCHEMA,
+    PHASE_DECISION_REQUEST_SCHEMA,
+    PHASE_DECISION_SCHEMA,
+    PROPOSAL_REQUEST_SCHEMA,
+    PROPOSAL_SCHEMA,
+    STATUS_SCHEMA,
+    append_record,
+    create_ballot,
+    create_phase_decision,
+    create_proposal,
+    freeze_candidate_set,
+)
 from provsleuth.events import CONTRACT_EVENT_SCHEMA, SUPPORTED_EVENT_SCHEMAS, run_command
 from provsleuth.engine import METHOD_REQUIREMENTS_SCHEMA
 from provsleuth.method_assessment import (
@@ -130,6 +146,129 @@ def _file(manifest, path):
     return next(item for item in manifest["files"] if item["path"] == path)
 
 
+def _resign(manifest):
+    core = {key: manifest[key] for key in manifest if key != "release_id"}
+    manifest["release_id"] = "release:sha256:" + release.canonical_sha256(core)
+    return manifest
+
+
+def _as_legacy_v1(manifest, *, schemas=None):
+    legacy = copy.deepcopy(manifest)
+    legacy["schema_version"] = release.LEGACY_MANIFEST_SCHEMA
+    legacy["schemas"] = copy.deepcopy(
+        release._FINAL_V1_SCHEMA_VERSIONS if schemas is None else schemas
+    )
+    legacy["scope"]["inclusions"] = list(release._V1_INCLUSIONS)
+    legacy["scope"]["exclusions"] = list(release._V1_EXCLUSIONS)
+    legacy["scope"]["limitations"] = list(release._V1_LIMITATIONS)
+    legacy["files"] = [
+        item for item in legacy["files"]
+        if "deliberation_record" not in item["roles"]
+    ]
+    inventory = legacy["scope"]["inventory"]
+    inventory["stores"] = [
+        item for item in inventory["stores"]
+        if item["role"] != "deliberation_record"
+    ]
+    inventory["role_counts"] = [
+        {
+            "role": role,
+            "file_count": sum(role in item["roles"] for item in legacy["files"]),
+        }
+        for role in sorted({
+            role for item in legacy["files"] for role in item["roles"]
+        })
+    ]
+    return _resign(legacy)
+
+
+def _append_deliberation_proposal(cfg, *, actor="agent:test", second=0):
+    source = cfg.resolve("data.csv").read_bytes()
+    proposal = create_proposal(
+        cfg,
+        {
+            "schema_version": PROPOSAL_REQUEST_SCHEMA,
+            "round_id": "round:release-test",
+            "phase": "claim_extraction",
+            "subject_key": "claim:data-header",
+            "source_anchor": {
+                "node_id": "data:raw",
+                "start_byte": 0,
+                "end_byte": len(source),
+                "span_sha256": hashlib.sha256(source).hexdigest(),
+            },
+            "payload": {
+                "claim_text": "x",
+                "claim_kind": "descriptive",
+                "speech_act": "assertion",
+                "polarity": "positive",
+                "qualifiers": [],
+            },
+            "rationale": "Exact source substring used by the release test.",
+        },
+        actor=actor,
+        independence_group=f"group:{actor}",
+        recorded_at=f"2026-07-18T00:00:{second:02d}Z",
+    )
+    path = append_record(cfg, proposal)
+    return proposal, path
+
+
+def _append_phase_decision(cfg):
+    proposal, _proposal_path = _append_deliberation_proposal(
+        cfg, actor="agent:phase-proposer", second=0,
+    )
+    candidate_set = freeze_candidate_set(
+        cfg,
+        {
+            "schema_version": CANDIDATE_SET_REQUEST_SCHEMA,
+            "round_id": "round:release-test",
+            "phase": "claim_extraction",
+            "subject_key": "claim:data-header",
+        },
+        actor="human:coordinator",
+        recorded_at="2026-07-18T00:00:10Z",
+    )
+    append_record(cfg, candidate_set)
+    ballots = []
+    for index, role in enumerate((
+            "source_verifier", "coverage_reviewer", "adversarial_falsifier")):
+        ballot = create_ballot(
+            cfg,
+            {
+                "schema_version": BALLOT_REQUEST_SCHEMA,
+                "candidate_set_id": candidate_set["candidate_set_id"],
+                "role": role,
+                "evaluations": [{
+                    "candidate_id": proposal["candidate_id"],
+                    "decision": "endorse",
+                    "reason_codes": [],
+                    "blocking": False,
+                    "rationale": "Role-bound review for routing only.",
+                }],
+            },
+            actor=f"reviewer:{role}",
+            independence_group=f"review-group:{role}",
+            recorded_at=f"2026-07-18T00:00:{20 + index:02d}Z",
+        )
+        append_record(cfg, ballot)
+        ballots.append(ballot)
+    decision = create_phase_decision(
+        cfg,
+        {
+            "schema_version": PHASE_DECISION_REQUEST_SCHEMA,
+            "candidate_set_id": candidate_set["candidate_set_id"],
+            "candidate_id": proposal["candidate_id"],
+            "decision": "approved",
+            "rationale": "Route this exact candidate to the next review phase.",
+        },
+        actor="human:phase-reviewer",
+        recorded_at="2026-07-18T00:00:30Z",
+    )
+    path = append_record(cfg, decision)
+    return proposal, candidate_set, ballots, decision, path
+
+
 def test_release_manifest_is_deterministic_and_covers_exact_project_bytes(tmp_path):
     cfg = _project(tmp_path, with_assets=True)
 
@@ -138,7 +277,7 @@ def test_release_manifest_is_deterministic_and_covers_exact_project_bytes(tmp_pa
 
     assert first == second
     release.validate_release_manifest(first)
-    assert first["schema_version"] == "claimtrace.project-release/1"
+    assert first["schema_version"] == "claimtrace.project-release/2"
     assert first["tool"] == {"name": "provsleuth", "version": __version__}
     assert first["release_id"].startswith("release:sha256:")
     assert _file(first, "provsleuth.config.json")["sha256"] == hashlib.sha256(
@@ -157,6 +296,10 @@ def test_release_manifest_is_deterministic_and_covers_exact_project_bytes(tmp_pa
         "study:rules"
     ]
     assert any("cannot prove" in item for item in first["scope"]["limitations"])
+    assert any(
+        "self-asserted review records" in item
+        for item in first["scope"]["limitations"]
+    )
 
 
 def test_legacy_claimtrace_release_tool_declaration_remains_valid(tmp_path):
@@ -196,6 +339,68 @@ def test_release_manifest_includes_content_addressed_event_files_and_ids(tmp_pat
         if item["role"] == "event"
     )
     assert event_store["record_count"] == 2
+
+
+def test_release_inventories_every_deliberation_record_and_exact_hash(tmp_path):
+    cfg = _project(tmp_path)
+    first, first_path = _append_deliberation_proposal(
+        cfg, actor="agent:one", second=0,
+    )
+    second, second_path = _append_deliberation_proposal(
+        cfg, actor="agent:two", second=1,
+    )
+
+    manifest = release.create_release_manifest(cfg)
+    release.validate_release_manifest(manifest)
+
+    expected = {
+        first_path.relative_to(cfg.root).as_posix(): first["proposal_id"],
+        second_path.relative_to(cfg.root).as_posix(): second["proposal_id"],
+    }
+    included = {
+        item["path"]: item
+        for item in manifest["files"]
+        if "deliberation_record" in item["roles"]
+    }
+    assert set(included) == set(expected)
+    for path, logical_id in expected.items():
+        item = included[path]
+        assert item["roles"] == ["deliberation_record"]
+        assert item["logical_ids"] == [logical_id]
+        assert item["sha256"] == hashlib.sha256(
+            (cfg.root / path).read_bytes()
+        ).hexdigest()
+    store = next(
+        item for item in manifest["scope"]["inventory"]["stores"]
+        if item["role"] == "deliberation_record"
+    )
+    assert store["record_count"] == 2
+
+
+def test_release_inventories_phase_decision_schema_id_and_exact_hash(tmp_path):
+    cfg = _project(tmp_path)
+    _proposal, _candidate_set, ballots, decision, path = _append_phase_decision(cfg)
+
+    manifest = release.create_release_manifest(cfg)
+    release.validate_release_manifest(manifest)
+
+    relative_path = path.relative_to(cfg.root).as_posix()
+    item = _file(manifest, relative_path)
+    assert item["roles"] == ["deliberation_record"]
+    assert item["logical_ids"] == [decision["decision_id"]]
+    assert item["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert manifest["schemas"]["deliberation_phase_decision"] == (
+        PHASE_DECISION_SCHEMA
+    )
+    store = next(
+        item for item in manifest["scope"]["inventory"]["stores"]
+        if item["role"] == "deliberation_record"
+    )
+    assert store["record_count"] == 3 + len(ballots)
+    assert any(
+        "phase-routing decisions are self-asserted review records" in limitation
+        for limitation in manifest["scope"]["limitations"]
+    )
 
 
 def test_release_includes_current_pipeline_source_from_events_without_method_review(
@@ -341,6 +546,11 @@ def test_release_includes_validated_execution_provenance_and_schema_inventory(tm
     )
     assert manifest["schemas"]["method_assessment"] == METHOD_ASSESSMENT_SCHEMA
     assert manifest["schemas"]["method_requirements"] == METHOD_REQUIREMENTS_SCHEMA
+    assert manifest["schemas"]["deliberation_proposal"] == PROPOSAL_SCHEMA
+    assert manifest["schemas"]["deliberation_candidate_set"] == CANDIDATE_SET_SCHEMA
+    assert manifest["schemas"]["deliberation_ballot"] == BALLOT_SCHEMA
+    assert manifest["schemas"]["deliberation_phase_decision"] == PHASE_DECISION_SCHEMA
+    assert manifest["schemas"]["deliberation_status"] == STATUS_SCHEMA
     assert manifest["schemas"]["stage_checkpoint_record"] == STAGE_CHECKPOINT_SCHEMA
     assert manifest["schemas"]["stage_trace_plan"] == STAGE_TRACE_PLAN_SCHEMA
     assert manifest["schemas"]["stage_trace"] == STAGE_TRACE_SCHEMA
@@ -356,6 +566,10 @@ def test_release_includes_validated_execution_provenance_and_schema_inventory(tm
         (
             "method-assessments", "not-an-assessment.json",
             "method-assessment-store integrity failed",
+        ),
+        (
+            "deliberations", "not-a-record.json",
+            "deliberation-store integrity failed",
         ),
     ],
 )
@@ -382,12 +596,10 @@ def test_release_validation_rejects_forged_schema_inventory(tmp_path):
 
 def test_pre_checkpoint_schema_inventory_remains_valid_across_tool_upgrade(tmp_path):
     cfg = _project(tmp_path)
-    manifest = release.create_release_manifest(cfg)
-    manifest["schemas"] = copy.deepcopy(
-        release._PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS
+    manifest = _as_legacy_v1(
+        release.create_release_manifest(cfg),
+        schemas=release._PRE_STAGE_CHECKPOINT_SCHEMA_VERSIONS,
     )
-    core = {key: manifest[key] for key in manifest if key != "release_id"}
-    manifest["release_id"] = "release:sha256:" + release.canonical_sha256(core)
 
     release.validate_release_manifest(manifest)
     verification = release.verify_release_manifest(cfg, manifest)
@@ -396,20 +608,50 @@ def test_pre_checkpoint_schema_inventory_remains_valid_across_tool_upgrade(tmp_p
     assert verification["diff"]["changed_metadata_fields"] == ["schemas"]
 
 
-def test_v2_stage_schema_inventory_remains_valid_across_tool_upgrade(tmp_path):
+def test_pre_portable_schema_inventory_remains_valid_across_tool_upgrade(tmp_path):
     cfg = _project(tmp_path)
-    manifest = release.create_release_manifest(cfg)
-    manifest["schemas"] = copy.deepcopy(
-        release._PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS
+    manifest = _as_legacy_v1(
+        release.create_release_manifest(cfg),
+        schemas=release._PRE_PORTABLE_PIPELINE_SNAPSHOT_SCHEMA_VERSIONS,
     )
-    core = {key: manifest[key] for key in manifest if key != "release_id"}
-    manifest["release_id"] = "release:sha256:" + release.canonical_sha256(core)
 
     release.validate_release_manifest(manifest)
     verification = release.verify_release_manifest(cfg, manifest)
 
     assert verification["valid"] is True
     assert verification["diff"]["changed_metadata_fields"] == ["schemas"]
+
+
+def test_final_v1_manifest_remains_verifiable_but_rejects_v2_extensions(tmp_path):
+    cfg = _project(tmp_path)
+    proposal, _path = _append_deliberation_proposal(cfg)
+    current = release.create_release_manifest(cfg)
+    legacy = _as_legacy_v1(current)
+
+    release.validate_release_manifest(legacy)
+    verification = release.verify_release_manifest(cfg, legacy)
+    assert verification["valid"] is True
+    assert verification["diff"]["equal"] is True
+
+    forged_schemas = copy.deepcopy(legacy)
+    forged_schemas["schemas"] = release._schema_versions()
+    _resign(forged_schemas)
+    with pytest.raises(release.ReleaseError, match="canonical for schema v1"):
+        release.validate_release_manifest(forged_schemas)
+
+    forged_scope = copy.deepcopy(current)
+    forged_scope["schema_version"] = release.LEGACY_MANIFEST_SCHEMA
+    forged_scope["schemas"] = copy.deepcopy(release._FINAL_V1_SCHEMA_VERSIONS)
+    forged_scope["scope"]["inclusions"] = list(release._V1_INCLUSIONS)
+    forged_scope["scope"]["exclusions"] = list(release._V1_EXCLUSIONS)
+    forged_scope["scope"]["limitations"] = list(release._V1_LIMITATIONS)
+    _resign(forged_scope)
+    assert any(
+        proposal["proposal_id"] in item["logical_ids"]
+        for item in forged_scope["files"]
+    )
+    with pytest.raises(release.ReleaseError, match="unknown role"):
+        release.validate_release_manifest(forged_scope)
 
 
 def test_release_creation_fails_when_project_changes_between_collection_passes(

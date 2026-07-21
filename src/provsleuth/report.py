@@ -14,6 +14,12 @@ from datetime import datetime
 from pathlib import Path
 
 from . import __version__
+from .deliberation import (BALLOT_SCHEMA as DELIBERATION_BALLOT_SCHEMA,
+                           CANDIDATE_SET_SCHEMA as DELIBERATION_SET_SCHEMA,
+                           PHASE_DECISION_SCHEMA as DELIBERATION_DECISION_SCHEMA,
+                           PROPOSAL_SCHEMA as DELIBERATION_PROPOSAL_SCHEMA,
+                           STATUS_SCHEMA as DELIBERATION_STATUS_SCHEMA,
+                           deliberation_status)
 from .assessment import (SCHEMA_VERSION as ASSESSMENT_SCHEMA_VERSION,
                          SUPPORTED_SCHEMA_VERSIONS as SUPPORTED_ASSESSMENT_SCHEMA_VERSIONS,
                          CLAIM_TYPES as ASSESSMENT_CLAIM_TYPES,
@@ -44,7 +50,7 @@ from .pipeline import (LEGACY_SNAPSHOT_SCHEMA, PipelineError,
 from .replay import (REPLAY_SCHEMA, STAGE_REPLAY_SCHEMA, SUPPORTED_REPLAY_SCHEMAS,
                      evaluate_replay_certificate, load_replay_certificates)
 
-REPORT_SCHEMA_VERSION = "1.7"
+REPORT_SCHEMA_VERSION = "1.8"
 _SEVERITY_RANK = {"error": 0, "warning": 1, "pending": 2, "info": 3}
 
 
@@ -81,6 +87,10 @@ def _base_report(strict):
             ),
             "method_conformance": (
                 "external_agent_judgement_distinct_review_exact_code_and_method_bytes"
+            ),
+            "multi_agent_deliberation": (
+                "attributed_anchored_proposals_self_asserted_correlation_groups_"
+                "procedural_recommendation_only_no_authenticated_identity_or_activation"
             ),
         },
         "policy": {"strict": bool(strict), "blocking_severities": blocking},
@@ -168,6 +178,67 @@ def _graph_projection(raw):
         "trajectory_order": trajectory_order,
         "metadata": metadata,
     }
+
+
+def _deliberation_projection(cfg):
+    """Project the complete advisory ledger without activating any candidate."""
+    status = deliberation_status(cfg)
+    findings = []
+    for item in status["integrity_issues"]:
+        findings.append({
+            "severity": "error",
+            "code": "DELIBERATION_STORE_INTEGRITY",
+            "node_id": None,
+            "detail": f"{item['code']} at {item['path']}: {item['detail']}",
+            "source": "deliberation",
+        })
+    for panel in status["panels"]:
+        if panel["status"] in {"blocked", "contested", "insufficient_review"}:
+            findings.append({
+                "severity": "info",
+                "code": (
+                    "DELIBERATION_PANEL_BLOCKED"
+                    if panel["status"] == "blocked"
+                    else "DELIBERATION_PANEL_CONTESTED"
+                    if panel["status"] == "contested"
+                    else "DELIBERATION_PANEL_INSUFFICIENT_REVIEW"
+                ),
+                "node_id": None,
+                "detail": (
+                    f"{panel['candidate_set_id']} ({panel['phase']}) is "
+                    f"{panel['status']}; no candidate is activated"
+                ),
+                "source": "deliberation",
+            })
+    for group in status["open_groups"]:
+        findings.append({
+            "severity": "info",
+            "code": "DELIBERATION_OPEN_PROPOSAL_GROUP",
+            "node_id": None,
+            "detail": (
+                f"{group['round_id']} / {group['phase']} / {group['subject_key']} "
+                f"has {len(group['proposal_ids'])} proposal(s) and is not frozen"
+            ),
+            "source": "deliberation",
+        })
+    projection = {
+        "schema_version": DELIBERATION_STATUS_SCHEMA,
+        "record_schemas": {
+            "proposal": DELIBERATION_PROPOSAL_SCHEMA,
+            "candidate_set": DELIBERATION_SET_SCHEMA,
+            "ballot": DELIBERATION_BALLOT_SCHEMA,
+            "phase_decision": DELIBERATION_DECISION_SCHEMA,
+        },
+        "integrity": status["integrity"],
+        "integrity_issues": status["integrity_issues"],
+        "records": status["records"],
+        "panels": status["panels"],
+        "open_groups": status["open_groups"],
+        "human_activation_required": True,
+        "automatic_activation": False,
+        "scientific_truth_established": False,
+    }
+    return projection, findings
 
 
 def _path_identity(cfg, value):
@@ -2471,6 +2542,7 @@ def build_report(cfg, *, strict=False, raw=None):
     )
     semantics, semantic_findings = _semantic_projection(cfg)
     derivations, derivation_findings = _derivation_projection(cfg, graph)
+    deliberations, deliberation_findings = _deliberation_projection(cfg)
     symbolic_basis_findings = _annotate_derivation_execution_basis(
         derivations, claim_basis,
         require_complete_execution_basis=(
@@ -2483,7 +2555,7 @@ def build_report(cfg, *, strict=False, raw=None):
         problems, warnings, pending, bool(strict),
         [*receipt_findings, *assessment_findings, *method_findings,
          *claim_basis_findings, *semantic_findings, *derivation_findings,
-         *symbolic_basis_findings],
+         *symbolic_basis_findings, *deliberation_findings],
     )
     counts = Counter(item["severity"] for item in findings)
     blocking = sum(1 for item in findings if item["blocking"])
@@ -2509,6 +2581,7 @@ def build_report(cfg, *, strict=False, raw=None):
         "claim_basis": claim_basis,
         "semantics": semantics,
         "derivations": derivations,
+        "deliberations": deliberations,
         "findings": findings,
         "fatal": None,
     })
@@ -2529,6 +2602,7 @@ def build_fatal_report(detail, *, strict=False, code="GRAPH_ERROR"):
         "claim_basis": None,
         "semantics": None,
         "derivations": None,
+        "deliberations": None,
         "findings": [],
         "fatal": {"code": str(code), "detail": str(detail)},
     })

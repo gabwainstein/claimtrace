@@ -65,6 +65,93 @@ def _payload(html):
     return json.loads(match.group(1))
 
 
+def _javascript_function(html, signature):
+    """Return one named JS function without truncating at nested callbacks."""
+    start = html.index("function " + signature)
+    opening = html.index("{", start)
+    depth = 0
+    quote = None
+    escaped = False
+    for index in range(opening, len(html)):
+        character = html[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in {'"', "'", "`"}:
+            quote = character
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return html[start:index + 1]
+    raise AssertionError(f"unterminated JavaScript function: {signature}")
+
+
+def _large_report(*, layer_count=8, rows_per_layer=32):
+    """Deterministic graph large enough to require a bounded browser projection."""
+    nodes = []
+    trajectory_order = []
+    node_ids = {}
+    for layer in range(layer_count):
+        if layer == 0:
+            node_type = "data"
+        elif layer == layer_count - 1:
+            node_type = "claim"
+        else:
+            node_type = "artifact"
+        for row in range(rows_per_layer):
+            node_id = f"{node_type}:large-l{layer:02d}-r{row:03d}"
+            node_ids[layer, row] = node_id
+            trajectory_order.append(node_id)
+            nodes.append({
+                "id": node_id,
+                "type": node_type,
+                "status": "confirmed" if node_type == "claim" else "current",
+                "value": f"large fixture layer {layer} row {row}",
+            })
+
+    edges = []
+    for layer in range(layer_count - 1):
+        for row in range(rows_per_layer):
+            for target_row in (row, (row + 1) % rows_per_layer):
+                edges.append({
+                    "from": node_ids[layer, row],
+                    "to": node_ids[layer + 1, target_row],
+                    "rel": "produces",
+                })
+    # This visible annotation must remain in the payload but must not become
+    # dependency ancestry during one-hop expansion.
+    edges.append({
+        "from": node_ids[0, 0],
+        "to": node_ids[layer_count - 1, 0],
+        "rel": "tried_before",
+    })
+    return {
+        "graph": {
+            "schema_version": "1.0",
+            "concepts": {},
+            "trajectory_order": trajectory_order,
+            "nodes": nodes,
+            "edges": edges,
+        },
+        "scope": {},
+        "summary": {},
+        "findings": [],
+        "receipts": {"runs": []},
+        "claim_basis": {"items": []},
+        "method_assessments": {"items": []},
+        "assessments": {"integrity": "ok", "items": []},
+        "derivations": {"integrity": "ok", "items": []},
+        "semantics": {},
+    }
+
+
 def _record_run(cfg):
     command = [
         sys.executable,
@@ -332,6 +419,195 @@ def test_render_view_is_standalone_atomic_and_deterministic(tmp_path):
         "active_mapping_ids": [],
     }
     assert payload["summary"]["semantic_mappings"] == 0
+
+
+def test_large_graph_payload_remains_complete_and_deterministic(tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    report = _large_report()
+    monkeypatch.setattr(view_module, "build_report", lambda *_args, **_kwargs: report)
+    output = tmp_path / "large-trajectory.html"
+
+    first = render_view(cfg, output)
+    first_bytes = output.read_bytes()
+    second = render_view(cfg, output)
+    payload = _payload(output.read_text(encoding="utf-8"))
+    expected_node_ids = {item["id"] for item in report["graph"]["nodes"]}
+
+    assert output.read_bytes() == first_bytes
+    assert first == second
+    assert first["nodes"] == len(report["graph"]["nodes"]) == 256
+    assert first["edges"] == len(report["graph"]["edges"]) == 449
+    assert payload["summary"]["semantic_nodes"] == 256
+    assert payload["summary"]["semantic_edges"] == 449
+    assert {item["node_id"] for item in payload["nodes"]} == expected_node_ids
+    assert len({item["key"] for item in payload["nodes"]}) == 256
+    assert len(payload["edges"]) == len({item["key"] for item in payload["edges"]}) == 449
+    annotation = next(item for item in payload["edges"] if item["relation"] == "tried_before")
+    assert annotation["kind"] == "annotation"
+    assert annotation["traversable"] is False
+
+
+def test_large_graph_exposes_bounded_projection_controls_and_status(tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    monkeypatch.setattr(
+        view_module, "build_report", lambda *_args, **_kwargs: _large_report(),
+    )
+    output = tmp_path / "large-trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+
+    assert 'id="projection-overview"' in html
+    assert 'id="projection-full"' in html
+    assert 'id="expand-upstream"' in html
+    assert 'id="expand-downstream"' in html
+    assert 'id="projection-status"' in html
+    assert 'role="status"' in html and 'aria-live="polite"' in html
+    assert 'id="node-type-filters"' in html
+    assert 'id="node-status-filters"' in html
+    assert 'id="layer-filters"' in html
+    assert 'id="edge-kind-filters"' in html
+    assert 'role="group" aria-label="Visible graph controls"' in html
+    assert 'aria-describedby="layout-status projection-status projection-boundary"' in html
+    assert "Add one upstream hop" in html
+    assert "Add one downstream hop" in html
+    assert (
+        "Filters and projection change only this view; the graph and provenance are unchanged."
+        in html
+    )
+    assert "const visibleNodeKeys = new Set" in html
+    assert "const visibleEdgeKeys = new Set" in html
+    assert "function setProjectionMode(mode)" in html
+    assert "function resetProjectionFilters()" in html
+    assert 'projectionFull.addEventListener("click", function () {' in html
+    assert "resetProjectionFilters();" in html
+    assert "const fullLayoutPositions = new Map" in html
+    status_body = _javascript_function(html, "updateProjectionStatus()")
+    assert "visibleNodeKeys.size" in status_body
+    assert "data.nodes.length" in status_body
+    assert "visibleEdgeKeys.size" in status_body
+    assert "data.edges.length" in status_body
+    assert "applyVisibility(false)" in _javascript_function(
+        html, "selectNode(key, shouldCenter)",
+    )
+    assert "applyVisibility(false)" in _javascript_function(html, "selectEdge(key)")
+
+
+def test_auto_arrange_uses_active_filters_without_overwriting_full_layout(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    monkeypatch.setattr(
+        view_module, "build_report", lambda *_args, **_kwargs: _large_report(),
+    )
+    output = tmp_path / "large-trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+
+    filter_body = _javascript_function(html, "refreshAfterFilterChange()")
+    assert "usesPersistentFullLayout()" in filter_body
+    assert "restoreFullLayoutPositions()" in filter_body
+    assert "applyVisibility(false)" in filter_body
+    assert "applyVisibility(true)" in filter_body
+    assert filter_body.count("fitViewport()") == 2
+    assert "temporary filtered layout does not overwrite the saved full layout" in filter_body
+
+    persistence_body = _javascript_function(html, "usesPersistentFullLayout()")
+    assert 'projectionMode === "full"' in persistence_body
+    assert "filtersAreDefault()" in persistence_body
+
+    reset_body = _javascript_function(html, "resetLayout()")
+    filtered_branch = reset_body[:reset_body.index("nodes.forEach")]
+    assert "if (!usesPersistentFullLayout())" in filtered_branch
+    assert "applyVisibility(true)" in filtered_branch
+    assert "fitViewport()" in filtered_branch
+    assert "fullLayoutPositions" not in filtered_branch
+    assert "localStorage" not in filtered_branch
+    assert "saved full layout" in filtered_branch
+    assert "fullLayoutPositions.set" in reset_body
+    assert "window.localStorage.removeItem(layoutStorageKey)" in reset_body
+
+    finish_drag = _javascript_function(html, "finishDrag(event)")
+    nudge = _javascript_function(html, "nudgeSelected(deltaX, deltaY, direction)")
+    assert "if (usesPersistentFullLayout())" in finish_drag
+    assert "if (usesPersistentFullLayout())" in nudge
+
+    visibility_body = _javascript_function(html, "applyVisibility(shouldArrange)")
+    assert "projectionFull.disabled = usesPersistentFullLayout()" in visibility_body
+    assert "visibleNodeKeys.size === data.nodes.length" not in visibility_body
+
+    canvas_body = _javascript_function(html, "updateCanvasSize()")
+    assert "if (!visibleNodeKeys.has(key)) return" in canvas_body
+    assert "visibleNodeKeys.size &&" not in canvas_body
+
+
+def test_projection_expansion_is_one_hop_and_uses_dependency_adjacency(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    monkeypatch.setattr(
+        view_module, "build_report", lambda *_args, **_kwargs: _large_report(),
+    )
+    output = tmp_path / "large-trajectory.html"
+    render_view(cfg, output)
+    html = output.read_text(encoding="utf-8")
+
+    one_hop_body = _javascript_function(html, "projectionOneHop(start, adjacency)")
+    assert "adjacency.get(start)" in one_hop_body
+    assert "while (" not in one_hop_body
+    assert "closure(" not in one_hop_body
+    assert "projectionOneHop(" not in one_hop_body[len(
+        "function projectionOneHop(start, adjacency)"
+    ):]
+
+    expand_body = _javascript_function(html, "expandSelectedOneHop(adjacency)")
+    assert "projectionOneHop(selected, adjacency)" in expand_body
+    assert "visibleNodeKeys.add" in expand_body
+    assert "setProjectionMode" not in expand_body
+    assert 'expandUpstream.addEventListener("click"' in html
+    assert "expandSelectedOneHop(incoming)" in html
+    assert 'expandDownstream.addEventListener("click"' in html
+    assert "expandSelectedOneHop(outgoing)" in html
+    assert "if (edge.traversable)" in html
+
+
+def test_projection_threshold_preserves_small_full_view_and_bounds_large_routing(
+        tmp_path, monkeypatch):
+    cfg = _project(tmp_path)
+    small_output = tmp_path / "small-trajectory.html"
+    render_view(cfg, small_output)
+    small_html = small_output.read_text(encoding="utf-8")
+    small_payload = _payload(small_html)
+
+    large_report = _large_report()
+    monkeypatch.setattr(
+        view_module, "build_report", lambda *_args, **_kwargs: large_report,
+    )
+    large_output = tmp_path / "large-trajectory.html"
+    render_view(cfg, large_output)
+    large_html = large_output.read_text(encoding="utf-8")
+    large_payload = _payload(large_html)
+
+    large_threshold_match = re.search(r"const largeGraphThreshold = (\d+);", large_html)
+    fast_threshold_match = re.search(
+        r"const fullViewFastRoutingThreshold = (\d+);", large_html,
+    )
+    assert large_threshold_match is not None
+    assert fast_threshold_match is not None
+    large_threshold = int(large_threshold_match.group(1))
+    fast_threshold = int(fast_threshold_match.group(1))
+    assert len(small_payload["nodes"]) <= large_threshold < len(large_payload["nodes"])
+    assert 0 < fast_threshold < len(large_payload["edges"])
+    assert 'const initialProjectionMode = largeGraph ? "overview" : "full";' in large_html
+    assert "data.edges.length > largeGraphEdgeThreshold" in large_html
+    assert "setProjectionMode(initialProjectionMode);" in large_html
+
+    route_body = _javascript_function(large_html, "positionAllEdges()")
+    assert "visibleEdgeKeys" in route_body
+    assert "fullViewFastRoutingThreshold" in route_body
+    assert "estimateDetailedRoutingWork" in route_body
+    assert "routingEstimate.safe" in route_body
+    assert "maximumDetailedGridPoints" in large_html
+    assert "maximumDetailedRouteWork" in large_html
+    assert "fastRouteForEdge" in route_body
+    assert "function fastRouteForEdge(edge)" in large_html
 
 
 def test_view_preserves_invalid_configured_policy_and_mapping_decision_context(
@@ -941,7 +1217,7 @@ def test_accepted_assessment_is_a_derived_node_between_result_and_claim(tmp_path
     payload = _payload(html)
     nodes = {node["key"]: node for node in payload["nodes"]}
 
-    assert payload["schema"] == "claimtrace.view/5"
+    assert payload["schema"] == "claimtrace.view/6"
     rendered_review = next(
         item for item in payload["assessments"] if item["id"] == accepted["id"]
     )
@@ -1004,7 +1280,7 @@ def test_symbolic_derivation_is_one_nontraversable_composite_proof_node(tmp_path
     payload = _payload(html)
     nodes = {node["key"]: node for node in payload["nodes"]}
 
-    assert payload["schema"] == "claimtrace.view/5"
+    assert payload["schema"] == "claimtrace.view/6"
     assert payload["derivation_integrity"] == "ok"
     proof = nodes["proof:" + document["id"]]
     assert proof["kind"] == "proof"
@@ -1277,6 +1553,91 @@ def test_assessment_text_is_script_safe_and_preserved(tmp_path):
     assert record["limitations"] == [malicious]
 
 
+def test_deliberation_is_a_separate_advisory_audit_panel_not_graph_ancestry():
+    report = _large_report(layer_count=2, rows_per_layer=1)
+    candidate_id = "deliberation-candidate:sha256:" + "1" * 64
+    proposal_id = "deliberation-proposal:sha256:" + "2" * 64
+    candidate_set_id = "deliberation-set:sha256:" + "3" * 64
+    ballot_id = "deliberation-ballot:sha256:" + "4" * 64
+    decision_id = "deliberation-decision:sha256:" + "5" * 64
+    proposal = {
+        "record_type": "proposal", "proposal_id": proposal_id,
+        "candidate_id": candidate_id, "phase": "claim_extraction",
+        "subject_key": "claim:reviewed", "payload": {
+            "claim_text": "The measured value increased in the sampled population."
+        },
+    }
+    candidate_set = {
+        "record_type": "candidate_set", "candidate_set_id": candidate_set_id,
+        "phase": "claim_extraction", "subject_key": "claim:reviewed",
+        "candidate_ids": [candidate_id], "proposal_ids": [proposal_id],
+    }
+    ballot = {
+        "record_type": "ballot", "ballot_id": ballot_id,
+        "candidate_set_id": candidate_set_id, "role": "source_verifier",
+        "actor": {"id": "agent:reviewer", "independence_group": "model:a"},
+        "evaluations": [{"candidate_id": candidate_id, "decision": "endorse"}],
+    }
+    phase_decision = {
+        "record_type": "phase_decision", "decision_id": decision_id,
+        "candidate_set_id": candidate_set_id, "candidate_id": candidate_id,
+        "ballot_ids": [ballot_id], "decision": "approved",
+        "actor": "human:reviewer",
+        "rationale": "Route the candidate to the next review phase only.",
+        "human_identity_authenticated": False,
+        "automatic_activation": False,
+    }
+    report["deliberations"] = {
+        "schema_version": "claimtrace.deliberation-status/1",
+        "integrity": "ok", "integrity_issues": [],
+        "records": [phase_decision, ballot, candidate_set, proposal],
+        "panels": [{
+            "candidate_set_id": candidate_set_id,
+            "phase": "claim_extraction", "subject_key": "claim:reviewed",
+            "status": "recommended_for_human_review",
+            "recommended_candidate_id": candidate_id,
+            "human_activation_required": True, "automatic_activation": False,
+        }],
+        "open_groups": [],
+        # The view must not trust upstream flags to relax this boundary.
+        "human_activation_required": False,
+        "automatic_activation": True,
+        "scientific_truth_established": True,
+    }
+
+    payload = view_module._build_payload(report, "layout:test")
+
+    assert payload["schema"] == "claimtrace.view/6"
+    assert payload["deliberations"]["proposals"] == [proposal]
+    assert payload["deliberations"]["candidate_sets"] == [candidate_set]
+    assert payload["deliberations"]["ballots"] == [ballot]
+    assert payload["deliberations"]["phase_decisions"] == [phase_decision]
+    assert payload["deliberations"]["panels"][0]["status"] == (
+        "recommended_for_human_review"
+    )
+    assert payload["deliberations"]["advisory_only"] is True
+    assert payload["deliberations"]["human_activation_required"] is True
+    assert payload["deliberations"]["automatic_activation"] is False
+    assert payload["deliberations"]["scientific_truth_established"] is False
+    assert payload["summary"]["deliberation_proposals"] == 1
+    assert payload["summary"]["deliberation_candidate_sets"] == 1
+    assert payload["summary"]["deliberation_ballots"] == 1
+    assert payload["summary"]["deliberation_phase_decisions"] == 1
+    assert payload["summary"]["deliberation_approved_phase_decisions"] == 1
+    assert payload["summary"]["deliberation_rejected_phase_decisions"] == 0
+    assert payload["summary"]["deliberation_recommended"] == 1
+    assert not any(node.get("kind") == "deliberation" for node in payload["nodes"])
+    assert not any(edge.get("kind") == "deliberation" for edge in payload["edges"])
+    assert "never create dependency or support edges" in payload["coverage_notice"]
+
+    html = view_module._render_html(payload)
+    assert 'id="deliberation-details"' in html
+    assert "Advisory audit layer only" in html
+    assert "appendDeliberationSection(\"Ballots\"" in html
+    assert '"Phase decisions", deliberation.phase_decisions' in html
+    assert "not authenticated identity or independence" in html
+
+
 def test_view_cli_requires_explicit_output_and_reports_summary(tmp_path, capsys):
     cfg = _project(tmp_path)
     output = tmp_path / "map.html"
@@ -1292,7 +1653,8 @@ def test_view_cli_requires_explicit_output_and_reports_summary(tmp_path, capsys)
 
 @pytest.mark.parametrize("target", [
     "provsleuth/graph.json", "data.txt", "provsleuth/events/view.html",
-    "provsleuth/assessments/view.html", "provsleuth/derivations/view.html",
+    "provsleuth/assessments/view.html", "provsleuth/deliberations/view.html",
+    "provsleuth/derivations/view.html",
     "provsleuth/semantics/mappings/view.html", "provsleuth/semantics/policies/view.html",
     "out.txt.manifest.json",
 ])

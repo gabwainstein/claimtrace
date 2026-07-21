@@ -273,6 +273,58 @@ def _derivation_view_record(item, raw_nodes, *, allow_active_proofs=True):
 
 def _build_payload(report, layout_id):
     graph = report.get("graph") or {}
+    deliberation_projection = report.get("deliberations") or {}
+    deliberation_records = sorted(
+        (copy.deepcopy(item) for item in deliberation_projection.get("records") or []),
+        key=lambda item: (
+            str(item.get("record_type")),
+            str(item.get("proposal_id") or item.get("candidate_set_id")
+                or item.get("ballot_id") or item.get("decision_id")),
+        ),
+    )
+    deliberations = {
+        "schema_version": deliberation_projection.get("schema_version"),
+        "integrity": deliberation_projection.get("integrity", "unknown"),
+        "integrity_issues": sorted(
+            (copy.deepcopy(item)
+             for item in deliberation_projection.get("integrity_issues") or []),
+            key=lambda item: (
+                str(item.get("code")), str(item.get("path")),
+                str(item.get("detail")),
+            ),
+        ),
+        "proposals": [
+            item for item in deliberation_records if item.get("record_type") == "proposal"
+        ],
+        "candidate_sets": [
+            item for item in deliberation_records
+            if item.get("record_type") == "candidate_set"
+        ],
+        "ballots": [
+            item for item in deliberation_records if item.get("record_type") == "ballot"
+        ],
+        "phase_decisions": [
+            item for item in deliberation_records
+            if item.get("record_type") == "phase_decision"
+        ],
+        "panels": sorted(
+            (copy.deepcopy(item) for item in deliberation_projection.get("panels") or []),
+            key=lambda item: str(item.get("candidate_set_id")),
+        ),
+        "open_groups": sorted(
+            (copy.deepcopy(item)
+             for item in deliberation_projection.get("open_groups") or []),
+            key=lambda item: (
+                str(item.get("round_id")), str(item.get("phase")),
+                str(item.get("subject_key")),
+            ),
+        ),
+        # These are view-owned safety labels, not projections that callers may override.
+        "advisory_only": True,
+        "human_activation_required": True,
+        "automatic_activation": False,
+        "scientific_truth_established": False,
+    }
     raw_nodes = {item["id"]: item for item in graph.get("nodes", [])}
     order = _semantic_order(graph)
     # Reserve an integer slot between ordinary dependency layers for review nodes.
@@ -1080,7 +1132,7 @@ def _build_payload(report, layout_id):
     height = MARGIN_TOP + max_rows * (NODE_HEIGHT + ROW_GAP) + 28
     summary = report.get("summary") or {}
     return {
-        "schema": "claimtrace.view/5",
+        "schema": "claimtrace.view/6",
         "layout_id": layout_id,
         "scope": report.get("scope") or {},
         "assessment_integrity": assessment_integrity or "unknown",
@@ -1130,6 +1182,27 @@ def _build_payload(report, layout_id):
                 1 for item in derivation_records if item.get("proof_state") == "cross_conflict"
             ),
             "proof_edges": sum(1 for edge in edges if edge["kind"] == "proof"),
+            "deliberation_proposals": len(deliberations["proposals"]),
+            "deliberation_candidate_sets": len(deliberations["candidate_sets"]),
+            "deliberation_ballots": len(deliberations["ballots"]),
+            "deliberation_phase_decisions": len(deliberations["phase_decisions"]),
+            "deliberation_approved_phase_decisions": sum(
+                item.get("decision") == "approved"
+                for item in deliberations["phase_decisions"]
+            ),
+            "deliberation_rejected_phase_decisions": sum(
+                item.get("decision") == "rejected"
+                for item in deliberations["phase_decisions"]
+            ),
+            "deliberation_panels": len(deliberations["panels"]),
+            "deliberation_recommended": sum(
+                item.get("status") == "recommended_for_human_review"
+                for item in deliberations["panels"]
+            ),
+            "deliberation_contested": sum(
+                item.get("status") == "contested"
+                for item in deliberations["panels"]
+            ),
             "findings": len(report.get("findings", [])),
             "errors": summary.get("errors", 0),
             "warnings": summary.get("warnings", 0),
@@ -1139,6 +1212,7 @@ def _build_payload(report, layout_id):
         "edges": edges,
         "assessments": [assessments_by_id[key] for key in sorted(assessments_by_id)],
         "derivations": [derivations_by_id[key] for key in sorted(derivations_by_id)],
+        "deliberations": deliberations,
         "global_findings": sorted(
             global_findings,
             key=lambda item: (
@@ -1154,6 +1228,11 @@ def _build_payload(report, layout_id):
             "derivability under named project rules, not truth or scientific support. "
             "Semantic mappings are attributed review-state normalization under locked local assertions, "
             "not ontology truth or scientific support. "
+            "Adversarial deliberation records are advisory proposals, frozen candidate sets, "
+            "role-bound ballots, and attributed phase-routing decisions. Actor and group "
+            "labels are self-asserted, not authenticated identity or independence. These "
+            "records never create dependency or support edges, never establish scientific "
+            "truth, and never activate project state. "
             "Run receipts are mechanical records. "
             "Fresh-workspace replay tests declared boundary bytes, not universal determinism. "
             "The replay child is not sandboxed from network or external filesystem writes. "
@@ -1264,12 +1343,118 @@ p { margin: 0; }
   margin-bottom: 14px;
   line-height: 1.45;
 }
+.deliberation-audit {
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warning);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.deliberation-audit > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 650;
+}
+.deliberation-boundary {
+  margin: 0 12px 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.deliberation-content {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+.deliberation-section h3 { margin: 0 0 6px; font-size: .95rem; }
+.deliberation-card {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.deliberation-card > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+.deliberation-card pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 360px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: .76rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .controls {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: end;
   margin-bottom: 12px;
+}
+.projection-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: -2px 0 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.projection-status {
+  flex: 1 1 320px;
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.35;
+}
+.projection-controls details {
+  position: relative;
+}
+.projection-controls summary {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: .82rem;
+  list-style-position: inside;
+  user-select: none;
+}
+.projection-controls details[open] summary { border-color: var(--selected); }
+.filter-options {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  gap: 5px;
+  min-width: 210px;
+  max-width: min(340px, 88vw);
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.filter-options label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: .8rem;
+}
+.filter-options input { margin: 0; }
+.projection-boundary {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: .78rem;
 }
 label { display: grid; gap: 4px; color: var(--muted); font-size: .82rem; }
 select {
@@ -1498,6 +1683,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   stroke: var(--selected) !important;
   stroke-width: 4px !important;
 }
+.ct-node[hidden], .ct-edge-group[hidden], .ct-layer-label[hidden] { display: none; }
 .ct-manual-layout .ct-layer-label { opacity: .46; }
 .ct-node rect, .ct-node polygon { stroke: var(--border); stroke-width: 1.5; }
 .ct-node text { pointer-events: none; fill: var(--text); }
@@ -1572,6 +1758,11 @@ button:disabled { cursor: not-allowed; opacity: .48; }
     <summary>Semantic mapping decisions</summary>
     <ul id="semantic-mapping-list"></ul>
   </details>
+  <details id="deliberation-details" class="deliberation-audit">
+    <summary id="deliberation-summary">Adversarial claim deliberation</summary>
+    <p id="deliberation-boundary" class="deliberation-boundary"></p>
+    <div id="deliberation-content" class="deliberation-content"></div>
+  </details>
   <p id="coverage" class="scope"></p>
   <div class="controls">
     <label for="layer-select">Layer
@@ -1594,12 +1785,38 @@ button:disabled { cursor: not-allowed; opacity: .48; }
       Wheel to zoom; drag empty background to pan; drag nodes to rearrange them; click an edge to inspect it. Node positions are browser-local and visual only; the graph, provenance, and logical layers do not change.
     </span>
   </div>
+  <div class="projection-controls" role="group" aria-label="Visible graph controls">
+    <span id="projection-status" class="projection-status" role="status" aria-live="polite"></span>
+    <button id="projection-overview" type="button">Overview</button>
+    <button id="expand-upstream" type="button" disabled>Add one upstream hop</button>
+    <button id="expand-downstream" type="button" disabled>Add one downstream hop</button>
+    <button id="expand-both" type="button" disabled>Add one hop both ways</button>
+    <button id="collapse-focus" type="button" disabled>Focus only</button>
+    <button id="projection-full" type="button">Show all</button>
+    <details>
+      <summary>Node types</summary>
+      <div id="node-type-filters" class="filter-options"></div>
+    </details>
+    <details>
+      <summary>Statuses</summary>
+      <div id="node-status-filters" class="filter-options"></div>
+    </details>
+    <details>
+      <summary>Layers</summary>
+      <div id="layer-filters" class="filter-options"></div>
+    </details>
+    <details>
+      <summary>Edge classes</summary>
+      <div id="edge-kind-filters" class="filter-options"></div>
+    </details>
+    <span id="projection-boundary" class="projection-boundary">Filters and projection change only this view; the graph and provenance are unchanged. A focused node or selected relationship remains visible even when a filter excludes it. Double-click a node to add one hop in both directions.</span>
+  </div>
   <div class="workspace">
     <div class="graph-panel">
-      <div class="graph-scroll" role="region" tabindex="0" aria-label="Research trajectory canvas. Use the mouse wheel to zoom and drag empty background to pan." aria-describedby="layout-status">
+      <div class="graph-scroll" role="region" tabindex="0" aria-label="Research trajectory canvas. Use the mouse wheel to zoom and drag empty background to pan." aria-describedby="layout-status projection-status projection-boundary">
         <svg id="trajectory" role="img" preserveAspectRatio="xMinYMin meet" aria-labelledby="trajectory-title trajectory-description">
           <title id="trajectory-title">ProvSleuth research trajectory</title>
-          <desc id="trajectory-description">A deterministic layered graph of declared semantic lineage, conditional symbolic proofs, semantic reviews, and partial mechanical run receipts.</desc>
+          <desc id="trajectory-description">The current visible projection of a deterministic layered graph of declared semantic lineage, conditional symbolic proofs, semantic reviews, and partial mechanical run receipts. Projection controls may hide nodes and relationships without removing them from provenance.</desc>
           <defs>
           <marker id="arrow-dependency" viewBox="0 0 7 7" markerWidth="7" markerHeight="7" refX="6.4" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
             <path d="M0.8,0.8 L6.4,3.5 L0.8,6.2 z" fill="var(--dependency)"></path>
@@ -1677,6 +1894,17 @@ _HTML_SCRIPT = """
   const viewportFitButton = document.getElementById("viewport-fit");
   const layoutReset = document.getElementById("layout-reset");
   const layoutStatus = document.getElementById("layout-status");
+  const projectionStatus = document.getElementById("projection-status");
+  const projectionOverview = document.getElementById("projection-overview");
+  const projectionFull = document.getElementById("projection-full");
+  const expandUpstream = document.getElementById("expand-upstream");
+  const expandDownstream = document.getElementById("expand-downstream");
+  const expandBoth = document.getElementById("expand-both");
+  const collapseFocusButton = document.getElementById("collapse-focus");
+  const nodeTypeFilters = document.getElementById("node-type-filters");
+  const nodeStatusFilters = document.getElementById("node-status-filters");
+  const layerFilters = document.getElementById("layer-filters");
+  const edgeKindFilters = document.getElementById("edge-kind-filters");
   const moveButtons = {
     left: document.getElementById("move-left"),
     up: document.getElementById("move-up"),
@@ -1692,13 +1920,41 @@ _HTML_SCRIPT = """
   const defaultPositions = new Map(data.nodes.map(function (node) {
     return [node.key, {x: node.x, y: node.y}];
   }));
+  const fullLayoutPositions = new Map();
   const assessments = new Map((data.assessments || []).map(function (item) {
     return [item.id, item];
   }));
   const nodeElements = new Map();
   const edgeElements = new Map();
+  const layerElements = new Map();
   const outgoing = new Map();
   const incoming = new Map();
+  const projectionOutgoing = new Map();
+  const projectionIncoming = new Map();
+  const largeGraphThreshold = 120;
+  const largeGraphEdgeThreshold = 240;
+  const fullViewFastRoutingThreshold = 144;
+  const detailedRoutingNodeThreshold = 72;
+  const maximumDetailedGridPoints = 50000;
+  const maximumDetailedRouteWork = 2000000;
+  const largeGraph = data.nodes.length > largeGraphThreshold ||
+    data.edges.length > largeGraphEdgeThreshold;
+  const initialProjectionMode = largeGraph ? "overview" : "full";
+  const visibleNodeKeys = new Set();
+  const visibleEdgeKeys = new Set();
+  const revealedNodeKeys = new Set();
+  const enabledNodeTypes = new Set(data.nodes.map(function (node) {
+    return String(node.type || "other");
+  }));
+  const enabledNodeStatuses = new Set(data.nodes.map(function (node) {
+    return String(node.status || "unknown");
+  }));
+  const enabledLayers = new Set(data.nodes.map(function (node) {
+    return Number(node.layer);
+  }));
+  const enabledEdgeKinds = new Set(data.edges.map(function (edge) {
+    return String(edge.kind || "dependency");
+  }));
   const baseCanvasWidth = Number(data.width) || 640;
   const baseCanvasHeight = Number(data.height) || 480;
   const canvasPadding = 48;
@@ -1733,6 +1989,11 @@ _HTML_SCRIPT = """
   let panState = null;
   let viewportZoom = 1;
   let suppressClickKey = null;
+  let projectionMode = initialProjectionMode;
+  let overviewNodeKeys = new Set();
+  let projectionInitialized = false;
+  let currentRoutingMode = "detailed";
+  let fullLayoutIsManual = false;
 
   function svgElement(tag, attributes, text) {
     const element = document.createElementNS(NS, tag);
@@ -1741,6 +2002,12 @@ _HTML_SCRIPT = """
     });
     if (text !== undefined) element.textContent = text;
     return element;
+  }
+
+  function setSvgHidden(element, hidden) {
+    if (!element) return;
+    if (hidden) element.setAttribute("hidden", "");
+    else element.removeAttribute("hidden");
   }
 
   function classToken(value) {
@@ -1776,6 +2043,299 @@ _HTML_SCRIPT = """
       hash = Math.imul(hash, 16777619);
     }
     return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function sortedUnique(values, numeric) {
+    const unique = Array.from(new Set(values));
+    return unique.sort(numeric
+      ? function (left, right) { return Number(left) - Number(right); }
+      : function (left, right) { return String(left).localeCompare(String(right)); });
+  }
+
+  function buildOverviewNodeKeys() {
+    const overviewTypes = new Set([
+      "question", "hypothesis", "prediction", "claim", "conclusion",
+      "figure", "decision"
+    ]);
+    const statusPriority = new Map([
+      ["current", 0], ["confirmed", 0], ["accepted", 0], ["null", 1],
+      ["contested", 2], ["stale", 3], ["proposed", 3], ["superseded", 4],
+      ["retracted", 5], ["deprecated", 5], ["dead_end", 5]
+    ]);
+    let candidates = data.nodes.filter(function (node) {
+      return node.kind === "semantic" && overviewTypes.has(String(node.type || ""));
+    });
+    if (!candidates.length) {
+      candidates = data.nodes.filter(function (node) {
+        return !(projectionOutgoing.get(node.key) || []).length;
+      });
+    }
+    if (!candidates.length) candidates = data.nodes.slice();
+    const compareCandidates = function (left, right) {
+      const leftPriority = statusPriority.has(String(left.status))
+        ? statusPriority.get(String(left.status)) : 3;
+      const rightPriority = statusPriority.has(String(right.status))
+        ? statusPriority.get(String(right.status)) : 3;
+      return leftPriority - rightPriority || left.layer - right.layer ||
+        left.row - right.row || left.key.localeCompare(right.key);
+    };
+    candidates.sort(compareCandidates);
+    const limit = 72;
+    const chosen = [];
+    const chosenKeys = new Set();
+    const addCandidate = function (node) {
+      if (!node || chosen.length >= limit || chosenKeys.has(node.key)) return;
+      chosen.push(node);
+      chosenKeys.add(node.key);
+    };
+    const typeOrder = [
+      "conclusion", "claim", "figure", "decision", "prediction",
+      "hypothesis", "question"
+    ];
+    typeOrder.forEach(function (type) {
+      addCandidate(candidates.find(function (node) { return node.type === type; }));
+    });
+    sortedUnique(candidates.map(function (node) { return node.layer; }), true)
+      .forEach(function (layer) {
+        addCandidate(candidates.find(function (node) { return node.layer === layer; }));
+      });
+    const candidatesByType = new Map(typeOrder.map(function (type) {
+      return [type, candidates.filter(function (node) { return node.type === type; })];
+    }));
+    for (let index = 0; chosen.length < limit; index += 1) {
+      let added = false;
+      typeOrder.forEach(function (type) {
+        const before = chosen.length;
+        addCandidate((candidatesByType.get(type) || [])[index]);
+        if (chosen.length > before) added = true;
+      });
+      if (!added) break;
+    }
+    candidates.forEach(addCandidate);
+    return new Set(chosen.map(function (node) { return node.key; }));
+  }
+
+  function projectionOneHop(start, adjacency) {
+    const keys = new Set();
+    if (!start || !nodes.has(start)) return keys;
+    keys.add(start);
+    (adjacency.get(start) || []).forEach(function (link) { keys.add(link.node); });
+    return keys;
+  }
+
+  function expandSelectedOneHop(adjacency) {
+    if (!selected || !nodes.has(selected)) return false;
+    projectionOneHop(selected, adjacency).forEach(function (key) {
+      revealedNodeKeys.add(key);
+      visibleNodeKeys.add(key);
+    });
+    projectionMode = "custom";
+    applyVisibility(true);
+    return true;
+  }
+
+  function filtersAreDefault() {
+    return data.nodes.every(function (node) {
+      return enabledNodeTypes.has(String(node.type || "other")) &&
+        enabledNodeStatuses.has(String(node.status || "unknown")) &&
+        enabledLayers.has(Number(node.layer));
+    }) && data.edges.every(function (edge) {
+      return enabledEdgeKinds.has(String(edge.kind || "dependency"));
+    });
+  }
+
+  function usesPersistentFullLayout() {
+    return projectionMode === "full" && filtersAreDefault();
+  }
+
+  function restoreFullLayoutPositions() {
+    data.nodes.forEach(function (node) {
+      const position = fullLayoutPositions.get(node.key) || defaultPositions.get(node.key);
+      node.x = position.x;
+      node.y = position.y;
+    });
+    data.layers.forEach(function (layer) {
+      const layerNode = data.nodes.find(function (node) { return node.layer === layer; });
+      const layerElement = layerElements.get(layer);
+      const position = layerNode ? defaultPositions.get(layerNode.key) : null;
+      if (layerElement && position) layerElement.setAttribute("x", position.x + 112);
+    });
+  }
+
+  function refreshAfterFilterChange() {
+    if (usesPersistentFullLayout()) {
+      restoreFullLayoutPositions();
+      setManualLayout(fullLayoutIsManual);
+      applyVisibility(false);
+      fitViewport();
+      layoutStatus.textContent = fullLayoutIsManual
+        ? "All filters are enabled; the saved full-graph arrangement is restored. The graph and provenance are unchanged."
+        : "All filters are enabled; the automatic full-graph arrangement is restored. The graph and provenance are unchanged.";
+      return;
+    }
+    setManualLayout(false);
+    applyVisibility(true);
+    fitViewport();
+    layoutStatus.textContent =
+      "Visible nodes were auto-arranged from the active filters. This temporary filtered layout does not overwrite the saved full layout, graph, or provenance.";
+  }
+
+  function setProjectionMode(mode) {
+    const nextMode = mode === "full" ? "full" : "overview";
+    projectionMode = nextMode;
+    revealedNodeKeys.clear();
+    const keys = nextMode === "full"
+      ? data.nodes.map(function (node) { return node.key; })
+      : Array.from(overviewNodeKeys);
+    keys.forEach(function (key) { revealedNodeKeys.add(key); });
+    if (usesPersistentFullLayout()) {
+      if (projectionInitialized) restoreFullLayoutPositions();
+      setManualLayout(fullLayoutIsManual);
+      applyVisibility(false);
+    } else {
+      setManualLayout(false);
+      applyVisibility(true);
+    }
+  }
+
+  function populateFilter(container, values, enabled, prefix, numeric) {
+    sortedUnique(values, numeric).forEach(function (value, index) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = true;
+      input.id = prefix + "-" + index;
+      input.value = String(value);
+      input.addEventListener("change", function () {
+        const key = numeric ? Number(input.value) : input.value;
+        if (input.checked) enabled.add(key);
+        else enabled.delete(key);
+        refreshAfterFilterChange();
+      });
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(
+        prefix === "layer-filter" ? "Layer " + value : String(value).replace(/_/g, " ")
+      ));
+      container.appendChild(label);
+    });
+  }
+
+  function resetProjectionFilters() {
+    enabledNodeTypes.clear();
+    data.nodes.forEach(function (node) {
+      enabledNodeTypes.add(String(node.type || "other"));
+    });
+    enabledNodeStatuses.clear();
+    data.nodes.forEach(function (node) {
+      enabledNodeStatuses.add(String(node.status || "unknown"));
+    });
+    enabledLayers.clear();
+    data.nodes.forEach(function (node) { enabledLayers.add(Number(node.layer)); });
+    enabledEdgeKinds.clear();
+    data.edges.forEach(function (edge) {
+      enabledEdgeKinds.add(String(edge.kind || "dependency"));
+    });
+    [nodeTypeFilters, nodeStatusFilters, layerFilters, edgeKindFilters]
+      .forEach(function (container) {
+        container.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+          input.checked = true;
+        });
+      });
+  }
+
+  function arrangeVisibleNodes() {
+    const byLayer = new Map();
+    data.nodes.forEach(function (node) {
+      if (!visibleNodeKeys.has(node.key)) return;
+      if (!byLayer.has(node.layer)) byLayer.set(node.layer, []);
+      byLayer.get(node.layer).push(node);
+    });
+    const usedLayers = Array.from(byLayer.keys()).sort(function (left, right) {
+      return left - right;
+    });
+    usedLayers.forEach(function (layer, layerIndex) {
+      const x = 44 + layerIndex * 340;
+      const items = byLayer.get(layer).sort(function (left, right) {
+        return left.row - right.row || left.key.localeCompare(right.key);
+      });
+      items.forEach(function (node, rowIndex) {
+        node.x = x;
+        node.y = 64 + rowIndex * 106;
+      });
+      const layerElement = layerElements.get(layer);
+      if (layerElement) {
+        layerElement.setAttribute("x", x + 112);
+        setSvgHidden(layerElement, false);
+      }
+    });
+  }
+
+  function updateProjectionStatus() {
+    const hiddenNodes = data.nodes.length - visibleNodeKeys.size;
+    const hiddenEdges = data.edges.length - visibleEdgeKeys.size;
+    const modeLabel = projectionMode === "full" ? "Full view" :
+      projectionMode === "overview" ? "Compact overview" : "Focused expansion";
+    const overviewBoundary = projectionMode === "overview"
+      ? "This overview samples high-level node types and logical layers; statuses and connecting provenance paths can remain hidden. "
+      : "";
+    projectionStatus.textContent = modeLabel + ": showing " +
+      visibleNodeKeys.size + "/" + data.nodes.length + " nodes and " +
+      visibleEdgeKeys.size + "/" + data.edges.length + " relationships; " +
+      hiddenNodes + " nodes and " + hiddenEdges + " relationships are hidden, not removed. " +
+      overviewBoundary +
+      (currentRoutingMode === "fast"
+        ? "Large-view routing is simplified and edge labels are suppressed except for a selected relationship. Use Focus only or restrictive filters to return to detailed routing."
+        : "Detailed obstacle-aware routing is active.");
+  }
+
+  function applyVisibility(shouldArrange) {
+    visibleNodeKeys.clear();
+    data.nodes.forEach(function (node) {
+      if (!revealedNodeKeys.has(node.key)) return;
+      if (!enabledNodeTypes.has(String(node.type || "other"))) return;
+      if (!enabledNodeStatuses.has(String(node.status || "unknown"))) return;
+      if (!enabledLayers.has(Number(node.layer))) return;
+      visibleNodeKeys.add(node.key);
+    });
+    if (selected && nodes.has(selected)) visibleNodeKeys.add(selected);
+    const selectedRelationship = selectedEdge ? edges.get(selectedEdge) : null;
+    if (selectedRelationship) {
+      visibleNodeKeys.add(selectedRelationship.source);
+      visibleNodeKeys.add(selectedRelationship.target);
+    }
+    visibleEdgeKeys.clear();
+    data.edges.forEach(function (edge) {
+      const allowedKind = enabledEdgeKinds.has(String(edge.kind || "dependency"));
+      const selectedExact = edge.key === selectedEdge;
+      if ((allowedKind || selectedExact) && visibleNodeKeys.has(edge.source) &&
+          visibleNodeKeys.has(edge.target)) visibleEdgeKeys.add(edge.key);
+    });
+    if (shouldArrange && visibleNodeKeys.size) arrangeVisibleNodes();
+    nodeElements.forEach(function (element, key) {
+      const visible = visibleNodeKeys.has(key);
+      setSvgHidden(element, !visible);
+      element.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (visible) {
+        const node = nodes.get(key);
+        element.setAttribute("transform", "translate(" + node.x + " " + node.y + ")");
+      }
+    });
+    layerElements.forEach(function (element, layer) {
+      setSvgHidden(element, !data.nodes.some(function (node) {
+        return node.layer === layer && visibleNodeKeys.has(node.key);
+      }));
+    });
+    updateCanvasSize();
+    positionAllEdges();
+    const canExpand = Boolean(selected && nodes.has(selected));
+    expandUpstream.disabled = !canExpand;
+    expandDownstream.disabled = !canExpand;
+    expandBoth.disabled = !canExpand;
+    collapseFocusButton.disabled = !canExpand;
+    projectionOverview.disabled = projectionMode === "overview";
+    projectionFull.disabled = usesPersistentFullLayout();
+    updateProjectionStatus();
+    updateHighlights();
   }
 
   function boundedCoordinate(value, size, maximumCanvasDimension) {
@@ -1819,7 +2379,7 @@ _HTML_SCRIPT = """
     const candidate = {x: x, y: y, width: node.width, height: node.height};
     let overlaps = false;
     nodes.forEach(function (other, otherKey) {
-      if (!overlaps && otherKey !== key &&
+      if (!overlaps && visibleNodeKeys.has(otherKey) && otherKey !== key &&
           rectanglesOverlap(candidate, other, nodeSeparation)) overlaps = true;
     });
     return overlaps;
@@ -1880,7 +2440,9 @@ _HTML_SCRIPT = """
     const positions = Object.create(null);
     nodes.forEach(function (node, key) {
       positions[key] = {x: Math.round(node.x), y: Math.round(node.y)};
+      fullLayoutPositions.set(key, positions[key]);
     });
+    fullLayoutIsManual = true;
     setManualLayout(true);
     try {
       window.localStorage.setItem(layoutStorageKey, JSON.stringify({
@@ -1974,9 +2536,10 @@ _HTML_SCRIPT = """
   }
 
   function updateCanvasSize() {
-    let width = baseCanvasWidth;
-    let height = baseCanvasHeight;
-    nodes.forEach(function (node) {
+    let width = largeGraph ? 640 : baseCanvasWidth;
+    let height = largeGraph ? 480 : baseCanvasHeight;
+    nodes.forEach(function (node, key) {
+      if (!visibleNodeKeys.has(key)) return;
       width = Math.max(width, node.x + node.width + canvasPadding);
       height = Math.max(height, node.y + node.height + canvasPadding);
     });
@@ -2038,8 +2601,9 @@ _HTML_SCRIPT = """
   }
 
   function clearEscapeDistance(node, side, coordinate, desiredDistance) {
+    const activeNodes = arguments.length > 4 ? arguments[4] : data.nodes;
     let available = desiredDistance;
-    nodes.forEach(function (other) {
+    (activeNodes || data.nodes).forEach(function (other) {
       if (other === node) return;
       if (side === "left" || side === "right") {
         if (coordinate <= other.y - routingClearance ||
@@ -2064,7 +2628,7 @@ _HTML_SCRIPT = """
     return Math.max(routingClearance, available);
   }
 
-  function portFor(node, side, laneOffset, escapeOffset) {
+  function portFor(node, side, laneOffset, escapeOffset, activeNodes) {
     const sideInset = 14;
     const desiredEscape = Math.min(
       canvasPadding - 2, edgeApproachLength + (escapeOffset || 0)
@@ -2078,7 +2642,7 @@ _HTML_SCRIPT = """
       const anchorX = side === "left" ? node.x : node.x + node.width;
       const direction = side === "left" ? -1 : 1;
       const escapeDistance = clearEscapeDistance(
-        node, side, y, desiredEscape
+        node, side, y, desiredEscape, activeNodes
       );
       return {
         anchor: {x: anchorX, y: y},
@@ -2098,7 +2662,7 @@ _HTML_SCRIPT = """
     const anchorY = side === "top" ? node.y : node.y + node.height;
     const direction = side === "top" ? -1 : 1;
     const escapeDistance = clearEscapeDistance(
-      node, side, x, desiredEscape
+      node, side, x, desiredEscape, activeNodes
     );
     return {
       anchor: {x: x, y: anchorY},
@@ -2131,9 +2695,15 @@ _HTML_SCRIPT = """
   }
 
   function buildEdgePorts() {
+    const edgeItems = arguments.length > 0 ? arguments[0] : data.edges.filter(function (edge) {
+      return visibleEdgeKeys.has(edge.key);
+    });
+    const activeNodes = arguments.length > 1 ? arguments[1] : data.nodes.filter(function (node) {
+      return visibleNodeKeys.has(node.key);
+    });
     const assignments = new Map();
     const groups = new Map();
-    data.edges.slice().sort(function (left, right) {
+    edgeItems.slice().sort(function (left, right) {
       return left.key.localeCompare(right.key);
     }).forEach(function (edge) {
       const sides = edgePortSides(edge);
@@ -2170,7 +2740,7 @@ _HTML_SCRIPT = """
         const offset = (index - (items.length - 1) / 2) * spacing;
         const assignment = assignments.get(item.edgeKey);
         assignment[item.role] = portFor(
-          node, side, offset, index * escapeSpacing
+          node, side, offset, index * escapeSpacing, activeNodes
         );
       });
     });
@@ -2186,10 +2756,10 @@ _HTML_SCRIPT = """
     return ports;
   }
 
-  function routingObstacles() {
+  function routingObstacles(activeNodes) {
     const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
     const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
-    return data.nodes.map(function (node) {
+    return activeNodes.map(function (node) {
       return {
         key: node.key,
         left: Math.max(2, node.x - routingClearance),
@@ -2264,13 +2834,52 @@ _HTML_SCRIPT = """
     return usage;
   }
 
-  function buildRoutingContext() {
-    const obstacles = routingObstacles();
+  function estimateDetailedRoutingWork(activeNodes, activeEdges) {
+    const obstacles = routingObstacles(activeNodes);
+    const ports = buildEdgePorts(activeEdges, activeNodes);
     const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
     const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
     const xValues = new Set([2, canvasWidth - 2]);
     const yValues = new Set([2, canvasHeight - 2]);
-    const ports = buildEdgePorts();
+    obstacles.forEach(function (obstacle) {
+      xValues.add(obstacle.left);
+      xValues.add(obstacle.right);
+      yValues.add(obstacle.top);
+      yValues.add(obstacle.bottom);
+    });
+    ports.forEach(function (pair) {
+      [pair.source.escape, pair.target.escape].forEach(function (point) {
+        xValues.add(point.x);
+        yValues.add(point.y);
+      });
+    });
+    const gridPoints = xValues.size * yValues.size;
+    const routeWork = gridPoints * Math.max(1, activeEdges.length);
+    return {
+      obstacles: obstacles,
+      ports: ports,
+      gridPoints: gridPoints,
+      routeWork: routeWork,
+      safe: gridPoints <= maximumDetailedGridPoints &&
+        routeWork <= maximumDetailedRouteWork
+    };
+  }
+
+  function buildRoutingContext() {
+    const activeNodes = arguments.length > 0 ? arguments[0] : data.nodes.filter(function (node) {
+      return visibleNodeKeys.has(node.key);
+    });
+    const activeEdges = arguments.length > 1 ? arguments[1] : data.edges.filter(function (edge) {
+      return visibleEdgeKeys.has(edge.key);
+    });
+    const prepared = arguments.length > 2
+      ? arguments[2] : estimateDetailedRoutingWork(activeNodes, activeEdges);
+    const obstacles = prepared.obstacles;
+    const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
+    const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
+    const xValues = new Set([2, canvasWidth - 2]);
+    const yValues = new Set([2, canvasHeight - 2]);
+    const ports = prepared.ports;
     obstacles.forEach(function (obstacle) {
       xValues.add(obstacle.left);
       xValues.add(obstacle.right);
@@ -2321,7 +2930,7 @@ _HTML_SCRIPT = """
     });
     return {
       obstacles: obstacles, ports: ports, points: points, neighbors: neighbors,
-      usedSegments: []
+      usedSegments: [], activeNodes: activeNodes
     };
   }
 
@@ -2456,6 +3065,9 @@ _HTML_SCRIPT = """
   }
 
   function roundedCornerClear(before, corner, after) {
+    const activeNodes = arguments.length > 3 ? arguments[3] : data.nodes.filter(function (node) {
+      return visibleNodeKeys.has(node.key);
+    });
     const candidate = {
       x: Math.min(before.x, corner.x, after.x),
       y: Math.min(before.y, corner.y, after.y),
@@ -2465,13 +3077,13 @@ _HTML_SCRIPT = """
         Math.min(before.y, corner.y, after.y)
     };
     let clear = true;
-    nodes.forEach(function (node) {
+    activeNodes.forEach(function (node) {
       if (clear && rectanglesOverlap(candidate, node, 2)) clear = false;
     });
     return clear;
   }
 
-  function routePath(points) {
+  function routePath(points, activeNodes) {
     if (!points || !points.length) return "";
     let path = "M" + points[0].x + "," + points[0].y;
     for (let index = 1; index < points.length - 1; index += 1) {
@@ -2491,7 +3103,7 @@ _HTML_SCRIPT = """
       }
       const before = pointToward(corner, previous, radius);
       const after = pointToward(corner, next, radius);
-      if (!roundedCornerClear(before, corner, after)) {
+      if (!roundedCornerClear(before, corner, after, activeNodes)) {
         path += " L" + corner.x + "," + corner.y;
         continue;
       }
@@ -2503,19 +3115,19 @@ _HTML_SCRIPT = """
     return path + " L" + last.x + "," + last.y;
   }
 
-  function boxClearOfNodes(box) {
+  function boxClearOfNodes(box, activeNodes) {
     const candidate = {
       x: box.left, y: box.top,
       width: box.right - box.left, height: box.bottom - box.top
     };
     let clear = true;
-    nodes.forEach(function (node) {
+    activeNodes.forEach(function (node) {
       if (clear && rectanglesOverlap(candidate, node, 2)) clear = false;
     });
     return clear;
   }
 
-  function edgeLabelPlacement(points, text) {
+  function edgeLabelPlacement(points, text, activeNodes) {
     const canvasWidth = Number(svg.getAttribute("width")) || baseCanvasWidth;
     const canvasHeight = Number(svg.getAttribute("height")) || baseCanvasHeight;
     const width = Math.min(220, Math.max(36, text.length * 5.8 + 10));
@@ -2559,7 +3171,7 @@ _HTML_SCRIPT = """
         if (candidate.box.left < 2 || candidate.box.top < 2 ||
             candidate.box.right > canvasWidth - 2 ||
             candidate.box.bottom > canvasHeight - 2) continue;
-        if (boxClearOfNodes(candidate.box)) return candidate;
+        if (boxClearOfNodes(candidate.box, activeNodes)) return candidate;
       }
     }
     return null;
@@ -2569,21 +3181,87 @@ _HTML_SCRIPT = """
     return edge.kind === "receipt" ? "receipt" : (edge.label || edge.relation);
   }
 
-  function positionEdge(edge, context) {
+  function simplePort(node, side, targetRole) {
+    let point;
+    if (side === "left") point = {x: node.x, y: node.y + node.height / 2};
+    else if (side === "right") point = {x: node.x + node.width, y: node.y + node.height / 2};
+    else if (side === "top") point = {x: node.x + node.width / 2, y: node.y};
+    else point = {x: node.x + node.width / 2, y: node.y + node.height};
+    if (!targetRole) return point;
+    if (side === "left") point.x -= edgeArrowGap;
+    else if (side === "right") point.x += edgeArrowGap;
+    else if (side === "top") point.y -= edgeArrowGap;
+    else point.y += edgeArrowGap;
+    return point;
+  }
+
+  function fastRouteForEdge(edge) {
+    const source = nodes.get(edge.source);
+    const target = nodes.get(edge.target);
+    const sides = edgePortSides(edge);
+    if (!source || !target || !sides) return null;
+    const start = simplePort(source, sides.source, false);
+    const finish = simplePort(target, sides.target, true);
+    const routeIndex = parseInt(stableHash(edge.key).slice(-2), 16);
+    const lane = ((routeIndex % 9) - 4) * 4;
+    if (source === target) {
+      const right = source.x + source.width + 28 + Math.abs(lane);
+      const top = Math.max(8, source.y - 28 - Math.abs(lane));
+      return simplifyRoute([
+        start, {x: right, y: start.y}, {x: right, y: top},
+        {x: finish.x, y: top}, finish
+      ]);
+    }
+    if (sides.source === "left" || sides.source === "right") {
+      const middleX = (start.x + finish.x) / 2 + lane;
+      return simplifyRoute([
+        start, {x: middleX, y: start.y}, {x: middleX, y: finish.y}, finish
+      ]);
+    }
+    const middleY = (start.y + finish.y) / 2 + lane;
+    return simplifyRoute([
+      start, {x: start.x, y: middleY}, {x: finish.x, y: middleY}, finish
+    ]);
+  }
+
+  function fastLabelPlacement(points) {
+    let best = null;
+    for (let index = 1; index < points.length; index += 1) {
+      const left = points[index - 1];
+      const right = points[index];
+      const length = Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+      if (!best || length > best.length) best = {left: left, right: right, length: length};
+    }
+    if (!best) return null;
+    return {
+      x: (best.left.x + best.right.x) / 2,
+      y: (best.left.y + best.right.y) / 2 - 7,
+      anchor: "middle"
+    };
+  }
+
+  function positionEdge(edge, context, fastRouting, activeNodes, showLabels, index) {
     const elements = edgeElements.get(edge.key);
     if (!elements) return;
-    const points = routeForEdge(edge, context);
+    const points = fastRouting
+      ? fastRouteForEdge(edge)
+      : routeForEdge(edge, context);
     if (!points) {
-      elements.group.hidden = true;
+      setSvgHidden(elements.group, true);
       return;
     }
-    elements.group.hidden = false;
-    const pathData = routePath(points);
+    setSvgHidden(elements.group, false);
+    const pathData = routePath(points, activeNodes);
     elements.path.setAttribute("d", pathData);
     elements.hit.setAttribute("d", pathData);
     elements.group.setAttribute("data-route-points", JSON.stringify(points));
-    const placement = edgeLabelPlacement(points, edgeDisplayLabel(edge));
-    elements.label.hidden = !placement;
+    const placement = fastRouting
+      ? fastLabelPlacement(points)
+      : edgeLabelPlacement(points, edgeDisplayLabel(edge), activeNodes);
+    elements.group.setAttribute("data-label-available", placement ? "true" : "false");
+    elements.group.setAttribute("data-label-default-visible", showLabels ? "true" : "false");
+    setSvgHidden(elements.label,
+      !placement || (!showLabels && edge.key !== selectedEdge));
     if (placement) {
       elements.label.setAttribute("x", placement.x);
       elements.label.setAttribute("y", placement.y);
@@ -2592,10 +3270,33 @@ _HTML_SCRIPT = """
   }
 
   function positionAllEdges() {
-    const context = buildRoutingContext();
-    data.edges.slice().sort(function (left, right) {
+    // positionEdge delegates large visible projections to fastRouteForEdge.
+    edgeElements.forEach(function (elements) {
+      setSvgHidden(elements.group, true);
+      setSvgHidden(elements.label, true);
+    });
+    const activeNodes = data.nodes.filter(function (node) {
+      return visibleNodeKeys.has(node.key);
+    });
+    const activeEdges = data.edges.filter(function (edge) {
+      return visibleEdgeKeys.has(edge.key);
+    });
+    let fastRouting = activeNodes.length > detailedRoutingNodeThreshold ||
+      activeEdges.length > fullViewFastRoutingThreshold;
+    let routingEstimate = null;
+    if (!fastRouting && activeEdges.length) {
+      routingEstimate = estimateDetailedRoutingWork(activeNodes, activeEdges);
+      fastRouting = !routingEstimate.safe;
+    }
+    currentRoutingMode = fastRouting ? "fast" : "detailed";
+    const context = fastRouting || !activeEdges.length
+      ? null : buildRoutingContext(activeNodes, activeEdges, routingEstimate);
+    const showLabels = !fastRouting && activeEdges.length <= 80;
+    activeEdges.slice().sort(function (left, right) {
       return left.key.localeCompare(right.key);
-    }).forEach(function (edge) { positionEdge(edge, context); });
+    }).forEach(function (edge, index) {
+      positionEdge(edge, context, fastRouting, activeNodes, showLabels, index);
+    });
   }
 
   function moveNode(key, x, y, resizeCanvas) {
@@ -2610,8 +3311,10 @@ _HTML_SCRIPT = """
     node.x = boundedX;
     node.y = boundedY;
     element.setAttribute("transform", "translate(" + node.x + " " + node.y + ")");
-    if (resizeCanvas !== false) updateCanvasSize();
-    positionAllEdges();
+    if (resizeCanvas !== false) {
+      updateCanvasSize();
+      positionAllEdges();
+    }
     return true;
   }
 
@@ -2721,7 +3424,12 @@ _HTML_SCRIPT = """
     }, 0);
     selectNode(finished.key, false);
     const node = nodes.get(finished.key);
-    saveLayout("Moved " + short(node.label, 60) + " to x " + node.x + ", y " + node.y + ".");
+    if (usesPersistentFullLayout()) {
+      saveLayout("Moved " + short(node.label, 60) + " to x " + node.x + ", y " + node.y + ".");
+    } else {
+      layoutStatus.textContent =
+        "Moved this node in the current projection only. The saved full layout, graph, and provenance are unchanged.";
+    }
   }
 
   function cancelDrag(event) {
@@ -2746,8 +3454,13 @@ _HTML_SCRIPT = """
     const node = selected ? nodes.get(selected) : null;
     if (!node) return;
     if (moveNode(node.key, node.x + deltaX, node.y + deltaY)) {
-      saveLayout("Moved " + short(node.label, 60) + " " + direction +
-        " to x " + node.x + ", y " + node.y + ".");
+      if (usesPersistentFullLayout()) {
+        saveLayout("Moved " + short(node.label, 60) + " " + direction +
+          " to x " + node.x + ", y " + node.y + ".");
+      } else {
+        layoutStatus.textContent =
+          "Moved this node " + direction + " in the current projection only. The saved full layout, graph, and provenance are unchanged.";
+      }
     }
   }
 
@@ -2856,15 +3569,33 @@ _HTML_SCRIPT = """
   }
 
   data.edges.forEach(function (edge) {
+    addConnection(projectionOutgoing, edge.source, {node: edge.target, edge: edge.key});
+    addConnection(projectionIncoming, edge.target, {node: edge.source, edge: edge.key});
     if (edge.traversable) {
       addConnection(outgoing, edge.source, {node: edge.target, edge: edge.key});
       addConnection(incoming, edge.target, {node: edge.source, edge: edge.key});
     }
   });
 
+  overviewNodeKeys = buildOverviewNodeKeys();
+  populateFilter(nodeTypeFilters,
+    data.nodes.map(function (node) { return String(node.type || "other"); }),
+    enabledNodeTypes, "node-type-filter", false);
+  populateFilter(nodeStatusFilters,
+    data.nodes.map(function (node) { return String(node.status || "unknown"); }),
+    enabledNodeStatuses, "node-status-filter", false);
+  populateFilter(layerFilters,
+    data.nodes.map(function (node) { return Number(node.layer); }),
+    enabledLayers, "layer-filter", true);
+  populateFilter(edgeKindFilters,
+    data.edges.map(function (edge) { return String(edge.kind || "dependency"); }),
+    enabledEdgeKinds, "edge-kind-filter", false);
   const restoredLayout = restoreSavedLayout();
-  setManualLayout(restoredLayout === "restored");
-  updateCanvasSize();
+  data.nodes.forEach(function (node) {
+    fullLayoutPositions.set(node.key, {x: node.x, y: node.y});
+  });
+  fullLayoutIsManual = restoredLayout === "restored";
+  setManualLayout(fullLayoutIsManual && initialProjectionMode === "full");
   document.getElementById("summary").textContent =
     data.summary.semantic_nodes + " semantic nodes · " +
     data.summary.semantic_edges + " semantic edges · " +
@@ -2944,10 +3675,99 @@ _HTML_SCRIPT = """
       semanticMappingList.appendChild(item);
     });
   }
+  const deliberation = data.deliberations || {};
+  const deliberationPanels = deliberation.panels || [];
+  const deliberationSummary = document.getElementById("deliberation-summary");
+  deliberationSummary.textContent =
+    "Adversarial claim deliberation - " +
+    (deliberation.proposals || []).length + " proposal(s), " +
+    (deliberation.candidate_sets || []).length + " frozen set(s), " +
+    (deliberation.ballots || []).length + " ballot(s), " +
+    (deliberation.phase_decisions || []).length + " phase decision(s), " +
+    deliberationPanels.length + " evaluated panel(s)";
+  document.getElementById("deliberation-boundary").textContent =
+    "Advisory audit layer only. Actor and group labels are self-asserted, not " +
+    "authenticated identity or independence. No proposal, candidate set, ballot, " +
+    "score, recommendation, or phase decision creates a dependency/support edge, " +
+    "establishes scientific truth, or activates semantics or rules.";
+  const deliberationContent = document.getElementById("deliberation-content");
+
+  function appendDeliberationSection(title, records, label) {
+    const section = document.createElement("section");
+    section.className = "deliberation-section";
+    const heading = document.createElement("h3");
+    heading.textContent = title + " (" + records.length + ")";
+    section.appendChild(heading);
+    if (!records.length) {
+      const empty = document.createElement("p");
+      empty.className = "detail-note";
+      empty.textContent = "None recorded.";
+      section.appendChild(empty);
+    } else {
+      records.forEach(function (record) {
+        const card = document.createElement("details");
+        card.className = "deliberation-card";
+        const summary = document.createElement("summary");
+        summary.textContent = label(record);
+        const body = document.createElement("pre");
+        body.textContent = JSON.stringify(record, null, 2);
+        card.appendChild(summary);
+        card.appendChild(body);
+        section.appendChild(card);
+      });
+    }
+    deliberationContent.appendChild(section);
+  }
+
+  appendDeliberationSection("Evaluated panels", deliberationPanels, function (item) {
+    return (item.status || "unknown") + " - " +
+      (item.phase || "unknown phase") + " - " +
+      (item.subject_key || item.candidate_set_id || "unknown subject") +
+      (item.recommended_candidate_id
+       ? " - recommendation for human review: " + item.recommended_candidate_id : "");
+  });
+  appendDeliberationSection(
+    "Open proposal groups", deliberation.open_groups || [], function (item) {
+      return (item.phase || "unknown phase") + " - " +
+        (item.subject_key || "unknown subject") + " - " +
+        (item.candidate_ids || []).length + " candidate(s)";
+    }
+  );
+  appendDeliberationSection("Proposals", deliberation.proposals || [], function (item) {
+    return (item.phase || "unknown phase") + " - " +
+      (item.subject_key || "unknown subject") + " - " +
+      (item.candidate_id || item.proposal_id || "unknown candidate");
+  });
+  appendDeliberationSection(
+    "Frozen candidate sets", deliberation.candidate_sets || [], function (item) {
+      return (item.phase || "unknown phase") + " - " +
+        (item.subject_key || "unknown subject") + " - " +
+        (item.candidate_ids || []).length + " preserved candidate(s)";
+    }
+  );
+  appendDeliberationSection("Ballots", deliberation.ballots || [], function (item) {
+    const actor = item.actor || {};
+    return (item.role || "unknown role") + " - " +
+      (actor.id || "unknown actor") + " - " +
+      (item.evaluations || []).length + " evaluation(s)";
+  });
+  appendDeliberationSection(
+    "Phase decisions", deliberation.phase_decisions || [], function (item) {
+      return (item.decision || "unknown decision") + " - " +
+        (item.actor || "unknown actor") + " - " +
+        (item.candidate_id || "unknown candidate") + " - advisory routing only";
+    }
+  );
+  appendDeliberationSection(
+    "Ledger integrity findings", deliberation.integrity_issues || [], function (item) {
+      return (item.code || "integrity finding") + " - " + (item.path || "ledger");
+    }
+  );
   document.getElementById("coverage").textContent = data.coverage_notice;
   if (restoredLayout === "restored") {
-    layoutStatus.textContent =
-      "Browser-local arrangement restored. It changes only this view; the graph, provenance, and logical layers are unchanged.";
+    layoutStatus.textContent = initialProjectionMode === "overview"
+      ? "The saved full-graph arrangement is retained. This compact overview uses a temporary layout; the graph, provenance, and logical layers are unchanged."
+      : "Browser-local arrangement restored. It changes only this view; the graph, provenance, and logical layers are unchanged.";
   } else if (restoredLayout === "invalid") {
     layoutStatus.textContent =
       "An invalid saved arrangement was ignored. Automatic layout is shown and the graph is unchanged.";
@@ -2963,9 +3783,11 @@ _HTML_SCRIPT = """
     layerSelect.appendChild(option);
     const layerNode = data.nodes.filter(function (node) { return node.layer === layer; })[0];
     const x = defaultPositions.get(layerNode.key).x;
-    labelLayer.appendChild(svgElement("text", {
+    const layerElement = svgElement("text", {
       x: x + 112, y: 26, "text-anchor": "middle", "class": "ct-layer-label"
-    }, "Logical layer " + layer));
+    }, "Logical layer " + layer);
+    labelLayer.appendChild(layerElement);
+    layerElements.set(layer, layerElement);
   });
 
   data.edges.forEach(function (edge) {
@@ -3017,10 +3839,9 @@ _HTML_SCRIPT = """
       group: group, hit: hit, path: path, label: label
     });
   });
-  positionAllEdges();
 
   function selectNode(key, shouldCenter) {
-    selected = key || null;
+    selected = nodes.has(key) ? key : null;
     selectedEdge = null;
     focusSelect.value = selected || "";
     edgeSelect.value = "";
@@ -3029,6 +3850,25 @@ _HTML_SCRIPT = """
       moveButtons[direction].disabled = !selectedNode;
     });
     selectedAssessment = selectedNode ? selectedNode.default_assessment_id : null;
+    if (selectedNode && !revealedNodeKeys.has(selectedNode.key)) {
+      revealedNodeKeys.clear();
+      projectionOneHop(selectedNode.key, projectionIncoming).forEach(function (nodeKey) {
+        revealedNodeKeys.add(nodeKey);
+      });
+      projectionOneHop(selectedNode.key, projectionOutgoing).forEach(function (nodeKey) {
+        revealedNodeKeys.add(nodeKey);
+      });
+      projectionMode = "custom";
+      applyVisibility(true);
+    } else if (selectedNode && !visibleNodeKeys.has(selectedNode.key)) {
+      applyVisibility(!usesPersistentFullLayout());
+    } else {
+      applyVisibility(false);
+    }
+    expandUpstream.disabled = !selectedNode;
+    expandDownstream.disabled = !selectedNode;
+    expandBoth.disabled = !selectedNode;
+    collapseFocusButton.disabled = !selectedNode;
     if (selectedNode && graphScroll && shouldCenter !== false) {
       centerNodeInViewport(selectedNode);
     }
@@ -3045,6 +3885,17 @@ _HTML_SCRIPT = """
     Object.keys(moveButtons).forEach(function (direction) {
       moveButtons[direction].disabled = true;
     });
+    const selectedRelationship = selectedEdge ? edges.get(selectedEdge) : null;
+    if (selectedRelationship && (!visibleNodeKeys.has(selectedRelationship.source) ||
+        !visibleNodeKeys.has(selectedRelationship.target))) {
+      revealedNodeKeys.clear();
+      revealedNodeKeys.add(selectedRelationship.source);
+      revealedNodeKeys.add(selectedRelationship.target);
+      projectionMode = "custom";
+      applyVisibility(true);
+    } else {
+      applyVisibility(false);
+    }
     updateHighlights();
     updateDetails();
   }
@@ -3124,9 +3975,26 @@ _HTML_SCRIPT = """
       }
       selectNode(node.key);
     });
+    group.addEventListener("dblclick", function (event) {
+      event.preventDefault();
+      selectNode(node.key, false);
+      projectionOneHop(selected, incoming).forEach(function (key) {
+        revealedNodeKeys.add(key);
+      });
+      projectionOneHop(selected, outgoing).forEach(function (key) {
+        revealedNodeKeys.add(key);
+      });
+      projectionMode = "custom";
+      applyVisibility(true);
+      centerNodeInViewport(node);
+    });
     nodeLayer.appendChild(group);
     nodeElements.set(node.key, group);
   });
+
+  setProjectionMode(initialProjectionMode);
+  projectionInitialized = true;
+  window.requestAnimationFrame(function () { fitViewport(); });
 
   function closure(start, adjacency) {
     const reached = new Set();
@@ -3181,6 +4049,11 @@ _HTML_SCRIPT = """
       elements.group.classList.toggle("ct-dim", edgeSelection
         ? !exactSelection
         : Boolean(selected) && !upstream.edges.has(key) && !downstream.edges.has(key));
+      const labelAvailable = elements.group.getAttribute("data-label-available") === "true";
+      const labelDefaultVisible =
+        elements.group.getAttribute("data-label-default-visible") === "true";
+      setSvgHidden(elements.label, elements.group.hasAttribute("hidden") ||
+        !labelAvailable || (!labelDefaultVisible && !exactSelection));
     });
   }
 
@@ -3564,7 +4437,7 @@ _HTML_SCRIPT = """
       detailTitle.textContent = "Trajectory overview";
       const note = document.createElement("p");
       note.className = "detail-note";
-      note.textContent = "Choose a focus, click a node, or click a relationship. Node focus shows dependency ancestry; relationship focus highlights only its direct endpoints.";
+      note.textContent = "Choose a focus, click a node, or click a relationship. Node focus highlights the dependency ancestry currently visible in this projection; relationship focus highlights only its direct endpoints.";
       detailContent.appendChild(note);
       if ((data.global_findings || []).length) {
         const list = document.createElement("ul");
@@ -3830,17 +4703,27 @@ _HTML_SCRIPT = """
   }
 
   function resetLayout() {
+    if (!usesPersistentFullLayout()) {
+      setManualLayout(false);
+      applyVisibility(true);
+      fitViewport();
+      layoutStatus.textContent =
+        "Visible nodes were auto-arranged from the current projection and active filters. The saved full layout, graph, and provenance are unchanged.";
+      return;
+    }
     nodes.forEach(function (node, key) {
       const position = defaultPositions.get(key);
       node.x = position.x;
       node.y = position.y;
+      fullLayoutPositions.set(key, {x: position.x, y: position.y});
       const element = nodeElements.get(key);
       if (element) {
         element.setAttribute("transform", "translate(" + node.x + " " + node.y + ")");
       }
     });
-    updateCanvasSize();
-    positionAllEdges();
+    restoreFullLayoutPositions();
+    applyVisibility(false);
+    fullLayoutIsManual = false;
     setManualLayout(false);
     try {
       window.localStorage.removeItem(layoutStorageKey);
@@ -3851,6 +4734,7 @@ _HTML_SCRIPT = """
       layoutStatus.textContent =
         "Automatic layout restored for this page, but browser storage could not be cleared; a reload may restore the prior arrangement. The graph is unchanged.";
     }
+    fitViewport();
   }
 
   const nudgeStep = 24;
@@ -3885,6 +4769,41 @@ _HTML_SCRIPT = """
   graphScroll.addEventListener("lostpointercapture", cancelPan);
   graphScroll.addEventListener("keydown", handleViewportKeydown);
   layoutReset.addEventListener("click", resetLayout);
+  projectionOverview.addEventListener("click", function () {
+    setProjectionMode("overview");
+    fitViewport();
+  });
+  projectionFull.addEventListener("click", function () {
+    resetProjectionFilters();
+    setProjectionMode("full");
+    fitViewport();
+  });
+  expandUpstream.addEventListener("click", function () {
+    if (expandSelectedOneHop(incoming)) fitViewport();
+  });
+  expandDownstream.addEventListener("click", function () {
+    if (expandSelectedOneHop(outgoing)) fitViewport();
+  });
+  expandBoth.addEventListener("click", function () {
+    if (!selected) return;
+    projectionOneHop(selected, incoming).forEach(function (key) {
+      revealedNodeKeys.add(key);
+    });
+    projectionOneHop(selected, outgoing).forEach(function (key) {
+      revealedNodeKeys.add(key);
+    });
+    projectionMode = "custom";
+    applyVisibility(true);
+    fitViewport();
+  });
+  collapseFocusButton.addEventListener("click", function () {
+    if (!selected) return;
+    revealedNodeKeys.clear();
+    revealedNodeKeys.add(selected);
+    projectionMode = "custom";
+    applyVisibility(true);
+    centerNodeInViewport(nodes.get(selected));
+  });
   window.addEventListener("blur", function () {
     if (dragState) cancelDrag({pointerId: dragState.pointerId});
     if (panState) cancelPan({pointerId: panState.pointerId});
@@ -3947,7 +4866,8 @@ def render_view(cfg, output_path):
             protected.add(Path(str(declared) + ".manifest.json").resolve(strict=False))
     inside_provenance = False
     for store in (
-        cfg.events_path, cfg.assessments_path, cfg.derivations_path,
+        cfg.events_path, cfg.assessments_path, cfg.deliberation_path,
+        cfg.derivations_path,
         cfg.semantic_mappings_path, cfg.semantic_policies_path,
     ):
         try:
